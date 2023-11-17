@@ -202,6 +202,8 @@ def scrape_annotations(annotations: List[Annotation], song_length: int) -> pd.Da
             value = "dynamic-marking"
         elif expressive_feature_type == "Fermata":
             value = "fermata"
+        elif expressive_feature_type == "RehearsalMark" and value.isdigit():
+            value = "rehearsal-mark"
         annotations_encoded["value"].append(check_text(text = value))
     
     # get final durations

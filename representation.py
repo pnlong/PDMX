@@ -82,19 +82,19 @@ CODE_POSITION_MAP = utils.inverse_dict(POSITION_CODE_MAP)
 ##################################################
 
 TEMPO_QPM_MAP = { # each value is the maximum BPM before we go up a tempo, found at https://en.wikipedia.org/wiki/Tempo
-    "Larghissimo": 24,
-    "Grave": 40, # also Adagissimo
-    "Largo": 54, # also Larghetto
-    "Adagio": 68,
-    "Adagietto": 80,
-    "Andante": 94, # or Lento
-    "Andantino": 108,
-    "Moderato": 114,
-    "Allegretto": 120,
-    "Allegro": 156,
-    "Vivace": 176,
-    "Presto": 200,
-    "Prestissimo": 1e10, # some arbitrary large number
+    "larghissimo": 24,
+    "grave": 40, # also Adagissimo
+    "largo": 54, # also Larghetto
+    "adagio": 68,
+    "adagietto": 80,
+    "andante": 94, # or Lento
+    "andantino": 108,
+    "moderato": 114,
+    "allegretto": 120,
+    "allegro": 156,
+    "vivace": 176,
+    "presto": 200,
+    "prestissimo": 1e10, # some arbitrary large number
 }
 QPM_TEMPO_MAP = utils.inverse_dict(TEMPO_QPM_MAP)
 def QPM_TEMPO_MAPPER(qpm: float):
@@ -108,36 +108,84 @@ EXPRESSIVE_FEATURES = {
     # Barlines
     "Barline": [
         "double-barline", "end-barline", "dotted-barline", "dashed-barline",
-        "barline",
+        "barline", # default value
         ],
     # Key Signatures
-    "KeySignature": ["keysig-change",],
+    "KeySignature": [
+        "keysig-change",
+        ],
     # Time Signatures
-    "TimeSignature": ["timesig-change",],
+    "TimeSignature": [
+        "timesig-change",
+        ],
     # Fermata
-    "Fermata": ["fermata",],
+    "Fermata": [
+        "fermata",
+        ],
     # SlurSpanner
-    "SlurSpanner": ["slur",],
+    "SlurSpanner": [
+        "slur",
+        ],
     # PedalSpanner
-    "PedalSpanner": ["pedal",],
+    "PedalSpanner": [
+        "pedal",
+        ],
     # Tempo
-    "Tempo": list(TEMPO_QPM_MAP.keys()) + ["tempo-marking",],
+    "Tempo": list(TEMPO_QPM_MAP.keys()), # no default value, default is set above in QPM_TEMPO_MAPPER
     # TempoSpanner
-    "TempoSpanner": [],
+    "TempoSpanner": [
+        "lentando", "lent.", "smorzando", "smorz.", "sostenuto", "sosten.", "accelerando", "accel.", "allargando", "allarg.", "rallentando", "rallent.", "ritardando",
+        "rit.", # rit. is default because it is most common
+        ],
     # Dynamic
     "Dynamic": [
         "pppppp", "ppppp", "pppp", "ppp", "pp", "p", "mp", "mf", "f", "ff", "fff", "ffff", "fffff", "ffffff",
         "sfpp", "sfp", "sf", "sff", "sfz", "sffz", "fz", "rf", "rfz", "fp", "pf", "s", "r", "z", "n", "m",
-        "dynamic-marking",
+        "dynamic-marking", # default value
         ],
     # HairPinSpanner
-    "HairPinSpanner": [],
-    # TechAnnotation
-    "TechAnnotation": [],
+    "HairPinSpanner": [
+        "crescendo", "cresc.", "decrescendo", "decresc.", "diminuendo", "dim.",
+        "(", "(cresc.", "(cresc.)", "(dim.)", "(smorz.)", ".", "Alternative Solo", "Cresc.", "Cédez", "Dim.",
+        "II. C.", "IV. C.", "Molto cresc.", "Preferred Solo", "Ral.", "Rall.", "Serrez", "Sw.", "Très dim.", "[",
+        "[cresc.]", "[dim.]", "a c c e l e r a n d o", "a tempo", "accel. e cresc.", "accel..", "accelerando e sempre cresc.", "agitato e sempre più cresc.",
+        "al", "allargando.", "ancor più cresc.", "animando", "ca", "calmando dim.", "cantabile cresc.",
+        "con fuoco", "couple Sw.", "cr es c.", "cre", "cre - - - - - - - - - - - scen", "cre - - - - - - - - - scen", "cre - - - - - - - scen", "cre - - - - - scen - - - - -", "cre - - - scen - - - do", "cre - - scen - - do",
+        "cre - scen - do", "cre --- scen --- do", "cre --- scend --- do", "cre _ _ _ scen _ _ _ do", "cre ‒ ‒ ‒ ‒ ‒ ‒ ‒ scen", "cre-scen-do", "cres", "cres c.", "cres.", "cresc . . cen . . . do",
+        "cresc :", "cresc y accel", "cresc. - - - - -", "cresc. - - - - - -", "cresc. animato", "cresc. appassionato", "cresc. assai", "cresc. assai.", "cresc. con molto agitazione",
+        "cresc. e", "cresc. e accel.", "cresc. e accelerando", "cresc. e affrettando", "cresc. e agitato", "cresc. e animato.", "cresc. e appassionato", "cresc. e poco rit.", "cresc. e poco sostenuto", "cresc. e poco string.",
+        "cresc. e rall. sempre", "cresc. e rall. sempre.", "cresc. e rit.", "cresc. e stretto", "cresc. e string", "cresc. e string.", "cresc. e stringendo", "cresc. e stringendo a poco a poco", "cresc. e stringendo a poco a poco.", "cresc. ed",
+        "cresc. ed accel", "cresc. ed accel.", "cresc. ed accel. poco a poco", "cresc. ed accelerando", "cresc. ed rit", "cresc. molto", "cresc. molto e stringendo", "cresc. p. a. p.", "cresc. poco", "cresc. poco a poco",
+        "cresc. poco a poco al mf", "cresc. sempre", "cresc. sempre al ff", "cresc. sempre al fine", "cresc. sempre poco a poco", "cresc. sforzando", "cresc. un", "cresc. un piu animato", "cresc. un poco", "cresc. un poco animato",
+        "cresc.poco a poco", "cresc.poco string.", "cresc.sempre", "cresc:", "crescendo e rall. a poco a poco", "crescendo e rit.", "crescendo molto", "crescendo poco", "crescendo poco a poco",
+        "crescendo.", "cédez", "de - - cres - - cen - do", "de - cres - cen - do", "decresc..", "descresc.", "di - mi - nu - en - do", "di - min", "dim",
+        "dim e rit.", "dim. - - - - -", "dim. al fine", "dim. colla voce.", "dim. e", "dim. e calando", "dim. e molto rall.", "dim. e pochiss. rit.", "dim. e poco rall.",
+        "dim. e poco rit.", "dim. e poco riten", "dim. e poco riten.", "dim. e rall.", "dim. e rall. molto", "dim. e rallent.", "dim. e rit.", "dim. e rit. poco", "dim. e ritardando", "dim. e riten.",
+        "dim. e roco rit.", "dim. e sosten.", "dim. ed allarg.", "dim. molto", "dim. molto.", "dim. morendo.", "dim. poco", "dim. poco a poco", "dim. poco a poco e rit.", "dim. poco rit.",
+        "dim. rall.", "dim. rit.", "dim. riten", "dim. sempre", "dim. smorz.", "dim. subito", "dim.e poco rall.", "dim.sempre", "dimin.", "dimin. - e - poco - riten.",
+        "dimin. al Fine", "dimin. e ritard.", "dimin. e riten.", "dimin. poco a poco", "dimin`.", "diminish", "diminuendo e leggierissimo", "diminuendo e ritardando", "diminuendo subito",
+        "diminuendo un poco", "diminuendo.", "do", "dolce poc a poco", "dynamicForte", "dynamicMezzodynamicForte", "dynamicMezzodynamicPiano", "dynamicPianodynamicPiano", "dynamicdynamicForte", "e",
+        "e cresc.", "e cresc. molto", "e dim.", "e poco rit.", "e rall.", "e rit. in poco", "e smorz", "e stringendo", "ed allarg.", "en",
+        "en dim.", "espress. legato poco a poco cresc.", "forzando", "gritando (shouting)", "il piu forte possible", "incalze cressc. sempre", "increase", "keyboardPedalPed", "lan",
+        "mo _ ren _ do", "molto cresc.", "molto cresc. ed accelerando", "molto crescendo", "molto dim.", "molto rinforz.", "molto rit.", "molto ritardando", "morendo",
+        "per", "perdendo", "piu cresc.", "piu cresc:", "più cre", "più cresc.", "più cresc. ed agitato", "più dim.", "più moto",
+        "più piano", "più rinforz.", "più rit. e dim.", "più smorz. e rit.", "poco a", "poco a poco", "poco a poco -", "poco a poco - - cresc.", "poco a poco accelerando",
+        "poco a poco accelerando e crescendo", "poco a poco cre", "poco a poco cresc.", "poco a poco cresc. e risoluto", "poco a poco cresc. ed accel.", "poco a poco cresc. ed acceler.", "poco a poco cresc. ed accelerando", "poco a poco cresc. ed anim.", "poco a poco cresc. ed animato", "poco a poco cresc. molto",
+        "poco a poco crescendo", "poco a poco decresc.", "poco a poco dim.", "poco a poco dimin.", "poco a poco diminuendo", "poco a poco rinforz.", "poco cresc", "poco cresc.", "poco cresc. e rit.", "poco cresc. ed agitato",
+        "poco cresc. molto", "poco crescendo", "poco dim.", "poco rall.", "poco rallent.", "poco rit.", "poco ritar", "poco riten.", "poco stretto", "poco à poco cresc.",
+        "pressez", "rall e dim.", "rall e. dim.", "rall.", "rall. e dim.", "rall. molto", "religioso", "ri",
+        "rinforzando", "rit. e crescendo", "rit. e dim.", "rit. et dim.", "ritar.", "ritard.", "ritard. e dimin.", "riten.", "riten. e dim.",
+        "scen", "scendo", "sempre", "sempre cresc.", "sempre cresc. e affrettando", "sempre cresc. e string.", "sempre cresc. ed accel.", "sempre dim", "sempre dim.", "sempre dim. e legatissimo",
+        "sempre dim. e più tranquillo", "sempre dim. e rit. al Fine", "sempre dimin.", "sempre piu piano", "sempre più cresc.", "sempre più cresc. e", "sempre più cresc. e string.", "sempre più dim.", "sempre più forte", "sempre rit. e dim. sin al fine",
+        "si", "slentando", "smorz. e rallent.", "smorz..", "smorz.n", "smorzando e rallent.",
+        "stretto e cresc.", "string.", "string. e cresc.", "stringendo", "stringendo e", "stringendo e cresc.", "stringendo. cresc.", "tar", "un peu ralenti", "un poco animato e cresc.",
+        "un poco animato e crescendo", "un poco cresc.", "vif", "Élargir",
+        "hairpin",
+    ],
     # Articulation (Chunks)
     "Articulation": [
         "staccato", "artic-staccato-above", "artic-staccato-below", "sforzato", "artic-accent-above",
-        "artic-accent-below", "marcato", "tenuto", "fermata", "ornament-trill",
+        "artic-accent-below", "marcato", "tenuto", "ornament-trill",
         "artic-marcato-above", "portato", "artic-tenuto-above", "artic-tenuto-below", "staccatissimo",
         "trill", "artic-staccatissimo-above", "strings-up-bow", "strings-down-bow", "artic-staccatissimo-below",
         "artic-tenuto-staccato-below", "artic-tenuto-staccato-above", "downbow", "ornament-mordent", "upbow",
@@ -159,15 +207,44 @@ EXPRESSIVE_FEATURES = {
         "ushortfermata", "ornament-precomp-slide", "ornament-up-mordent", "prallup", "ornament-down-mordent",
         "no-sym", "wiggle-vibrato-large-slowest", "lutefingering-2nd", "strings-thumb-position", "artic-laissez-vibrer-above",
         "artic-laissez-vibrer-below", "wiggle-sawtooth", "wigglevibratolargeslowest", "lutefingering-3rd", "ulongfermata",
-        "artic-soft-accent-tenuto-below", "artic-soft-accent-staccato-above", "artic-soft-accent-tenuto-staccato-above", "lute-fingering-r-h-third", "wigglesawtoothwide",
+        "artic-soft-accent-tenuto-below", "artic-soft-accent-staccato-above", "artic-soft-accent-tenuto-staccato-above", "lute-fingering-r-h-third", "wigglesawtoothwide", "spiccato",
         "articulation",
     ],
     # Text
-    "Text": [],
+    "Text": [
+        "acappella", "aria", "aria-di-sorbetto", "arietta", "arioso", "ballabile", "battaglia", "bergamasca", "burletta", "cabaletta",
+        "cadenza", "cantata", "capriccio", "cavatina", "coda", "concerto", "concertino", "concerto-grosso", "da-capo-aria", "dramma-giocoso",
+        "dramma-per-musica", "fantasia", "farsa", "festa-teatrale", "fioritura", "intermedio", "intermezzo", "libretto", "melodramma", "opera",
+        "opera-buffa", "opera-semiseria", "opera-seria", "operetta", "oratorio", "pasticcio", "ripieno-concerto", "serenata", "soggetto-cavato", "sonata",
+        "verismo", "campana", "cornetto", "fagotto", "orchestra", "piano(forte)", "piccolo", "sordun", "timpani", "tuba",
+        "viola", "viola-d'amore", "viola-da-braccio", "viola-da-gamba", "violoncello", "alto", "basso", "basso-profondo", "castrato", "coloratura-soprano",
+        "contralto", "falsetto", "falsettone", "leggiero-tenor", "musico", "mezzo-soprano", "passaggio", "soprano", "soprano-sfogato", "spinto",
+        "spinto-soprano", "squillo", "tenore-contraltino", "tenore-di-grazia-or-leggiero-tenor", "tessitura", "accompagnato", "affrettando",
+        "alla-marcia", "a-tempo", "largamente", "larghetto", "lento", "l'istesso-tempo", "mosso",
+        "tardo", "tempo", "(tempo)-rubato", "calando", "messa-di-voce", "stentato",
+        "tremolo", "affettuoso", "agitato", "animato", "brillante", "bruscamente", "cantabile", "colossale", "comodo", "con-amore",
+        "con-brio", "con-fuoco", "con-moto", "con-spirito", "dolce", "drammatico", "feroce", "festoso", "furioso",
+        "giocoso", "grandioso", "grazioso", "lacrimoso", "lamentoso", "maestoso", "misterioso", "pesante", "risoluto",
+        "scherzando", "solitario", "sotto-(voce)", "sonore", "semplicemente", "slancio", "tranquillo", "volante", "molto",
+        "assai", "più", "poco", "poco-a-poco", "ma-non-tanto", "ma-non-troppo", "meno", "subito", "lacuna", "ossia",
+        "ostinato", "pensato", "ritornello", "segue", "stretto", "attacca", "cambiare", "da-capo-(al-fine)", "dal-segno", "divisi",
+        "oppure", "solo", "sole", "acciaccatura", "altissimo", "appoggiatura", "arco", "arpeggio", "basso-continuo", "a-bocca-chiusa",
+        "chiuso", "coloratura", "coperti", "una-corda", "due-corde", "tre-corde-or-tutte-le-corde", "glissando", "legato", "col-legno", "martellato",
+        "pizzicato", "portamento", "sforzando", "scordatura", "con-sordino", "senza-sordino",
+        "tutti", "vibrato", "colla-voce", "banda", "comprimario", "convenienze", "coro", "diva", "prima-donna",
+        "primo-uomo", "ripieno", "bel-canto", "bravura", "bravo", "maestro", "maestro-collaboratore", "maestro-sostituto", "maestro-suggeritore", "stagione",
+        "",
+    ],
+    # RehearsalMark
+    "RehearsalMark": 
+        list(map(chr, range(ord("A"), ord("Z") + 1))) + [ # the letters
+        "introduction", "intro", "bridge", "chorus", "outro", "verse", "theme", "refrain", # song sections
+        "rehearsal-mark"
+    ],
     # TextSpanner
     "TextSpanner": [],
-    # RehearsalMark
-    "RehearsalMark": [],
+    # TechAnnotation
+    "TechAnnotation": [],
     # Symbol
     # "Symbol": [
     #     "no-sym", "keyboard-pedal-ped", "notehead-parenthesis-left", "notehead-parenthesis-right", "keyboard-pedal-up", "handbells-mallet-bell-on-table", "guitar-string-7", "strings-harmonic", "pedal ped", "strings-down-bow", "handbells-martellato", "pedalasterisk", "chant-punctum", "notehead-black", "guitar-string-8", "arrow-open-left", "artic-accent-above", "accidental-natural", "breath-mark-comma", "keyboard-pedal-p",
@@ -194,12 +271,6 @@ EXPRESSIVE_FEATURES = {
 }
 VALUE_CODE_MAP = [None,] + list(range(128)) + sum(list(EXPRESSIVE_FEATURES.values()), [])
 VALUE_CODE_MAP = {VALUE_CODE_MAP[i]: i for i in range(len(VALUE_CODE_MAP))}
-def VALUE_CODE_MAPPER(value, value_code_map: dict) -> int:
-    try:
-        code = value_code_map[value]
-    except KeyError:
-        code = -1
-    return code
 CODE_VALUE_MAP = utils.inverse_dict(VALUE_CODE_MAP)
 
 ##################################################
@@ -611,6 +682,14 @@ def encode(path: str, encoding: dict) -> np.array:
     duration_dim = encoding["dimensions"].index("duration")
     instrument_dim = encoding["dimensions"].index("instrument")
 
+    # helper function for mapping
+    def value_code_mapper(value) -> int:
+        try:
+            code = value_code_map[value]
+        except KeyError:
+            code = -1
+        return code
+
     # apply encodings
     data[:, DIMENSIONS.index("type")] = list(map(lambda type_: type_code_map[str(type_)], data[:, DIMENSIONS.index("type")])) # encode type column
     data[:, DIMENSIONS.index("beat")] = list(map(lambda beat: beat_code_map[int(beat)], data[:, DIMENSIONS.index("beat")])) # encode beat
@@ -936,238 +1015,5 @@ def retrieve_italian_musical_terms() -> list:
     terms = list(term.text.strip() for term in terms)
 
     return terms
-
-    # EXPRESSIVE_FEATURES = [
-    #     "A cappella",
-    #     "Aria",
-    #     "Aria di sorbetto",
-    #     "Arietta",
-    #     "Arioso",
-    #     "Ballabile",
-    #     "Battaglia",
-    #     "Bergamasca",
-    #     "Burletta",
-    #     "Cabaletta",
-    #     "Cadenza",
-    #     "Cantata",
-    #     "Capriccio",
-    #     "Cavatina",
-    #     "Coda",
-    #     "Concerto",
-    #     "Concertino",
-    #     "Concerto grosso",
-    #     "Da capo aria",
-    #     "Dramma giocoso",
-    #     "Dramma per musica",
-    #     "Fantasia",
-    #     "Farsa",
-    #     "Festa teatrale",
-    #     "Fioritura",
-    #     "Intermedio",
-    #     "Intermezzo",
-    #     "Libretto",
-    #     "Melodramma",
-    #     "Opera",
-    #     "Opera buffa",
-    #     "Opera semiseria",
-    #     "Opera seria",
-    #     "Operetta",
-    #     "Oratorio",
-    #     "Pasticcio",
-    #     "Ripieno concerto",
-    #     "Serenata",
-    #     "Soggetto cavato",
-    #     "Sonata",
-    #     "Verismo",
-    #     "Campana",
-    #     "Cornetto",
-    #     "Fagotto",
-    #     "Orchestra",
-    #     "Piano(forte)",
-    #     "Piccolo",
-    #     "Sordun",
-    #     "Timpani",
-    #     "Tuba",
-    #     "Viola",
-    #     "Viola d'amore",
-    #     "Viola da braccio",
-    #     "Viola da gamba",
-    #     "Violoncello",
-    #     "Alto",
-    #     "Basso",
-    #     "Basso profondo",
-    #     "Castrato",
-    #     "Coloratura soprano",
-    #     "Contralto",
-    #     "Falsetto",
-    #     "Falsettone",
-    #     "Leggiero tenor",
-    #     "Musico",
-    #     "Mezzo-soprano",
-    #     "Passaggio",
-    #     "Soprano",
-    #     "Soprano sfogato",
-    #     "Spinto",
-    #     "Spinto soprano",
-    #     "Squillo",
-    #     "Tenore contraltino",
-    #     "Tenore di grazia or Leggiero tenor",
-    #     "Tessitura",
-    #     "Accelerando",
-    #     "Accompagnato",
-    #     "Adagio",
-    #     "Adagietto",
-    #     "Affrettando",
-    #     "Alla marcia",
-    #     "Allargando",
-    #     "Allegro",
-    #     "Allegretto",
-    #     "Andante",
-    #     "Andantino",
-    #     "A tempo",
-    #     "Fermata",
-    #     "Grave",
-    #     "Largo",
-    #     "Largamente",
-    #     "Larghetto",
-    #     "Lento",
-    #     "Lentando",
-    #     "L'istesso tempo",
-    #     "Moderato",
-    #     "Mosso",
-    #     "Presto",
-    #     "Prestissimo",
-    #     "Rallentando",
-    #     "Ritardando",
-    #     "Tardo",
-    #     "Tempo",
-    #     "(Tempo) rubato",
-    #     "Tenuto",
-    #     "Vivace",
-    #     "Calando",
-    #     "Crescendo",
-    #     "Decrescendo",
-    #     "Diminuendo",
-    #     "Forte",
-    #     "Fortissimo",
-    #     "Mezzo forte",
-    #     "Marcato",
-    #     "Messa di voce",
-    #     "Piano",
-    #     "Pianissimo",
-    #     "Mezzo piano",
-    #     "Sforzando",
-    #     "Stentato",
-    #     "Tremolo",
-    #     "Affettuoso",
-    #     "Agitato",
-    #     "Animato",
-    #     "Brillante",
-    #     "Bruscamente",
-    #     "Cantabile",
-    #     "Colossale",
-    #     "Comodo",
-    #     "Con amore",
-    #     "Con brio",
-    #     "Con fuoco",
-    #     "Con moto",
-    #     "Con spirito",
-    #     "Dolce",
-    #     "Drammatico",
-    #     "Espressivo",
-    #     "Feroce",
-    #     "Festoso",
-    #     "Furioso",
-    #     "Giocoso",
-    #     "Grandioso",
-    #     "Grazioso",
-    #     "Lacrimoso",
-    #     "Lamentoso",
-    #     "Maestoso",
-    #     "Misterioso",
-    #     "Morendo",
-    #     "Pesante",
-    #     "Risoluto",
-    #     "Scherzando",
-    #     "Solitario",
-    #     "Sotto (voce)",
-    #     "Sonore",
-    #     "Semplicemente",
-    #     "Slancio",
-    #     "Tranquillo",
-    #     "Vivace",
-    #     "Volante",
-    #     "Molto",
-    #     "Assai",
-    #     "Più",
-    #     "Poco",
-    #     "poco a poco",
-    #     "ma non tanto",
-    #     "ma non troppo",
-    #     "Meno",
-    #     "Subito",
-    #     "Lacuna",
-    #     "Ossia",
-    #     "Ostinato",
-    #     "Pensato",
-    #     "Ritornello",
-    #     "Segue",
-    #     "Stretto",
-    #     "Attacca",
-    #     "Cambiare",
-    #     "Da Capo (al fine)",
-    #     "Dal Segno",
-    #     "Divisi",
-    #     "Oppure",
-    #     "Solo",
-    #     "Sole",
-    #     "Acciaccatura",
-    #     "Altissimo",
-    #     "Appoggiatura",
-    #     "Arco",
-    #     "Arpeggio",
-    #     "Basso continuo",
-    #     "A bocca chiusa",
-    #     "Chiuso",
-    #     "Coloratura",
-    #     "Coperti",
-    #     "Una corda",
-    #     "Due corde",
-    #     "Tre corde or tutte le corde",
-    #     "Glissando",
-    #     "Legato",
-    #     "Col legno",
-    #     "Martellato",
-    #     "Pizzicato",
-    #     "Portamento",
-    #     "Portato",
-    #     "Sforzando",
-    #     "Scordatura",
-    #     "Con sordino",
-    #     "Senza sordino",
-    #     "Spiccato",
-    #     "Staccato",
-    #     "Staccatissimo",
-    #     "Tutti",
-    #     "Vibrato",
-    #     "Colla voce",
-    #     "Banda",
-    #     "Comprimario",
-    #     "Concertino",
-    #     "Convenienze",
-    #     "Coro",
-    #     "Diva",
-    #     "Prima donna",
-    #     "Primo uomo",
-    #     "Ripieno",
-    #     "Bel canto",
-    #     "Bravura",
-    #     "Bravo",
-    #     "Maestro",
-    #     "Maestro collaboratore",
-    #     "Maestro sostituto",
-    #     "Maestro suggeritore",
-    #     "Stagione"
-    # ]
 
 ##################################################
