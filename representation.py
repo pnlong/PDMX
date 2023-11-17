@@ -81,9 +81,35 @@ CODE_POSITION_MAP = utils.inverse_dict(POSITION_CODE_MAP)
 # VALUE
 ##################################################
 
+TEMPO_QPM_MAP = { # each value is the maximum BPM before we go up a tempo, found at https://en.wikipedia.org/wiki/Tempo
+    "Larghissimo": 24,
+    "Grave": 40, # also Adagissimo
+    "Largo": 54, # also Larghetto
+    "Adagio": 68,
+    "Adagietto": 80,
+    "Andante": 94, # or Lento
+    "Andantino": 108,
+    "Moderato": 114,
+    "Allegretto": 120,
+    "Allegro": 156,
+    "Vivace": 176,
+    "Presto": 200,
+    "Prestissimo": 1e10, # some arbitrary large number
+}
+QPM_TEMPO_MAP = utils.inverse_dict(TEMPO_QPM_MAP)
+def QPM_TEMPO_MAPPER(qpm: float):
+    if qpm is None: # default if qpm argument is none
+        qpm = 112 # default bpm
+    for bpm in QPM_TEMPO_MAP.keys():
+        if qpm <= bpm:
+            return QPM_TEMPO_MAP[bpm]
+
 EXPRESSIVE_FEATURES = {
     # Barlines
-    "Barline": ["double-barline", "end-barline", "dotted-barline", "dashed-barline", "barline",],
+    "Barline": [
+        "double-barline", "end-barline", "dotted-barline", "dashed-barline",
+        "barline",
+        ],
     # Key Signatures
     "KeySignature": ["keysig-change",],
     # Time Signatures
@@ -95,11 +121,15 @@ EXPRESSIVE_FEATURES = {
     # PedalSpanner
     "PedalSpanner": ["pedal",],
     # Tempo
-    "Tempo": [, "tempo-marking",],
+    "Tempo": list(TEMPO_QPM_MAP.keys()) + ["tempo-marking",],
     # TempoSpanner
     "TempoSpanner": [],
     # Dynamic
-    "Dynamic": ["pppppp", "ppppp", "pppp", "ppp", "pp", "p", "mp", "mf", "f", "ff", "fff", "ffff", "fffff", "ffffff", "sfpp", "sfp", "sf", "sff", "sfz", "sffz", "fz", "rf", "rfz", "fp", "pf", "s", "r", "z", "n", "m", "dynamic-marking",],
+    "Dynamic": [
+        "pppppp", "ppppp", "pppp", "ppp", "pp", "p", "mp", "mf", "f", "ff", "fff", "ffff", "fffff", "ffffff",
+        "sfpp", "sfp", "sf", "sff", "sfz", "sffz", "fz", "rf", "rfz", "fp", "pf", "s", "r", "z", "n", "m",
+        "dynamic-marking",
+        ],
     # HairPinSpanner
     "HairPinSpanner": [],
     # TechAnnotation
@@ -130,6 +160,7 @@ EXPRESSIVE_FEATURES = {
         "no-sym", "wiggle-vibrato-large-slowest", "lutefingering-2nd", "strings-thumb-position", "artic-laissez-vibrer-above",
         "artic-laissez-vibrer-below", "wiggle-sawtooth", "wigglevibratolargeslowest", "lutefingering-3rd", "ulongfermata",
         "artic-soft-accent-tenuto-below", "artic-soft-accent-staccato-above", "artic-soft-accent-tenuto-staccato-above", "lute-fingering-r-h-third", "wigglesawtoothwide",
+        "articulation",
     ],
     # Text
     "Text": [],
@@ -138,35 +169,34 @@ EXPRESSIVE_FEATURES = {
     # RehearsalMark
     "RehearsalMark": [],
     # Symbol
-    "Symbol": [
-        "no-sym", "keyboard-pedal-ped", "notehead-parenthesis-left", "notehead-parenthesis-right", "keyboard-pedal-up", "handbells-mallet-bell-on-table", "guitar-string-7", "strings-harmonic", "pedal ped", "strings-down-bow", "handbells-martellato", "pedalasterisk", "chant-punctum", "notehead-black", "guitar-string-8", "arrow-open-left", "artic-accent-above", "accidental-natural", "breath-mark-comma", "keyboard-pedal-p",
-        "notehead-parenthesis", "strings-down-bow-turned", "strings-up-bow", "acc dot", "notehead-whole", "accdn-comb-dot", "ornament-trill", "dynamic-messa-di-voce", "vocal-mouth-closed", "accdn-r-h-3-ranks-full-factory", "accidental-flat", "keyboard-play-with-r-h", "keyboard-play-with-l-h", "accidental-sharp", "fermata-above", "augmentation-dot", "arrowhead-open-up", "ornament-mordent", "grace-note-slash-stem-up", "note-quarter-up",
-        "fingering-5", "staccato", "pict-beater-hammer-plastic-up", "accidental-parens-left", "accdn-r-h-4-ranks-master", "artic-laissez-vibrer-above", "accidental-quarter-tone-sharp-arabic", "mensural-prolation-2", "brass-mute-closed", "dot", "dynamic-forte", "ornament-tremblement-couperin", "trill", "csym-parens-left-tall", "artic-staccato-above", "arrow-black-down", "accidental-quarter-tone-flat-arabic", "artic-staccato-below", "function-parens-left", "mensural-prolation-combining-three-dots",
-        "csym-bracket-right-tall", "notehead-round-white-slashed-large", "accidental-three-quarter-tones-sharp-arabic", "fingering-4", "flat", "sforza to accent", "csym-bracket-left-tall", "left parenthesis", "ornament-pince-couperin", "plucked-left-hand-pizzicato", "repeat-left", "repeat-right", "accidental-natural-flat", "lute-italian-fret-3", "rcomma", "artic-marcato-below", "fingering-1", "mensural-signum-up", "artic-staccatissimo-above", "fingering-3",
-        "system-divider", "accidental-bakiye-sharp", "dynamic-f-f-f-f", "ufermata", "bracket", "dynamic-piano", "figbass-4", "keyboard-pedal-s", "mensural-prolation-9", "octave-parens-left", "time-sig-fractional-slash", "accidental-sharp-arabic", "octave-parens-right", "rest-quarter", "unpitched-percussion-clef-1", "accidental-natural-sharp", "figbass-flat", "function-plus", "text-tie", "time-sig-bracket-left",
-        "accidental-natural-arabic", "arrow-black-up-right", "figbass-3", "fingering-2", "system-divider-long", "arrow-black-up", "artic-laissez-vibrer-below", "dynamic-diminuendo-hairpin", "figbass-2", "mensural-prolation-7", "quart head", "barline-single", "dynamic-sforzato", "f-clef-change", "ornament-up-curve", "time-sig-2", "keyboard-pedal-toe-2", "lute-french-mordent-upper", "lute-italian-fret-7", "lute-italian-fret-9",
-        "mensural-prolation-6", "ornament-left-facing-half-circle", "time-sig-common", "dynamic-p-p", "dynamic-sforzando-1", "function-parens-right", "grace-note-acciaccatura-stem-up", "lute-italian-fret-6", "lute-italian-fret-8", "mensural-proportion-proportio-dupla-2", "natural", "note-half-up", "notehead-round-black-slashed-large", "rest-16th", "right parenthesis", "staff-1-line", "text-cont-8th-beam-short-stem", "time-sig-parens-right", "accidental-double-sharp-arabic", "analytics-end-stimme",
-        "artic-tenuto-above", "beam-accel-rit-4", "brass-lift-smooth-short", "conductor-beat-4-simple", "note -1/-4", "rest-8th", "text-cont-8th-beam-long-stem", "time-sig-parens-left", "unmeasured-tremolo", "down bow", "grace-note-slash-stem-down", "mensural-notehead-longa-white", "notehead-square-black-large", "segno", "sharp", "staff-1-line-wide", "accidental-kucuk-mucenneb-flat", "arrow-open-up-right", "arrowhead-open-right", "breath-mark-upbow",
-        "function-one", "function-three", "g-clef-turned", "half head", "handbells-mallet-bell-suspended", "accdn-comb-r-h-3-ranks-empty", "accdn-r-h-3-ranks-bandoneon", "arrowhead-open-down", "artic-stress-below", "brass-jazz-turn", "figbass-1", "flag-16th-down", "fretboard-6-string-nut", "note-shape-triangle-up-black", "tremolo-divisi-dots-4", "tremolo-divisi-dots-6", "accdn-comb-r-h-4-ranks-empty", "accidental-bracket-left", "accidental-bracket-right", "analytics-hauptstimme",
-        "beam-accel-rit-10", "dynamic-crescendo-hairpin", "figbass-sharp", "keyboard-play-with-l-h-end", "mensural-prolation-5", "mensural-proportion-tempus-perfectum", "mensural-rest-longa-imperfecta", "pedaldot", "strings-bow-behind-bridge", "strings-thumb-position", "tenuto", "time-sig-1", "time-sig-4", "whole head", "accidental-parens-right", "brass-mute-open", "fermata-below", "figbass-natural", "glissando-down", "keyboard-pedal-toe-1",
-        "mensural-proportion-3", "ottava", "ottava-bassa-ba", "time-sig-bracket-right", "unicode-note-32nd-up", "accidental-comma-slash-up", "accidental-triple-flat", "dynamic-hairpin-parenthesis-left", "flag-16th-up", "g-clef-change", "guitar-string-3", "handbells-martellato-lift", "keyboard-pedal-heel-3", "lyrics-elision-wide", "mensural-proportion-2", "ornament-oblique-line-horiz-before-note", "pict-beater-hammer-plastic-down", "pict-beater-hand", "accdn-r-h-3-ranks-clarinet", "accidental-wyschnegradsky-6-twelfths-flat",
-        "barline-heavy", "f-clef", "figbass-5", "guitar-string-4", "handbells-table-single-bell", "lute-italian-fret-4", "mensural-prolation-combining-two-dots", "notehead-round-black-slashed", "time-sig-3", "two", "accdn-r-h-3-ranks-bassoon", "accdn-r-h-3-ranks-harmonium", "accdn-r-h-3-ranks-two-choirs", "accidental-wyschnegradsky-6-twelfths-sharp", "arrowhead-black-left", "artic-marcato-above", "chant-punctum-inclinatum", "csym-parens-right-tall", "dynamic-hairpin-parenthesis-right", "figbass-combining-raising",
-        "figbass-parens-left", "flag-32nd-up", "fretboard-filled-circle", "function-two", "keyboard-pedal-dot", "lute-italian-fret-2", "lute-italian-fret-5", "lute-italian-vibrato", "mensural-comb-stem-up", "met-note-half-up", "notehead-half-filled", "notehead-rectangular-cluster-white-top", "pict-crotales", "rest-whole", "staff-1-line-narrow", "time-sig-8", "accdn-r-h-3-ranks-organ", "artic-accent-below", "artic-staccatissimo-below", "artic-unstress-above",
-        "barline-short", "bracket tips up", "caesura straight", "cbass clef", "dfermata", "five", "four", "g-clef", "guitar-string-1", "guitar-string-2", "guitar-volume-swell", "lute-italian-fret-0", "lute-italian-fret-1", "lute-italian-tremolo", "med-ren-natural", "mensural-notehead-longa-black", "mensural-signum-down", "notehead-round-white-slashed", "notehead-square-black", "notehead-x-black",
-        "one", "ottava-alta", "ottava-bassa-vb", "pict-mar", "pict-timpani", "pict-vib", "prall", "prall prall", "text-cont-16th-beam-short-stem", "text-tuplet-bracket-start-short-stem", "time-sig-6", "up bow", "wind-trill-key", "accdn-r-h-3-ranks-master", "accdn-r-h-4-ranks-bass-alto", "accidental-flat-arabic", "accidental-wyschnegradsky-1-twelfths-sharp", "analytics-nebenstimme", "arrow-open-down-left", "artic-stress-above",
-        "barline-tick", "beam-accel-rit-11", "beam-accel-rit-2", "dgrace dash", "dpedal toe", "dynamic-hairpin-bracket-left", "dynamic-m-f", "dynamic-p-f", "eight flag", "figbass-7", "flag-32nd-down", "flag-8th-up", "grace dash", "guitar-string-0", "guitar-string-5", "guitar-string-6", "keyboard-pedal-e", "keyboard-pedal-sost", "keyboard-play-with-r-h-end", "lute-barline-end-repeat",
-        "mensural-notehead-semibrevis-black", "mensural-prolation-4", "mensural-white-longa", "met-note-quarter-up", "note -1/-8", "notehead-plus-black", "ornament-comma", "ornament-oblique-line-horiz-after-note", "pict-beater-combining-parentheses", "plus", "seven", "staff-2-lines", "staff-5-lines", "text-tuplet-3-long-stem", "text-tuplet-bracket-end-long-stem", "text-tuplet-bracket-start-long-stem", "time-sig-5", "time-sig-plus-small", "tremolo-divisi-dots-2", "tuplet-2",
-        "unicode-note-half-up", "accdn-r-h-3-ranks-authentic-musette", "accdn-r-h-3-ranks-oboe", "accdn-r-h-3-ranks-tremolo-lower-8ve", "accdn-r-h-4-ranks-soft-tenor", "accidental-combining-raise-53-limit-comma", "analytics-hauptrhythmus", "arrow-black-down-left", "bracket-bottom", "brass-doit-short", "brass-fall-smooth-long", "breath-mark-salzedo", "caesura-short", "chant-augmentum", "coda", "dynamic-f-f", "dynamic-hairpin-bracket-right", "dynamic-niente-for-hairpin", "dynamic-p-p-p-p", "dynamic-rinforzando",
-        "eight rest", "figbass-0", "figbass-double-flat", "fretboard-6-string", "fretboard-o", "function-bracket-left", "function-bracket-right", "guitar-wide-vibrato-stroke", "leger-line", "mensural-oblique-desc-3rd-white", "mensural-oblique-desc-5th-white", "mensural-proportion-4", "mensural-rest-brevis", "mensural-white-brevis", "met-augmentation-dot", "nine", "notehead-double-whole-square", "notehead-slash-vertical-ends-small", "ornament-down-curve", "ornament-precomp-double-cadence-upper-prefix",
-        "ornament-turn-inverted", "ornament-turn-slash", "pict-beater-snare-sticks-up", "pict-beater-wire-brushes-up", "pict-open-rim-shot", "pict-tom-tom", "quindicesima-alta", "staff-4-lines", "text-tuplet-bracket-end-short-stem", "time-sig-0", "time-sig-7", "time-sig-9", "tuplet-8", "wiggle-random-4",
-    ],
+    # "Symbol": [
+    #     "no-sym", "keyboard-pedal-ped", "notehead-parenthesis-left", "notehead-parenthesis-right", "keyboard-pedal-up", "handbells-mallet-bell-on-table", "guitar-string-7", "strings-harmonic", "pedal ped", "strings-down-bow", "handbells-martellato", "pedalasterisk", "chant-punctum", "notehead-black", "guitar-string-8", "arrow-open-left", "artic-accent-above", "accidental-natural", "breath-mark-comma", "keyboard-pedal-p",
+    #     "notehead-parenthesis", "strings-down-bow-turned", "strings-up-bow", "acc dot", "notehead-whole", "accdn-comb-dot", "ornament-trill", "dynamic-messa-di-voce", "vocal-mouth-closed", "accdn-r-h-3-ranks-full-factory", "accidental-flat", "keyboard-play-with-r-h", "keyboard-play-with-l-h", "accidental-sharp", "fermata-above", "augmentation-dot", "arrowhead-open-up", "ornament-mordent", "grace-note-slash-stem-up", "note-quarter-up",
+    #     "fingering-5", "staccato", "pict-beater-hammer-plastic-up", "accidental-parens-left", "accdn-r-h-4-ranks-master", "artic-laissez-vibrer-above", "accidental-quarter-tone-sharp-arabic", "mensural-prolation-2", "brass-mute-closed", "dot", "dynamic-forte", "ornament-tremblement-couperin", "trill", "csym-parens-left-tall", "artic-staccato-above", "arrow-black-down", "accidental-quarter-tone-flat-arabic", "artic-staccato-below", "function-parens-left", "mensural-prolation-combining-three-dots",
+    #     "csym-bracket-right-tall", "notehead-round-white-slashed-large", "accidental-three-quarter-tones-sharp-arabic", "fingering-4", "flat", "sforza to accent", "csym-bracket-left-tall", "left parenthesis", "ornament-pince-couperin", "plucked-left-hand-pizzicato", "repeat-left", "repeat-right", "accidental-natural-flat", "lute-italian-fret-3", "rcomma", "artic-marcato-below", "fingering-1", "mensural-signum-up", "artic-staccatissimo-above", "fingering-3",
+    #     "system-divider", "accidental-bakiye-sharp", "dynamic-f-f-f-f", "ufermata", "bracket", "dynamic-piano", "figbass-4", "keyboard-pedal-s", "mensural-prolation-9", "octave-parens-left", "time-sig-fractional-slash", "accidental-sharp-arabic", "octave-parens-right", "rest-quarter", "unpitched-percussion-clef-1", "accidental-natural-sharp", "figbass-flat", "function-plus", "text-tie", "time-sig-bracket-left",
+    #     "accidental-natural-arabic", "arrow-black-up-right", "figbass-3", "fingering-2", "system-divider-long", "arrow-black-up", "artic-laissez-vibrer-below", "dynamic-diminuendo-hairpin", "figbass-2", "mensural-prolation-7", "quart head", "barline-single", "dynamic-sforzato", "f-clef-change", "ornament-up-curve", "time-sig-2", "keyboard-pedal-toe-2", "lute-french-mordent-upper", "lute-italian-fret-7", "lute-italian-fret-9",
+    #     "mensural-prolation-6", "ornament-left-facing-half-circle", "time-sig-common", "dynamic-p-p", "dynamic-sforzando-1", "function-parens-right", "grace-note-acciaccatura-stem-up", "lute-italian-fret-6", "lute-italian-fret-8", "mensural-proportion-proportio-dupla-2", "natural", "note-half-up", "notehead-round-black-slashed-large", "rest-16th", "right parenthesis", "staff-1-line", "text-cont-8th-beam-short-stem", "time-sig-parens-right", "accidental-double-sharp-arabic", "analytics-end-stimme",
+    #     "artic-tenuto-above", "beam-accel-rit-4", "brass-lift-smooth-short", "conductor-beat-4-simple", "note -1/-4", "rest-8th", "text-cont-8th-beam-long-stem", "time-sig-parens-left", "unmeasured-tremolo", "down bow", "grace-note-slash-stem-down", "mensural-notehead-longa-white", "notehead-square-black-large", "segno", "sharp", "staff-1-line-wide", "accidental-kucuk-mucenneb-flat", "arrow-open-up-right", "arrowhead-open-right", "breath-mark-upbow",
+    #     "function-one", "function-three", "g-clef-turned", "half head", "handbells-mallet-bell-suspended", "accdn-comb-r-h-3-ranks-empty", "accdn-r-h-3-ranks-bandoneon", "arrowhead-open-down", "artic-stress-below", "brass-jazz-turn", "figbass-1", "flag-16th-down", "fretboard-6-string-nut", "note-shape-triangle-up-black", "tremolo-divisi-dots-4", "tremolo-divisi-dots-6", "accdn-comb-r-h-4-ranks-empty", "accidental-bracket-left", "accidental-bracket-right", "analytics-hauptstimme",
+    #     "beam-accel-rit-10", "dynamic-crescendo-hairpin", "figbass-sharp", "keyboard-play-with-l-h-end", "mensural-prolation-5", "mensural-proportion-tempus-perfectum", "mensural-rest-longa-imperfecta", "pedaldot", "strings-bow-behind-bridge", "strings-thumb-position", "tenuto", "time-sig-1", "time-sig-4", "whole head", "accidental-parens-right", "brass-mute-open", "fermata-below", "figbass-natural", "glissando-down", "keyboard-pedal-toe-1",
+    #     "mensural-proportion-3", "ottava", "ottava-bassa-ba", "time-sig-bracket-right", "unicode-note-32nd-up", "accidental-comma-slash-up", "accidental-triple-flat", "dynamic-hairpin-parenthesis-left", "flag-16th-up", "g-clef-change", "guitar-string-3", "handbells-martellato-lift", "keyboard-pedal-heel-3", "lyrics-elision-wide", "mensural-proportion-2", "ornament-oblique-line-horiz-before-note", "pict-beater-hammer-plastic-down", "pict-beater-hand", "accdn-r-h-3-ranks-clarinet", "accidental-wyschnegradsky-6-twelfths-flat",
+    #     "barline-heavy", "f-clef", "figbass-5", "guitar-string-4", "handbells-table-single-bell", "lute-italian-fret-4", "mensural-prolation-combining-two-dots", "notehead-round-black-slashed", "time-sig-3", "two", "accdn-r-h-3-ranks-bassoon", "accdn-r-h-3-ranks-harmonium", "accdn-r-h-3-ranks-two-choirs", "accidental-wyschnegradsky-6-twelfths-sharp", "arrowhead-black-left", "artic-marcato-above", "chant-punctum-inclinatum", "csym-parens-right-tall", "dynamic-hairpin-parenthesis-right", "figbass-combining-raising",
+    #     "figbass-parens-left", "flag-32nd-up", "fretboard-filled-circle", "function-two", "keyboard-pedal-dot", "lute-italian-fret-2", "lute-italian-fret-5", "lute-italian-vibrato", "mensural-comb-stem-up", "met-note-half-up", "notehead-half-filled", "notehead-rectangular-cluster-white-top", "pict-crotales", "rest-whole", "staff-1-line-narrow", "time-sig-8", "accdn-r-h-3-ranks-organ", "artic-accent-below", "artic-staccatissimo-below", "artic-unstress-above",
+    #     "barline-short", "bracket tips up", "caesura straight", "cbass clef", "dfermata", "five", "four", "g-clef", "guitar-string-1", "guitar-string-2", "guitar-volume-swell", "lute-italian-fret-0", "lute-italian-fret-1", "lute-italian-tremolo", "med-ren-natural", "mensural-notehead-longa-black", "mensural-signum-down", "notehead-round-white-slashed", "notehead-square-black", "notehead-x-black",
+    #     "one", "ottava-alta", "ottava-bassa-vb", "pict-mar", "pict-timpani", "pict-vib", "prall", "prall prall", "text-cont-16th-beam-short-stem", "text-tuplet-bracket-start-short-stem", "time-sig-6", "up bow", "wind-trill-key", "accdn-r-h-3-ranks-master", "accdn-r-h-4-ranks-bass-alto", "accidental-flat-arabic", "accidental-wyschnegradsky-1-twelfths-sharp", "analytics-nebenstimme", "arrow-open-down-left", "artic-stress-above",
+    #     "barline-tick", "beam-accel-rit-11", "beam-accel-rit-2", "dgrace dash", "dpedal toe", "dynamic-hairpin-bracket-left", "dynamic-m-f", "dynamic-p-f", "eight flag", "figbass-7", "flag-32nd-down", "flag-8th-up", "grace dash", "guitar-string-0", "guitar-string-5", "guitar-string-6", "keyboard-pedal-e", "keyboard-pedal-sost", "keyboard-play-with-r-h-end", "lute-barline-end-repeat",
+    #     "mensural-notehead-semibrevis-black", "mensural-prolation-4", "mensural-white-longa", "met-note-quarter-up", "note -1/-8", "notehead-plus-black", "ornament-comma", "ornament-oblique-line-horiz-after-note", "pict-beater-combining-parentheses", "plus", "seven", "staff-2-lines", "staff-5-lines", "text-tuplet-3-long-stem", "text-tuplet-bracket-end-long-stem", "text-tuplet-bracket-start-long-stem", "time-sig-5", "time-sig-plus-small", "tremolo-divisi-dots-2", "tuplet-2",
+    #     "unicode-note-half-up", "accdn-r-h-3-ranks-authentic-musette", "accdn-r-h-3-ranks-oboe", "accdn-r-h-3-ranks-tremolo-lower-8ve", "accdn-r-h-4-ranks-soft-tenor", "accidental-combining-raise-53-limit-comma", "analytics-hauptrhythmus", "arrow-black-down-left", "bracket-bottom", "brass-doit-short", "brass-fall-smooth-long", "breath-mark-salzedo", "caesura-short", "chant-augmentum", "coda", "dynamic-f-f", "dynamic-hairpin-bracket-right", "dynamic-niente-for-hairpin", "dynamic-p-p-p-p", "dynamic-rinforzando",
+    #     "eight rest", "figbass-0", "figbass-double-flat", "fretboard-6-string", "fretboard-o", "function-bracket-left", "function-bracket-right", "guitar-wide-vibrato-stroke", "leger-line", "mensural-oblique-desc-3rd-white", "mensural-oblique-desc-5th-white", "mensural-proportion-4", "mensural-rest-brevis", "mensural-white-brevis", "met-augmentation-dot", "nine", "notehead-double-whole-square", "notehead-slash-vertical-ends-small", "ornament-down-curve", "ornament-precomp-double-cadence-upper-prefix",
+    #     "ornament-turn-inverted", "ornament-turn-slash", "pict-beater-snare-sticks-up", "pict-beater-wire-brushes-up", "pict-open-rim-shot", "pict-tom-tom", "quindicesima-alta", "staff-4-lines", "text-tuplet-bracket-end-short-stem", "time-sig-0", "time-sig-7", "time-sig-9", "tuplet-8", "wiggle-random-4",
+    # ],
 }
-
 VALUE_CODE_MAP = [None,] + list(range(128)) + sum(list(EXPRESSIVE_FEATURES.values()), [])
 VALUE_CODE_MAP = {VALUE_CODE_MAP[i]: i for i in range(len(VALUE_CODE_MAP))}
-def VALUE_CODE_MAPPER(value) -> int:
+def VALUE_CODE_MAPPER(value, value_code_map: dict) -> int:
     try:
-        code = VALUE_CODE_MAP[value]
+        code = value_code_map[value]
     except KeyError:
         code = -1
     return code
@@ -888,7 +918,7 @@ if __name__ == "__main__":
 ##################################################
 
 
-# RETRIEVE ANY DATA
+# SCRAPE DATA OFF THE INTERNET
 ##################################################
 
 def retrieve_italian_musical_terms() -> list:

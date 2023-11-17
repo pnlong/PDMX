@@ -258,7 +258,7 @@ def scrape_tempos(tempos: List[Tempo], song_length: int) -> pd.DataFrame:
     tempos.append(Tempo(time = song_length, measure = 0, qpm = 0.0)) # for duration
     for i, tempo in enumerate(tempos[:-1]):
         tempos_encoded["type"][i] = EXPRESSIVE_FEATURE_TYPE_STRING
-        tempos_encoded["value"][i] = check_text(text = tempo.text.lower() if tempo.text is not None else "tempo-marking")
+        tempos_encoded["value"][i] = check_text(text = representation.QPM_TEMPO_MAPPER(qpm = tempo.qpm)) # check_text(text = tempo.text.lower() if tempo.text is not None else "tempo-marking")
         tempos_encoded["duration"][i] = tempos[i + 1].time - tempo.time
         tempos_encoded["time"][i] = tempo.time
     return pd.DataFrame(data = tempos_encoded, columns = DIMENSIONS) # create dataframe from scraped values

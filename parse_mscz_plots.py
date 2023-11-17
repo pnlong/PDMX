@@ -295,15 +295,21 @@ def make_tracks_plot(output_filepath: str):
     fig, axes = plt.subplot_mosaic(mosaic = [["box", "hist", "hist"]], constrained_layout = True, figsize = (12, 8))
     fig.suptitle("Number of Tracks per MuseScore File", fontweight = "bold")
 
+    tracks_data = data_by["path"][data_by["path"]["is_valid"]]["size"]
+    upper_limit_of_interest = 50
+
     # boxplot
-    axes["box"].boxplot(x = data_by["path"]["size"], vert = True)
+    axes["box"].boxplot(x = tracks_data, vert = True, showfliers = False)
+    # axes["box"].set_ylim(bottom = 0, top = upper_limit_of_interest)
     axes["box"].set_xlabel("")
-    axes["box"].set_ticks(ticks = [], labels = [])
+    axes["box"].xaxis.set_ticks(ticks = [], labels = [])
     axes["box"].set_ylabel("Number of Tracks")
 
     # histogram
-    axes["hist"].boxplot(x = data_by["path"]["size"], color = COLORS[0])
-    axes["hist"].set_xlabel("Number of Paths")
+    binwidth = 5
+    axes["hist"].hist(x = tracks_data, bins = range(0, max(tracks_data) + binwidth, binwidth), color = COLORS[0], edgecolor = "0")
+    axes["hist"].set_xlim(left = 0, right = upper_limit_of_interest)
+    axes["hist"].set_xlabel("Number of Tracks")
     axes["hist"].set_ylabel("Count")
 
     # save image
@@ -335,9 +341,9 @@ if __name__ == "__main__":
 
     data = pd.read_csv(filepath_or_buffer = INPUT_FILEPATH, sep = ",", header = 0, index_col = False)
 
-    # get path- and track-grouped versions of data
+    # get path- and track-grouped versions of data;
     data_by = {
-        "path" : data.groupby(by = ["path", "metadata", "version", "is_public_domain", "is_valid"], as_index = False).size().reset_index(drop = True), # get the first row path from every file
+        "path" : data.groupby(by = "path", as_index = False).size().reset_index(drop = True).merge(right = data[["path", "metadata", "version", "is_public_domain", "is_valid"]], on = "path", how = "left"), # get the first row path from every file
         "track": data.drop(columns = "path")
         }
 
@@ -345,10 +351,13 @@ if __name__ == "__main__":
     n_tracks = len(data_by["track"])
 
     if not exists(N_EXPRESSIVE_FEATURES_PER_PATH_FILEPATH):
-
+        
         # calculate number of expressive features per path
         total_expressive_features_per_path = data[["path", "n_expressive_features"]].groupby(by = "path", as_index = False).sum()
         tracks_per_path = data_by["path"][["path", "size"]].merge(right = total_expressive_features_per_path, on = "path", how = "inner").merge(right = data.drop_duplicates(subset = "path").reset_index(drop = True)[["path", "expressive_features"]], on = "path", how = "left")
+
+        # add n_expressive_features column
+        data_by["path"]["n_expressive_features"] = [0,] * len(data_by["path"])
 
         # helper function for multiprocessing
         def extract_annotations_per_path(i: int):
