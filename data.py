@@ -4,6 +4,8 @@
 
 # Make dataset of musescore files w/ expressive features.
 
+# python /home/pnlong/model_musescore/data.py
+
 
 # IMPORTS
 ##################################################
@@ -47,7 +49,7 @@ EXPRESSIVE_FEATURE_TYPE_STRING = "expressive-feature"
 
 def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
-    parser = argparse.ArgumentParser(prog = "Data", description = "Extract Notes and Expressive Features from MuseScore Data")
+    parser = argparse.ArgumentParser(prog = "Data", description = "Extract Notes and Expressive Features from MuseScore Data.")
     parser.add_argument("-p", "--paths", type = str, default = MSCZ_FILEPATHS, help = "List of (absolute) filepaths to MuseScore files whose data will be extracted")
     parser.add_argument("-o", "--output_dir", type = str, default = OUTPUT_DIR, help = "Output directory")
     parser.add_argument("-j", "--jobs", type = int, default = int(multiprocessing.cpu_count() / 4), help = "Number of Jobs")
