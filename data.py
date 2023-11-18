@@ -35,8 +35,9 @@ from read_mscz.music import BetterMusic
 # CONSTANTS
 ##################################################
 
-OUTPUT_DIR = "/data2/pnlong/musescore"
-MSCZ_FILEPATHS = f"{OUTPUT_DIR}/relevant_mscz_files.txt"
+OUTPUT_DIR = "/data2/pnlong/musescore/data"
+FILE_OUTPUT_DIR = "/data2/pnlong/musescore"
+MSCZ_FILEPATHS = f"{FILE_OUTPUT_DIR}/relevant_mscz_files.txt"
 OUTPUT_COLUMNS = ("path", "musescore", "track", "metadata", "version", "n_expressive_features")
 NA_STRING = "NA"
 EXPRESSIVE_FEATURE_TYPE_STRING = "expressive-feature"
@@ -52,6 +53,7 @@ def parse_args(args = None, namespace = None):
     parser = argparse.ArgumentParser(prog = "Data", description = "Extract Notes and Expressive Features from MuseScore Data.")
     parser.add_argument("-p", "--paths", type = str, default = MSCZ_FILEPATHS, help = "List of (absolute) filepaths to MuseScore files whose data will be extracted")
     parser.add_argument("-o", "--output_dir", type = str, default = OUTPUT_DIR, help = "Output directory")
+    parser.add_argument("-f", "--file_output_dir", type = str, default = FILE_OUTPUT_DIR, help = "Directory to output any data tables")
     parser.add_argument("-j", "--jobs", type = int, default = int(multiprocessing.cpu_count() / 4), help = "Number of Jobs")
     return parser.parse_args(args = args, namespace = namespace)
 
@@ -322,7 +324,8 @@ def scrape_articulations(annotations: List[Annotation], maximum_gap: int, articu
                 encounters[articulation_subtype] = {"start": annotation.time, "end": annotation.time, "count": 1} # if we are yet to encounter this articulation
         else: # ignore non Articulations
             continue
-    check_all_subtypes_for_chunk_ending(time = annotations[-1].time + (2 * maximum_gap)) # one final check
+    if len(annotations) > 0: # to avoid index error
+        check_all_subtypes_for_chunk_ending(time = annotations[-1].time + (2 * maximum_gap)) # one final check
     for dimension in filter(lambda dimension: len(articulations_encoded[dimension]) == 0, tuple(articulations_encoded.keys())): # make sure untouched columns get filled
         articulations_encoded[dimension] = rep(x = None, times = len(articulations_encoded["type"]))
     return pd.DataFrame(data = articulations_encoded, columns = DIMENSIONS) # create dataframe from scraped values
@@ -470,8 +473,8 @@ def extract(path: str, path_output_prefix: str):
         data["position"] = data["time"].apply(lambda time_steps: time_steps % mscz.resolution) # add position
 
         # don't save low-quality data
-        if len(data) < 50:
-            continue
+        # if len(data) < 50:
+        #     continue
 
         # convert to np array so that we can save as npy file, which loads faster
         data = np.array(object = data)
@@ -524,11 +527,13 @@ if __name__ == "__main__":
     args = parse_args()
     if not exists(args.output_dir): # make output_dir if it doesn't yet exist
         makedirs(args.output_dir)
+    if not exists(args.file_output_dir): # make file_output_dir if it doesn't yet exist
+        makedirs(args.file_output_dir)
 
     # some constants
-    METADATA_MAPPING_FILEPATH = f"{args.output_dir}/metadata_to_data.csv"
-    TIMING_OUTPUT_FILEPATH = f"{args.output_dir}/data_timing.txt"
-    MAPPING_OUTPUT_FILEPATH = f"{args.output_dir}/data.csv"
+    METADATA_MAPPING_FILEPATH = f"{args.file_output_dir}/metadata_to_data.csv"
+    TIMING_OUTPUT_FILEPATH = f"{args.file_output_dir}/data_timing.txt"
+    MAPPING_OUTPUT_FILEPATH = f"{args.file_output_dir}/data.csv"
 
     # for getting metadata
     METADATA = pd.read_csv(filepath_or_buffer = METADATA_MAPPING_FILEPATH, sep = ",", header = 0, index_col = False)
@@ -545,8 +550,8 @@ if __name__ == "__main__":
 
     # create list of paths if does not exist
     if not exists(args.paths):
-        data = pd.read_csv(filepath_or_buffer = f"{args.output_dir}/expressive_features.csv", sep = ",", header = 0, index_col = False) # load in data frame
-        data = data[data["is_valid"] & data["is_public_domain"] & (data["n_expressive_features"] > 0) & (data["expressive_features"].apply(lambda expressive_features_path: exists(str(expressive_features_path))))] # filter
+        data = pd.read_csv(filepath_or_buffer = f"{args.file_output_dir}/expressive_features.csv", sep = ",", header = 0, index_col = False) # load in data frame
+        data = data[data["is_valid"] & data["is_public_domain"] & (data["n_expressive_features"] > 0)] # filter
         paths = pd.unique(values = data["path"]).tolist()
         with open(args.paths, "w") as file:
             file.write("\n".join(paths))
@@ -577,8 +582,8 @@ if __name__ == "__main__":
     start_time = perf_counter() # start the timer
     with multiprocessing.Pool(processes = args.jobs) as pool:
         results = pool.starmap(func = extract,
-                                iterable = tqdm(iterable = zip(paths, path_output_prefixes), desc = "Extracting Data from MuseScore Files", total = len(paths)),
-                                chunksize = chunk_size)
+                               iterable = tqdm(iterable = zip(paths, path_output_prefixes), desc = "Extracting Data from MuseScore Files", total = len(paths)),
+                               chunksize = chunk_size)
     end_time = perf_counter() # stop the timer
     total_time = end_time - start_time # compute total time elapsed
     total_time = strftime("%H:%M:%S", gmtime(total_time)) # convert into pretty string

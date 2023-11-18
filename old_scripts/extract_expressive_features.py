@@ -333,8 +333,8 @@ def extract_expressive_features(path: str, path_output_prefix: str):
     ##################################################
 
     # for debugging
-    # path = "/data2/pnlong/musescore/data/chopin/Chopin_Trois_Valses_Op64.mscz"
-    # path2 = "/data2/zachary/musescore/data/b/b/QmbbxbpgJHyNRzjkbyxdoV5saQ9HY38MauKMd5CijTPFiF.mscz"
+    # path = "/data2/pnlong/musescore/test_data/chopin/Chopin_Trois_Valses_Op64.mscz"
+    # path2 = "/data2/zachary/musescore/test_data/b/b/QmbbxbpgJHyNRzjkbyxdoV5saQ9HY38MauKMd5CijTPFiF.mscz"
 
     # finish output dictionary
     try:
@@ -485,6 +485,6 @@ def extract_expressive_features(path: str, path_output_prefix: str):
 ##################################################
 if __name__ == "__main__":
 
-    extract_expressive_features(path = "/data2/pnlong/musescore/data/laufey/from_the_start.mscz", path_output_prefix = "/data2/pnlong/musescore/data/laufey/test")
+    extract_expressive_features(path = "/data2/pnlong/musescore/test_data/laufey/from_the_start.mscz", path_output_prefix = "/data2/pnlong/musescore/test_data/laufey/test")
 
 ##################################################

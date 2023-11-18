@@ -44,7 +44,7 @@ def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description = "Extract expressive features from MuseScore files")
     parser.add_argument("-o", "--output_dir", type = str, default = OUTPUT_DIR, help = "Output directory")
-    parser.add_argument("-o", "--file_output_dir", type = str, default = FILE_OUTPUT_DIR, help = "Directory to output any data tables")
+    parser.add_argument("-f", "--file_output_dir", type = str, default = FILE_OUTPUT_DIR, help = "Directory to output any data tables")
     parser.add_argument("-j", "--jobs", type = int, default = int(multiprocessing.cpu_count() / 4), help = "Number of Jobs")
     return parser.parse_args(args = args, namespace = namespace)
 
@@ -346,8 +346,8 @@ def extract_expressive_features(path: str, path_output_prefix: str):
     ##################################################
 
     # for debugging
-    # path = "/data2/pnlong/musescore/data/chopin/Chopin_Trois_Valses_Op64.mscz"
-    # path2 = "/data2/zachary/musescore/data/b/b/QmbbxbpgJHyNRzjkbyxdoV5saQ9HY38MauKMd5CijTPFiF.mscz"
+    # path = "/data2/pnlong/musescore/test_data/chopin/Chopin_Trois_Valses_Op64.mscz"
+    # path2 = "/data2/zachary/musescore/test_data/b/b/QmbbxbpgJHyNRzjkbyxdoV5saQ9HY38MauKMd5CijTPFiF.mscz"
 
     # finish output dictionary
     try:
