@@ -34,6 +34,9 @@ while getopts ':f:h' opt; do
   esac
 done
 
+# notify what we are using for datadir
+echo "Creating directories in $datadir"
+
 # get list of zach's subdirectories and copy them into my directory
 find $zachdir -type d | sed -e "s+$zachdir/++" | xargs -I{} mkdir -p "$datadir/{}" 
 
