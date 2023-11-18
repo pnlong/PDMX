@@ -20,6 +20,7 @@ import pandas as pd
 import argparse
 import logging
 from re import sub
+from data import clean_up_text as data_text_clean
 
 ##################################################
 
@@ -185,6 +186,8 @@ if __name__ == "__main__":
     # create ouptut
     for expressive_feature_type in expressive_feature_types:
         expressive_feature_type_subtypes = data[data["type"] == expressive_feature_type]["feature"].tolist()
+        if expressive_feature_type in ("Text", "TextSpanner", "RehearsalMark", "HairPinSpanner", "TempoSpanner"):
+            expressive_feature_type_subtypes = list(dict.fromkeys([data_text_clean(text = str(expressive_feature_type_subtype)) for expressive_feature_type_subtype in expressive_feature_type_subtypes]))
         output[expressive_feature_type][1] = len(expressive_feature_type_subtypes) # for sorting by this value later
         n_expressive_feature_subtypes = str(output[expressive_feature_type][1])
         # if len(expressive_feature_type_subtypes) == 0:

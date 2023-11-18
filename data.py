@@ -19,6 +19,7 @@ import logging
 from time import perf_counter, strftime, gmtime
 import multiprocessing
 import random
+from re import sub
 
 import representation
 from representation import DIMENSIONS
@@ -68,7 +69,7 @@ def rep(x: object, times: int, flatten: bool = False):
 # make sure text is ok
 def check_text(text: str):
     if text is not None:
-        return " ".join(text.split()).replace(", ", ",").replace(": ", ":").strip()
+        return sub(pattern = ": ", repl = ":", string = sub(pattern = ", ", repl = ",", string = " ".join(text.split()))).strip()
     return None
 
 # convert camel case to words
@@ -88,6 +89,15 @@ def split_camel_case(string: str, sep: str = "-"):
         words = "".join(string).split(splitter) # convert to list of words
         words = filter(lambda word: word != "", words) # filter out empty words
         return sep.join(words) # join into one string
+    return None
+
+# clean up text objects
+def clean_up_text(text: str):
+    if text is not None:
+        text = sub(pattern = "-", repl = " ", string = split_camel_case(string = text)) # get rid of camel case, deal with long spins of dashes
+        text = sub(pattern = " ", repl = "-", string = check_text(text = text)) # replace any whitespace with dashes
+        text = sub(pattern = "[^\w-]", repl = "", string = text) # extract alphanumeric
+        return text.lower() # convert to lower case
     return None
 
 # create a csv row
@@ -192,11 +202,11 @@ def scrape_annotations(annotations: List[Annotation], song_length: int) -> pd.Da
         # deal with value field
         value = None
         if "text" in annotation_attributes:
-            value = annotation.annotation.text
+            value = clean_up_text(text = annotation.annotation.text)
         elif "subtype" in annotation_attributes:
             value = split_camel_case(string = annotation.annotation.subtype).lower()
-        if value is None: # if there is no text or subtype value, make the value the expressive feature type (e.g. "TempoSpanner")
-            value = split_camel_case(string = expressive_feature_type.replace("Spanner", "")).lower()
+        if (value is None) or (value == ""): # if there is no text or subtype value, make the value the expressive feature type (e.g. "TempoSpanner")
+            value = split_camel_case(string = sub(pattern = "Spanner", repl = "", string = expressive_feature_type)).lower()
         # deal with special cases
         if value in ("dynamic", "other-dynamics"):
             value = "dynamic-marking"

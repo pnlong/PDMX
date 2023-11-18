@@ -14,6 +14,7 @@ import pprint
 import muspy
 import numpy as np
 import pretty_midi
+from re import sub
 
 import utils
 ##################################################
@@ -134,8 +135,8 @@ EXPRESSIVE_FEATURES = {
     "Tempo": list(TEMPO_QPM_MAP.keys()), # no default value, default is set above in QPM_TEMPO_MAPPER
     # TempoSpanner
     "TempoSpanner": [
-        "lentando", "lent.", "smorzando", "smorz.", "sostenuto", "sosten.", "accelerando", "accel.", "allargando", "allarg.", "rallentando", "rallent.", "ritardando",
-        "rit.", # rit. is default because it is most common
+        "lentando", "lent", "smorzando", "smorz", "sostenuto", "sosten", "accelerando", "accel", "allargando", "allarg", "rallentando", "rall", "rallent", "ritardando", "rit",
+        "tempo", # default value
         ],
     # Dynamic
     "Dynamic": [
@@ -145,42 +146,43 @@ EXPRESSIVE_FEATURES = {
         ],
     # HairPinSpanner
     "HairPinSpanner": [
-        "crescendo", "cresc.", "decrescendo", "decresc.", "diminuendo", "dim.",
-        "(", "(cresc.", "(cresc.)", "(dim.)", "(smorz.)", ".", "Alternative Solo", "Cresc.", "Cédez", "Dim.",
-        "II. C.", "IV. C.", "Molto cresc.", "Preferred Solo", "Ral.", "Rall.", "Serrez", "Sw.", "Très dim.", "[",
-        "[cresc.]", "[dim.]", "a c c e l e r a n d o", "a tempo", "accel. e cresc.", "accel..", "accelerando e sempre cresc.", "agitato e sempre più cresc.",
-        "al", "allargando.", "ancor più cresc.", "animando", "ca", "calmando dim.", "cantabile cresc.",
-        "con fuoco", "couple Sw.", "cr es c.", "cre", "cre - - - - - - - - - - - scen", "cre - - - - - - - - - scen", "cre - - - - - - - scen", "cre - - - - - scen - - - - -", "cre - - - scen - - - do", "cre - - scen - - do",
-        "cre - scen - do", "cre --- scen --- do", "cre --- scend --- do", "cre _ _ _ scen _ _ _ do", "cre ‒ ‒ ‒ ‒ ‒ ‒ ‒ scen", "cre-scen-do", "cres", "cres c.", "cres.", "cresc . . cen . . . do",
-        "cresc :", "cresc y accel", "cresc. - - - - -", "cresc. - - - - - -", "cresc. animato", "cresc. appassionato", "cresc. assai", "cresc. assai.", "cresc. con molto agitazione",
-        "cresc. e", "cresc. e accel.", "cresc. e accelerando", "cresc. e affrettando", "cresc. e agitato", "cresc. e animato.", "cresc. e appassionato", "cresc. e poco rit.", "cresc. e poco sostenuto", "cresc. e poco string.",
-        "cresc. e rall. sempre", "cresc. e rall. sempre.", "cresc. e rit.", "cresc. e stretto", "cresc. e string", "cresc. e string.", "cresc. e stringendo", "cresc. e stringendo a poco a poco", "cresc. e stringendo a poco a poco.", "cresc. ed",
-        "cresc. ed accel", "cresc. ed accel.", "cresc. ed accel. poco a poco", "cresc. ed accelerando", "cresc. ed rit", "cresc. molto", "cresc. molto e stringendo", "cresc. p. a. p.", "cresc. poco", "cresc. poco a poco",
-        "cresc. poco a poco al mf", "cresc. sempre", "cresc. sempre al ff", "cresc. sempre al fine", "cresc. sempre poco a poco", "cresc. sforzando", "cresc. un", "cresc. un piu animato", "cresc. un poco", "cresc. un poco animato",
-        "cresc.poco a poco", "cresc.poco string.", "cresc.sempre", "cresc:", "crescendo e rall. a poco a poco", "crescendo e rit.", "crescendo molto", "crescendo poco", "crescendo poco a poco",
-        "crescendo.", "cédez", "de - - cres - - cen - do", "de - cres - cen - do", "decresc..", "descresc.", "di - mi - nu - en - do", "di - min", "dim",
-        "dim e rit.", "dim. - - - - -", "dim. al fine", "dim. colla voce.", "dim. e", "dim. e calando", "dim. e molto rall.", "dim. e pochiss. rit.", "dim. e poco rall.",
-        "dim. e poco rit.", "dim. e poco riten", "dim. e poco riten.", "dim. e rall.", "dim. e rall. molto", "dim. e rallent.", "dim. e rit.", "dim. e rit. poco", "dim. e ritardando", "dim. e riten.",
-        "dim. e roco rit.", "dim. e sosten.", "dim. ed allarg.", "dim. molto", "dim. molto.", "dim. morendo.", "dim. poco", "dim. poco a poco", "dim. poco a poco e rit.", "dim. poco rit.",
-        "dim. rall.", "dim. rit.", "dim. riten", "dim. sempre", "dim. smorz.", "dim. subito", "dim.e poco rall.", "dim.sempre", "dimin.", "dimin. - e - poco - riten.",
-        "dimin. al Fine", "dimin. e ritard.", "dimin. e riten.", "dimin. poco a poco", "dimin`.", "diminish", "diminuendo e leggierissimo", "diminuendo e ritardando", "diminuendo subito",
-        "diminuendo un poco", "diminuendo.", "do", "dolce poc a poco", "dynamicForte", "dynamicMezzodynamicForte", "dynamicMezzodynamicPiano", "dynamicPianodynamicPiano", "dynamicdynamicForte", "e",
-        "e cresc.", "e cresc. molto", "e dim.", "e poco rit.", "e rall.", "e rit. in poco", "e smorz", "e stringendo", "ed allarg.", "en",
-        "en dim.", "espress. legato poco a poco cresc.", "forzando", "gritando (shouting)", "il piu forte possible", "incalze cressc. sempre", "increase", "keyboardPedalPed", "lan",
-        "mo _ ren _ do", "molto cresc.", "molto cresc. ed accelerando", "molto crescendo", "molto dim.", "molto rinforz.", "molto rit.", "molto ritardando", "morendo",
-        "per", "perdendo", "piu cresc.", "piu cresc:", "più cre", "più cresc.", "più cresc. ed agitato", "più dim.", "più moto",
-        "più piano", "più rinforz.", "più rit. e dim.", "più smorz. e rit.", "poco a", "poco a poco", "poco a poco -", "poco a poco - - cresc.", "poco a poco accelerando",
-        "poco a poco accelerando e crescendo", "poco a poco cre", "poco a poco cresc.", "poco a poco cresc. e risoluto", "poco a poco cresc. ed accel.", "poco a poco cresc. ed acceler.", "poco a poco cresc. ed accelerando", "poco a poco cresc. ed anim.", "poco a poco cresc. ed animato", "poco a poco cresc. molto",
-        "poco a poco crescendo", "poco a poco decresc.", "poco a poco dim.", "poco a poco dimin.", "poco a poco diminuendo", "poco a poco rinforz.", "poco cresc", "poco cresc.", "poco cresc. e rit.", "poco cresc. ed agitato",
-        "poco cresc. molto", "poco crescendo", "poco dim.", "poco rall.", "poco rallent.", "poco rit.", "poco ritar", "poco riten.", "poco stretto", "poco à poco cresc.",
-        "pressez", "rall e dim.", "rall e. dim.", "rall.", "rall. e dim.", "rall. molto", "religioso", "ri",
-        "rinforzando", "rit. e crescendo", "rit. e dim.", "rit. et dim.", "ritar.", "ritard.", "ritard. e dimin.", "riten.", "riten. e dim.",
-        "scen", "scendo", "sempre", "sempre cresc.", "sempre cresc. e affrettando", "sempre cresc. e string.", "sempre cresc. ed accel.", "sempre dim", "sempre dim.", "sempre dim. e legatissimo",
-        "sempre dim. e più tranquillo", "sempre dim. e rit. al Fine", "sempre dimin.", "sempre piu piano", "sempre più cresc.", "sempre più cresc. e", "sempre più cresc. e string.", "sempre più dim.", "sempre più forte", "sempre rit. e dim. sin al fine",
-        "si", "slentando", "smorz. e rallent.", "smorz..", "smorz.n", "smorzando e rallent.",
-        "stretto e cresc.", "string.", "string. e cresc.", "stringendo", "stringendo e", "stringendo e cresc.", "stringendo. cresc.", "tar", "un peu ralenti", "un poco animato e cresc.",
-        "un poco animato e crescendo", "un poco cresc.", "vif", "Élargir",
-        "hairpin",
+        "cresc", "dim", "dynamic-mezzodynamic-forte", "cresc-sempre", "molto-cresc", "dimin", "decresc",
+        "cresc-poco-a-poco", "poco-a-poco-cresc", "cresc-molto", "poco-cresc", "crescendo", "più-cresc",
+        "scen", "sempre-cresc", "do", "cre", "morendo", "dim-e-rit", "diminuendo", "sempre-dim", "poco-a-poco",
+        "smorz", "cres", "poco-a-poco-dim", "dim-sempre", "rall-e-dim", "dim-molto", "keyboard-pedal-ped", "cresc-poco",
+        "dim-e-rall", "poco-a-poco-crescendo", "molto-dim", "dim-e-poco-rit", "poco", "poco-dim", "sempre-più-dim",
+        "dim-poco-a-poco", "cre-scen-do", "accel-e-cresc", "ed-allarg", "poco-rit", "crescendo-molto", "crescendo-poco-a-poco",
+        "smorzando", "string", "un-poco-cresc", "cresc-y-accel", "rit-e-dim", "ritard", "cresc-e-stringendo", "dim-poco-a-poco-e-rit",
+        "molto-rit", "più-dim", "cresc-ed-accel", "crescpoco-string", "perdendo", "rall-molto", "sempre", "cresc-e-string", "e-cresc",
+        "piu-cresc", "poco-rall", "poco-riten", "calando", "cresc-e-rit", "crescendo-e-rit", "dim-e-poco-riten", "dim-e-sosten", "poco-a",
+        "dynamic-forte", "allargando", "cre-scend-do", "dim-al-fine", "molto-crescendo", "più-piano", "smorz-e-rallent", "a-tempo",
+        "cresc-assai", "crescsempre", "descresc", "dim-poco", "dim-poco-rit", "dim-rall", "dim-rit", "dimsempre",
+        "molto", "più-rinforz", "poco-rallent", "rit-et-dim", "sempre-dim-e-rit-al-fine", "a-c-c-e-l-e-r-a-n-d-o", "cresc-", "cresc-e-agitato",
+        "cresc-un-piu-animato", "dim-e-molto-rall", "dimin-e-ritard", "dimin-poco-a-poco", "forzando", "poco-a-poco-cresc-molto", "poco-a-poco-dimin",
+        "scendo", "un-poco-animato-e-cresc", "dynamic-mezzodynamic-piano", "dynamic-pianodynamic-piano", "cédez", "ral", "cresc-appassionato",
+        "cresc-con-molto-agitazione", "cresc-e-accel", "cresc-e-accelerando", "cresc-e-animato", "cresc-e-appassionato", "cresc-e-rall-sempre",
+        "cresc-e-stretto", "cresc-molto-e-stringendo", "cresc-sempre-poco-a-poco", "cresc-un-poco-animato", "di-min", "dim-e-ritardando", "dim-e-riten",
+        "dim-ed-allarg", "dim-subito", "dimin-e-poco-riten", "diminuendo-subito", "e-poco-rit", "en", "gritando-shouting", "increase", "mf", "più-moto",
+        "poco-a-poco-cre", "poco-crescendo", "rallentando", "sempre-piu-piano", "sempre-più-cresc", "sempre-più-cresc-e", "sempre-rit-e-dim-sin-al-fine",
+        "string-e-cresc", "stringendo", "stringendo-e", "dynamicdynamic-forte", "alternative-solo", "i-i-c", "i-v-c", "preferred-solo", "serrez", "sw",
+        "très-dim", "accelerando", "accelerando-e-sempre-cresc", "agitato-e-sempre-più-cresc", "al", "allarg", "ancor-più-cresc", "animando", "ca",
+        "calmando-dim", "cantabile-cresc", "con-fuoco", "couple-sw", "cr-es-c", "cre-scen", "cres-c", "cresc-animato", "cresc-e",
+        "cresc-e-affrettando", "cresc-e-poco-rit", "cresc-e-poco-sostenuto", "cresc-e-poco-string", "cresc-e-stringendo-a-poco-a-poco", "cresc-ed",
+        "cresc-ed-accel-poco-a-poco", "cresc-ed-accelerando", "cresc-ed-rit", "cresc-p-a-p", "cresc-poco-a-poco-al-mf", "cresc-sempre-al-ff",
+        "cresc-sempre-al-fine", "cresc-sforzando", "cresc-un", "cresc-un-poco", "crescpoco-a-poco", "crescendo-e-rall-a-poco-a-poco", "crescendo-poco",
+        "de-cres-cen-do", "di-mi-nu-en-do", "dim-colla-voce", "dim-e", "dim-e-calando", "dim-e-pochiss-rit", "dim-e-poco-rall", "dim-e-rall-molto",
+        "dim-e-rallent", "dim-e-rit-poco", "dim-e-roco-rit", "dim-morendo", "dim-riten", "dim-smorz", "dime-poco-rall", "dimin-al-fine", "dimin-e-riten",
+        "diminish", "diminuendo-e-leggierissimo", "diminuendo-e-ritardando", "diminuendo-un-poco", "dolce-poc-a-poco", "e", "e-cresc-molto", "e-dim",
+        "e-rall", "e-rit-in-poco", "e-smorz", "e-stringendo", "en-dim", "espress-legato-poco-a-poco-cresc", "il-piu-forte-possible", "incalze-cressc-sempre",
+        "lan", "mo-ren-do", "molto-cresc-ed-accelerando", "molto-rinforz", "molto-ritardando", "per", "più", "più-cre", "più-cresc-ed-agitato", "più-rit-e-dim",
+        "più-smorz-e-rit", "poco-a-poco-accelerando", "poco-a-poco-accelerando-e-crescendo", "poco-a-poco-cresc-e-risoluto", "poco-a-poco-cresc-ed-accel",
+        "poco-a-poco-cresc-ed-acceler", "poco-a-poco-cresc-ed-accelerando", "poco-a-poco-cresc-ed-anim", "poco-a-poco-cresc-ed-animato", "poco-a-poco-decresc",
+        "poco-a-poco-diminuendo", "poco-a-poco-rinforz", "poco-cresc-e-rit", "poco-cresc-ed-agitato", "poco-cresc-molto", "poco-ritar", "poco-stretto",
+        "poco-à-poco-cresc", "pressez", "rallent", "religioso", "ri", "rinforzando", "rit-e-crescendo", "ritar", "ritard-e-dimin", "riten", "riten-e-dim",
+        "sempre-cresc-e-affrettando", "sempre-cresc-e-string", "sempre-cresc-ed-accel", "sempre-dim-e-legatissimo", "sempre-dim-e-più-tranquillo", "sempre-dimin",
+        "sempre-più-cresc-e-string", "sempre-più-forte", "sf", "si", "slentando", "smorzn", "smorzando-e-rallent", "stretto", "stretto-e-cresc",
+        "stringendo-e-cresc", "stringendo-cresc", "tar", "un-peu-ralenti", "un-poco-animato-e-crescendo", "vif", "élargir",
+        "hair-pin", # default value
     ],
     # Articulation (Chunks)
     "Articulation": [
@@ -208,7 +210,7 @@ EXPRESSIVE_FEATURES = {
         "no-sym", "wiggle-vibrato-large-slowest", "lutefingering-2nd", "strings-thumb-position", "artic-laissez-vibrer-above",
         "artic-laissez-vibrer-below", "wiggle-sawtooth", "wigglevibratolargeslowest", "lutefingering-3rd", "ulongfermata",
         "artic-soft-accent-tenuto-below", "artic-soft-accent-staccato-above", "artic-soft-accent-tenuto-staccato-above", "lute-fingering-r-h-third", "wigglesawtoothwide", "spiccato",
-        "articulation",
+        "articulation", # default value
     ],
     # Text
     "Text": [
@@ -233,12 +235,13 @@ EXPRESSIVE_FEATURES = {
         "pizzicato", "portamento", "sforzando", "scordatura", "con-sordino", "senza-sordino",
         "tutti", "vibrato", "colla-voce", "banda", "comprimario", "convenienze", "coro", "diva", "prima-donna",
         "primo-uomo", "ripieno", "bel-canto", "bravura", "bravo", "maestro", "maestro-collaboratore", "maestro-sostituto", "maestro-suggeritore", "stagione",
-        "",
+        "text",
     ],
     # RehearsalMark
     "RehearsalMark": 
-        list(map(chr, range(ord("A"), ord("Z") + 1))) + [ # the letters
-        "introduction", "intro", "bridge", "chorus", "outro", "verse", "theme", "refrain", # song sections
+        list(map(chr, range(ord("a"), ord("z") + 1))) + [ # the letters
+        "i", "i-i", "i-i-i", "i-v", "v", "v-i", "v-i-i", "v-i-i-i", "i-x", "x", # roman numerals
+        "introduction", "intro", "bridge", "chorus", "outro", "verse", "theme", "refrain", "solo-section", "solo", "variations", "trio" # song sections
         "rehearsal-mark"
     ],
     # TextSpanner
@@ -267,6 +270,7 @@ EXPRESSIVE_FEATURES = {
     #     "unicode-note-half-up", "accdn-r-h-3-ranks-authentic-musette", "accdn-r-h-3-ranks-oboe", "accdn-r-h-3-ranks-tremolo-lower-8ve", "accdn-r-h-4-ranks-soft-tenor", "accidental-combining-raise-53-limit-comma", "analytics-hauptrhythmus", "arrow-black-down-left", "bracket-bottom", "brass-doit-short", "brass-fall-smooth-long", "breath-mark-salzedo", "caesura-short", "chant-augmentum", "coda", "dynamic-f-f", "dynamic-hairpin-bracket-right", "dynamic-niente-for-hairpin", "dynamic-p-p-p-p", "dynamic-rinforzando",
     #     "eight rest", "figbass-0", "figbass-double-flat", "fretboard-6-string", "fretboard-o", "function-bracket-left", "function-bracket-right", "guitar-wide-vibrato-stroke", "leger-line", "mensural-oblique-desc-3rd-white", "mensural-oblique-desc-5th-white", "mensural-proportion-4", "mensural-rest-brevis", "mensural-white-brevis", "met-augmentation-dot", "nine", "notehead-double-whole-square", "notehead-slash-vertical-ends-small", "ornament-down-curve", "ornament-precomp-double-cadence-upper-prefix",
     #     "ornament-turn-inverted", "ornament-turn-slash", "pict-beater-snare-sticks-up", "pict-beater-wire-brushes-up", "pict-open-rim-shot", "pict-tom-tom", "quindicesima-alta", "staff-4-lines", "text-tuplet-bracket-end-short-stem", "time-sig-0", "time-sig-7", "time-sig-9", "tuplet-8", "wiggle-random-4",
+    #     "symbol",
     # ],
 }
 VALUE_CODE_MAP = [None,] + list(range(128)) + sum(list(EXPRESSIVE_FEATURES.values()), [])
@@ -685,18 +689,23 @@ def encode(path: str, encoding: dict) -> np.array:
     # helper function for mapping
     def value_code_mapper(value) -> int:
         try:
-            code = value_code_map[value]
+            code = value_code_map[None if value == "" else value]
         except KeyError:
-            code = -1
+            value = sub(pattern = "", repl = "", string = value) # try wrangling value a bit to get a key
+            try:
+                code = value_code_map[None if value == "" else value]
+            except KeyError:
+                code = -1
         return code
 
     # apply encodings
-    data[:, DIMENSIONS.index("type")] = list(map(lambda type_: type_code_map[str(type_)], data[:, DIMENSIONS.index("type")])) # encode type column
-    data[:, DIMENSIONS.index("beat")] = list(map(lambda beat: beat_code_map[int(beat)], data[:, DIMENSIONS.index("beat")])) # encode beat
-    data[:, DIMENSIONS.index("position")] = list(map(lambda position: position_code_map[int(position)], data[:, DIMENSIONS.index("position")])) # encode position
-    data[:, DIMENSIONS.index("value")] = list(map(value_code_mapper, data[:, DIMENSIONS.index("value")])) # encode value column
-    data[:, DIMENSIONS.index("duration")] = list(map(lambda duration: duration_code_map[int(duration)], data[:, DIMENSIONS.index("duration")])) # encode duration
-    data[:, DIMENSIONS.index("instrument")] = list(map(lambda program: program_instrument_map[int(program)]), data[:, DIMENSIONS.index("instrument")]) # encode instrument column
+    codes = np.zeros(shape = data.shape)
+    codes[:, DIMENSIONS.index("type")] = list(map(lambda type_: type_code_map[str(type_)], data[:, DIMENSIONS.index("type")])) # encode type column
+    codes[:, DIMENSIONS.index("beat")] = list(map(lambda beat: beat_code_map[int(beat)], data[:, DIMENSIONS.index("beat")])) # encode beat
+    codes[:, DIMENSIONS.index("position")] = list(map(lambda position: position_code_map[int(position)], data[:, DIMENSIONS.index("position")])) # encode position
+    codes[:, DIMENSIONS.index("value")] = list(map(value_code_mapper, data[:, DIMENSIONS.index("value")])) # encode value column
+    codes[:, DIMENSIONS.index("duration")] = list(map(lambda duration: duration_code_map[int(duration)], data[:, DIMENSIONS.index("duration")])) # encode duration
+    codes[:, DIMENSIONS.index("instrument")] = list(map(lambda program: program_instrument_map[int(program)]), data[:, DIMENSIONS.index("instrument")]) # encode instrument column
 
     # Start the codes with an SOS row
     codes = [(type_code_map["start-of-song"], 0, 0, 0, 0, 0)]
