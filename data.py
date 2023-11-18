@@ -470,8 +470,9 @@ def extract(path: str, path_output_prefix: str):
         # timings
         data["time.s"] = data["time"].apply(lambda time_steps: mscz.metrical_time_to_absolute_time(time_steps = time_steps)) # get time in seconds
         data = data.sort_values(by = "time").reset_index(drop = True) # sort by time
-        data["time"] = data["time"] - data.at[0, "time"] # set start beat to 0
-        data["time.s"] = data["time.s"] - data.at[0, "time.s"] # set start beat to 0
+        if len(data) > 0: # set start beat to 0
+            data["time"] = data["time"] - data.at[0, "time"]
+            data["time.s"] = data["time.s"] - data.at[0, "time.s"]
         data["beat"] = data["time"].apply(lambda time_steps: time_steps // mscz.resolution) # add beat
         data["position"] = data["time"].apply(lambda time_steps: time_steps % mscz.resolution) # add position
 
