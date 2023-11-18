@@ -38,7 +38,7 @@ from read_mscz.music import BetterMusic
 OUTPUT_DIR = "/data2/pnlong/musescore/data"
 FILE_OUTPUT_DIR = "/data2/pnlong/musescore"
 MSCZ_FILEPATHS = f"{FILE_OUTPUT_DIR}/relevant_mscz_files.txt"
-OUTPUT_COLUMNS = ("path", "musescore", "track", "metadata", "version", "n_expressive_features")
+OUTPUT_COLUMNS = ("path", "musescore", "track", "metadata", "version", "n")
 NA_STRING = "NA"
 EXPRESSIVE_FEATURE_TYPE_STRING = "expressive-feature"
 
@@ -111,17 +111,20 @@ def create_csv_row(info: list, sep: str = ",") -> str:
 # write a list to a file
 def write_to_file(info: dict, output_filepath: str, columns: list = None):
         
-        # if there are provided columns
-        if columns is not None:
-            info = {column: info[column] for column in columns} # reorder columns if possible
-            if not exists(output_filepath): # write columns if they are not there yet
-                with open(output_filepath, "w") as output:
-                    output.write(create_csv_row(info = columns))
+    # if there are provided columns
+    if columns is not None:
 
-        # open connection to file
-        with open(output_filepath, "a") as output:
-            # write info
-            output.write(create_csv_row(info = list(info.values())))
+        # reorder columns if possible
+        info = {column: info[column] for column in columns}
+
+        # write columns if they are not there yet
+        if not exists(output_filepath):
+            with open(output_filepath, "w") as output:
+                output.write(create_csv_row(info = columns))
+
+    # write info
+    with open(output_filepath, "a") as output:
+        output.write(create_csv_row(info = list(info.values())))
 
 ##################################################
 
@@ -485,14 +488,14 @@ def extract(path: str, path_output_prefix: str):
         # save encoded data
         np.save(file = path_output, arr = data)
 
-        # create current output dictionary; OUTPUT_COLUMNS = ("path", "musescore", "track", "metadata", "version", "n_expressive_features")
+        # create current output dictionary; OUTPUT_COLUMNS = ("path", "musescore", "track", "metadata", "version", "n")
         current_output = {
             "path" : path_output,
             "musescore" : path,
             "track" : i,
             "metadata" : metadata_path,
             "version" : version,
-            "n_expressive_features" : len(data)
+            "n" : len(data)
         }
 
         # write mapping
