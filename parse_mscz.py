@@ -512,7 +512,7 @@ if __name__ == "__main__":
     METADATA = pd.read_csv(filepath_or_buffer = METADATA_MAPPING_FILEPATH, sep = ",", header = 0, index_col = False)
     METADATA = {data : (metadata if not pd.isna(metadata) else None) for data, metadata in zip(METADATA["data_path"], METADATA["metadata_path"])}
 
-    # set logging level
+    # set up logging
     logging.basicConfig(level = logging.INFO)
 
     ##################################################

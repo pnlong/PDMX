@@ -545,8 +545,7 @@ if __name__ == "__main__":
 
     # create list of paths if does not exist
     if not exists(args.paths):
-        from extract_expressive_features import MAPPING_OUTPUT_FILEPATH # import path to data frame
-        data = pd.read_csv(filepath_or_buffer = MAPPING_OUTPUT_FILEPATH, sep = ",", header = 0, index_col = False) # load in data frame
+        data = pd.read_csv(filepath_or_buffer = f"{args.output_dir}/expressive_features.csv", sep = ",", header = 0, index_col = False) # load in data frame
         data = data[data["is_valid"] & data["is_public_domain"] & (data["n_expressive_features"] > 0) & (data["expressive_features"].apply(lambda expressive_features_path: exists(str(expressive_features_path))))] # filter
         paths = pd.unique(values = data["path"]).tolist()
         with open(args.paths, "w") as file:
