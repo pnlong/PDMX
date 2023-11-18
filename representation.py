@@ -664,7 +664,7 @@ def encode(path: str, encoding: dict) -> np.array:
     """
 
     # load in npy file from path parameter
-    data = np.load(file = path)
+    data = np.load(file = path, allow_pickle = True)
 
     # get variables
     max_beat = encoding["max_beat"]

@@ -49,7 +49,7 @@ def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(prog = "Data", description = "Extract Notes and Expressive Features from MuseScore Data")
     parser.add_argument("-p", "--paths", type = str, default = MSCZ_FILEPATHS, help = "List of (absolute) filepaths to MuseScore files whose data will be extracted")
-    parser.add_argument("-o", "--out_dir", type = str, default = OUTPUT_DIR, help = "Output directory")
+    parser.add_argument("-o", "--output_dir", type = str, default = OUTPUT_DIR, help = "Output directory")
     parser.add_argument("-j", "--jobs", type = int, default = int(multiprocessing.cpu_count() / 4), help = "Number of Jobs")
     return parser.parse_args(args = args, namespace = namespace)
 
@@ -88,7 +88,7 @@ def split_camel_case(string: str, sep: str = "-"):
                 currently_in_digit = True
         words = "".join(string).split(splitter) # convert to list of words
         words = filter(lambda word: word != "", words) # filter out empty words
-        return sep.join(words) # join into one string
+        return sep.join(words).lower() # join into one string
     return None
 
 # clean up text objects
@@ -191,7 +191,7 @@ def scrape_annotations(annotations: List[Annotation], song_length: int) -> pd.Da
 
         # duration
         if "duration" in annotation_attributes:
-            duration = annotation.duration
+            duration = annotation.annotation.duration # get the duration
         else: # deal with implied duration (time until next of same type)
             if encounters[expressive_feature_type] is not None: # to deal with the first encounter
                 annotations_encoded["duration"][encounters[expressive_feature_type]] = annotation.time - annotations_encoded["time"][encounters[expressive_feature_type]]
@@ -204,9 +204,9 @@ def scrape_annotations(annotations: List[Annotation], song_length: int) -> pd.Da
         if "text" in annotation_attributes:
             value = clean_up_text(text = annotation.annotation.text)
         elif "subtype" in annotation_attributes:
-            value = split_camel_case(string = annotation.annotation.subtype).lower()
+            value = split_camel_case(string = annotation.annotation.subtype)
         if (value is None) or (value == ""): # if there is no text or subtype value, make the value the expressive feature type (e.g. "TempoSpanner")
-            value = split_camel_case(string = sub(pattern = "Spanner", repl = "", string = expressive_feature_type)).lower()
+            value = split_camel_case(string = sub(pattern = "Spanner", repl = "", string = expressive_feature_type))
         # deal with special cases
         if value in ("dynamic", "other-dynamics"):
             value = "dynamic-marking"
@@ -221,6 +221,10 @@ def scrape_annotations(annotations: List[Annotation], song_length: int) -> pd.Da
         if encounters[expressive_feature_type] is not None:
             annotations_encoded["duration"][encounters[expressive_feature_type]] = song_length - annotations_encoded["time"][encounters[expressive_feature_type]]
     
+    # make sure untouched columns get filled
+    for dimension in filter(lambda dimension: len(annotations_encoded[dimension]) == 0, tuple(annotations_encoded.keys())):
+        annotations_encoded[dimension] = rep(x = None, times = len(annotations_encoded["type"]))
+
     # create dataframe from scraped values
     return pd.DataFrame(data = annotations_encoded, columns = DIMENSIONS)
 
@@ -294,14 +298,14 @@ def scrape_notes(notes: List[Note]) -> pd.DataFrame:
 
 def scrape_articulations(annotations: List[Annotation], maximum_gap: int, articulation_count_threshold: int = 4) -> pd.DataFrame:
     """Scrape articulations. maximum_gap is the maximum distance (in time steps) between articulations, which, when exceeded, forces the ending of the current articulation chunk and the creation of a new one. articulation_count_threshold is the minimum number of articulations in a chunk to make it worthwhile recording."""
-    articulations_encoded = {key: rep(x = None, times = len(annotations)) for key in DIMENSIONS} # create dictionary of lists
+    articulations_encoded = {key: [] for key in DIMENSIONS} # create dictionary of lists
     encounters = {}
     def check_all_subtypes_for_chunk_ending(time): # helper function to check if articulation subtypes chunk ended
         for articulation_subtype in tuple(encounters.keys()):
             if (time - encounters[articulation_subtype]["end"]) > maximum_gap: # if the articulation chunk is over
                 if encounters[articulation_subtype]["count"] >= articulation_count_threshold:
                     articulations_encoded["type"].append(EXPRESSIVE_FEATURE_TYPE_STRING)
-                    articulations_encoded["value"].append(split_camel_case(string = check_text(text = articulation_subtype if articulation_subtype is not None else "articulation")).lower())
+                    articulations_encoded["value"].append(split_camel_case(string = check_text(text = articulation_subtype if articulation_subtype is not None else "articulation")))
                     articulations_encoded["duration"].append(encounters[articulation_subtype]["end"] - encounters[articulation_subtype]["start"])
                     articulations_encoded["time"].append(encounters[articulation_subtype]["start"])
                 del encounters[articulation_subtype] # erase articulation subtype, let it be recreated when it comes up again
@@ -317,12 +321,14 @@ def scrape_articulations(annotations: List[Annotation], maximum_gap: int, articu
         else: # ignore non Articulations
             continue
     check_all_subtypes_for_chunk_ending(time = annotations[-1].time + (2 * maximum_gap)) # one final check
+    for dimension in filter(lambda dimension: len(articulations_encoded[dimension]) == 0, tuple(articulations_encoded.keys())): # make sure untouched columns get filled
+        articulations_encoded[dimension] = rep(x = None, times = len(articulations_encoded["type"]))
     return pd.DataFrame(data = articulations_encoded, columns = DIMENSIONS) # create dataframe from scraped values
 
 
 def scrape_slurs(annotations: List[Annotation], minimum_duration: float, mscz: BetterMusic) -> pd.DataFrame:
     """Scrape slurs. minimum_duration is the minimum duration (in seconds) a slur needs to be to make it worthwhile recording."""
-    slurs_encoded = {key: rep(x = None, times = len(annotations)) for key in DIMENSIONS} # create dictionary of lists
+    slurs_encoded = {key: [] for key in DIMENSIONS} # create dictionary of lists
     for annotation in annotations:
         if annotation.annotation.__class__.__name__ == "SlurSpanner":
             if annotation.annotation.is_slur:
@@ -339,12 +345,14 @@ def scrape_slurs(annotations: List[Annotation], minimum_duration: float, mscz: B
                 continue
         else: # ignore non slurs
             continue
+    for dimension in filter(lambda dimension: len(slurs_encoded[dimension]) == 0, tuple(slurs_encoded.keys())): # make sure untouched columns get filled
+        slurs_encoded[dimension] = rep(x = None, times = len(slurs_encoded["type"]))
     return pd.DataFrame(data = slurs_encoded, columns = DIMENSIONS) # create dataframe from scraped values
 
 
 def scrape_pedals(annotations: List[Annotation], minimum_duration: float, mscz: BetterMusic) -> pd.DataFrame:
     """Scrape pedals. minimum_duration is the minimum duration (in seconds) a pedal needs to be to make it worthwhile recording."""
-    pedals_encoded = {key: rep(x = None, times = len(annotations)) for key in DIMENSIONS} # create dictionary of lists
+    pedals_encoded = {key: [] for key in DIMENSIONS} # create dictionary of lists
     for annotation in annotations:
         if annotation.annotation.__class__.__name__ == "PedalSpanner":
             start = mscz.metrical_time_to_absolute_time(time_steps = annotation.time)
@@ -358,6 +366,8 @@ def scrape_pedals(annotations: List[Annotation], minimum_duration: float, mscz: 
                 continue
         else: # ignore non pedals
             continue
+    for dimension in filter(lambda dimension: len(pedals_encoded[dimension]) == 0, tuple(pedals_encoded.keys())): # make sure untouched columns get filled
+        pedals_encoded[dimension] = rep(x = None, times = len(pedals_encoded["type"]))
     return pd.DataFrame(data = pedals_encoded, columns = DIMENSIONS) # create dataframe from scraped values
 
 ##################################################
@@ -379,7 +389,7 @@ def get_system_level_expressive_features(mscz: BetterMusic) -> pd.DataFrame:
 def get_staff_level_expressive_features(mscz: BetterMusic, track: Track) -> pd.DataFrame:
     """Wrapper function to make code more readable. Extracts staff-level expressive features."""
     staff_notes = scrape_notes(notes = track.notes)
-    staff_annotations = scrape_annotations(annotations = track.annotations)
+    staff_annotations = scrape_annotations(annotations = track.annotations, song_length = mscz.get_song_length())
     staff_articulations = scrape_articulations(annotations = track.annotations, maximum_gap = 2 * mscz.resolution) # 2 beats = 2 * mscz.resolution
     staff_slurs = scrape_slurs(annotations = track.annotations, minimum_duration = 1.5, mscz = mscz) # minimum duration for slurs to be recorded is 1.5 seconds
     staff_pedals = scrape_pedals(annotations = track.annotations, minimum_duration = 1.5, mscz = mscz) # minimum duration for pedals to be recorded is 1.5 seconds
@@ -449,7 +459,6 @@ def extract(path: str, path_output_prefix: str):
         # create dataframe, do some wrangling to semi-encode values
         data = pd.concat(objs = (pd.DataFrame(columns = DIMENSIONS), system_level_expressive_features, staff_level_expressive_features), axis = 0, ignore_index = True) # combine system and staff expressive features
         data["instrument"] = rep(x = track.program, times = len(data)) # add the instrument column
-
         # timings
         data["time.s"] = data["time"].apply(lambda time_steps: mscz.metrical_time_to_absolute_time(time_steps = time_steps)) # get time in seconds
         data = data.sort_values(by = "time").reset_index(drop = True) # sort by time
