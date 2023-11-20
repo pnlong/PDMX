@@ -10,7 +10,7 @@
 # IMPORTS
 ##################################################
 import glob
-from os.path import isfile, exists
+from os.path import isfile, exists, basename
 import random
 import pandas as pd
 from tqdm import tqdm
@@ -504,9 +504,10 @@ if __name__ == "__main__":
 
     # constant filepaths
     METADATA_MAPPING_FILEPATH = f"{args.file_output_dir}/metadata_to_data.csv"
-    ERROR_MESSAGE_OUTPUT_FILEPATH = f"{args.file_output_dir}/read_mscz_errors.csv"
-    TIMING_OUTPUT_FILEPATH = f"{args.file_output_dir}/read_mscz_timing.txt"
-    MAPPING_OUTPUT_FILEPATH = f"{args.file_output_dir}/expressive_features.csv"
+    prefix = basename(args.output_dir)
+    ERROR_MESSAGE_OUTPUT_FILEPATH = f"{args.file_output_dir}/{prefix}.errors.csv"
+    TIMING_OUTPUT_FILEPATH = f"{args.file_output_dir}/{prefix}.timing.txt"
+    MAPPING_OUTPUT_FILEPATH = f"{args.file_output_dir}/{prefix}.csv"
 
     # for getting metadata
     METADATA = pd.read_csv(filepath_or_buffer = METADATA_MAPPING_FILEPATH, sep = ",", header = 0, index_col = False)

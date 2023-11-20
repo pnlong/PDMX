@@ -655,13 +655,15 @@ def load_encoding(filename: str) -> dict:
 #     return np.array(notes)
 
 
-def encode(path: str, encoding: dict) -> np.array:
+def encode(path: str, encoding: dict, conditioning: str = "sort-order") -> np.array:
     """Encode a note sequence into a sequence of codes.
     Each row of the input is a note specified as follows.
         (beat, position, value, duration, program)
     Each row of the output is encoded as follows.
         (event_type, beat, position, value, duration, instrument)
     """
+
+    # LOAD IN DATA
 
     # load in npy file from path parameter
     data = np.load(file = path, allow_pickle = True)
@@ -670,7 +672,7 @@ def encode(path: str, encoding: dict) -> np.array:
     max_beat = encoding["max_beat"]
     max_duration = encoding["max_duration"]
 
-    # Get maps
+    # get maps
     type_code_map = encoding["type_code_map"]
     beat_code_map = encoding["beat_code_map"]
     position_code_map = encoding["position_code_map"]
@@ -679,14 +681,34 @@ def encode(path: str, encoding: dict) -> np.array:
     instrument_code_map = encoding["instrument_code_map"]
     program_instrument_map = encoding["program_instrument_map"]
 
-    # Get the dimension indices
+    # get the dimension indices
     beat_dim = encoding["dimensions"].index("beat")
     position_dim = encoding["dimensions"].index("position")
     value_dim = encoding["dimensions"].index("value")
     duration_dim = encoding["dimensions"].index("duration")
     instrument_dim = encoding["dimensions"].index("instrument")
 
-    # helper function for mapping
+    # ENCODE
+
+    # start the codes with an SOS row
+    codes = np.array(object = [(type_code_map["start-of-song"], 0, 0, 0, 0, 0)], dtype = np.int64)
+
+    # extract/encode instruments
+    programs = np.unique(ar = data[:, instrument_dim]) # get unique instrument values
+    instrument_codes = np.zeros(shape = (len(programs), codes.shape[1]), dtype = np.int64) # create empty array
+    for i, program in enumerate(programs):
+        if program is None: # skip unknown programs
+            continue
+        instrument_codes[i, 0] = type_code_map["instrument"] # set the type to instrument
+        instrument_codes[i, instrument_dim] = instrument_code_map[program_instrument_map[program]] # encode the instrument value
+    instrument_codes = instrument_codes[np.argsort(a = instrument_codes[:, instrument_dim], axis = 0)] # sort the instruments
+    codes = np.concatenate((codes, instrument_codes), axis = 0) # append them to the code sequence
+    del instrument_codes # clear up memory
+
+    # add start of notes row
+    codes = np.append(arr = codes, values = [(type_code_map["start-of-notes"], 0, 0, 0, 0, 0)], axis = 0)
+
+    # helper functions for mapping
     def value_code_mapper(value) -> int:
         try:
             code = value_code_map[None if value == "" else value]
@@ -697,59 +719,29 @@ def encode(path: str, encoding: dict) -> np.array:
             except KeyError:
                 code = -1
         return code
-
-    # apply encodings
-    codes = np.zeros(shape = data.shape)
-    codes[:, DIMENSIONS.index("type")] = list(map(lambda type_: type_code_map[str(type_)], data[:, DIMENSIONS.index("type")])) # encode type column
-    codes[:, DIMENSIONS.index("beat")] = list(map(lambda beat: beat_code_map[int(beat)], data[:, DIMENSIONS.index("beat")])) # encode beat
-    codes[:, DIMENSIONS.index("position")] = list(map(lambda position: position_code_map[int(position)], data[:, DIMENSIONS.index("position")])) # encode position
-    codes[:, DIMENSIONS.index("value")] = list(map(value_code_mapper, data[:, DIMENSIONS.index("value")])) # encode value column
-    codes[:, DIMENSIONS.index("duration")] = list(map(lambda duration: duration_code_map[int(duration)], data[:, DIMENSIONS.index("duration")])) # encode duration
-    codes[:, DIMENSIONS.index("instrument")] = list(map(lambda program: program_instrument_map[int(program)]), data[:, DIMENSIONS.index("instrument")]) # encode instrument column
-
-    # Start the codes with an SOS row
-    codes = [(type_code_map["start-of-song"], 0, 0, 0, 0, 0)]
-
-    # Extract instruments
-    instruments = set(program_instrument_map[note[-1]] for note in notes)
-
-    # Encode the instruments
-    instrument_codes = []
-    for instrument in instruments:
-        # Skip unknown instruments
+    def program_instrument_mapper(program) -> int:
+        instrument = instrument_code_map[program_instrument_map[int(program)]]
         if instrument is None:
-            continue
-        row = [type_code_map["instrument"], 0, 0, 0, 0, 0]
-        row[instrument_dim] = instrument_code_map[instrument]
-        instrument_codes.append(row)
+            return -1
+        return instrument
+    
+    # encode the notes / expressive features
+    core_codes = np.zeros(shape = data.shape, dtype = np.int64)
+    core_codes[:, 0] = list(map(lambda type_: type_code_map[str(type_)], data[:, 0])) # encode type column
+    core_codes[:, beat_dim] = list(map(lambda beat: beat_code_map[int(beat)], data[:, beat_dim])) # encode beat
+    core_codes[:, position_dim] = list(map(lambda position: position_code_map[int(position)], data[:, position_dim])) # encode position
+    core_codes[:, value_dim] = list(map(value_code_mapper, data[:, value_dim])) # encode value column
+    core_codes[:, duration_dim] = list(map(lambda duration: duration_code_map[min(int(duration), int(max_duration))], data[:, duration_dim])) # encode duration
+    core_codes[:, instrument_dim] = list(map(program_instrument_mapper, data[:, instrument_dim])) # encode instrument column
+    core_codes = core_codes[core_codes[:, beat_dim] <= max_beat] # remove data if beat greater than max beat
+    core_codes = core_codes[core_codes[:, instrument_dim] >= 0] # skip unknown instruments
+    codes = np.concatenate((codes, core_codes), axis = 0) # append them to the code sequence
+    del core_codes # clear up memory
 
-    # Sort the instruments and append them to the code sequence
-    instrument_codes.sort()
-    codes.extend(instrument_codes)
+    # end the codes with an EOS row
+    codes = np.append(arr = codes, values = [(type_code_map["end-of-song"], 0, 0, 0, 0, 0)], axis = 0)
 
-    # Encode the notes
-    codes.append((type_code_map["start-of-notes"], 0, 0, 0, 0, 0))
-    for beat, position, value, duration, program in notes:
-        # Skip if max_beat has reached
-        if beat > max_beat:
-            continue
-        # Skip unknown instruments
-        instrument = program_instrument_map[program]
-        if instrument is None:
-            continue
-        # Encode the note
-        row = [type_code_map["note"], 0, 0, 0, 0, 0]
-        row[beat_dim] = beat_code_map[beat]
-        row[position_dim] = position_code_map[position]
-        row[value_dim] = value_code_map[value]
-        row[duration_dim] = duration_code_map[min(duration, max_duration)]
-        row[instrument_dim] = instrument_code_map[instrument]
-        codes.append(row)
-
-    # End the codes with an EOS row
-    codes.append((type_code_map["end-of-song"], 0, 0, 0, 0, 0))
-
-    return np.array(codes)
+    return codes
 
 ##################################################
 

@@ -14,7 +14,7 @@ import argparse
 import pandas as pd
 import numpy as np
 from os import makedirs
-from os.path import exists
+from os.path import exists, basename
 from tqdm import tqdm
 from typing import List
 import logging
@@ -54,6 +54,7 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("-p", "--paths", type = str, default = MSCZ_FILEPATHS, help = "List of (absolute) filepaths to MuseScore files whose data will be extracted")
     parser.add_argument("-o", "--output_dir", type = str, default = OUTPUT_DIR, help = "Output directory")
     parser.add_argument("-f", "--file_output_dir", type = str, default = FILE_OUTPUT_DIR, help = "Directory to output any data tables")
+    parser.add_argument('-u', '--use_only_explicit_duration', action = "store_true", help = "Whether or not to calculate the 'implied duration' of features without an explicitly-defined duration.")
     parser.add_argument("-j", "--jobs", type = int, default = int(multiprocessing.cpu_count() / 4), help = "Number of Jobs")
     return parser.parse_args(args = args, namespace = namespace)
 
@@ -175,11 +176,12 @@ def write_to_file(info: dict, output_filepath: str, columns: list = None):
 ##################################################
 
 desired_expressive_feature_types = ("Text", "TextSpanner", "RehearsalMark", "Dynamic", "HairPinSpanner", "Fermata", "TempoSpanner", "TechAnnotation", "Symbol")
-def scrape_annotations(annotations: List[Annotation], song_length: int) -> pd.DataFrame:
-    """Scrape annotations. song_length is the length of the song (in time steps)."""
+def scrape_annotations(annotations: List[Annotation], song_length: int, use_implied_duration: bool = True) -> pd.DataFrame:
+    """Scrape annotations. song_length is the length of the song (in time steps). use_implied_duration is whether or not to calculate an 'implied duration' value for features without duration."""
 
     annotations_encoded = {key: [] for key in DIMENSIONS} # create dictionary of lists
-    encounters = dict(zip(desired_expressive_feature_types, rep(x = None, times = len(desired_expressive_feature_types)))) # to track durations
+    if use_implied_duration:
+        encounters = dict(zip(desired_expressive_feature_types, rep(x = None, times = len(desired_expressive_feature_types)))) # to track durations
 
     for annotation in annotations:
 
@@ -199,11 +201,13 @@ def scrape_annotations(annotations: List[Annotation], song_length: int) -> pd.Da
         # duration
         if "duration" in annotation_attributes:
             duration = annotation.annotation.duration # get the duration
-        else: # deal with implied duration (time until next of same type)
+        elif use_implied_duration: # deal with implied duration (time until next of same type)
             if encounters[expressive_feature_type] is not None: # to deal with the first encounter
                 annotations_encoded["duration"][encounters[expressive_feature_type]] = annotation.time - annotations_encoded["time"][encounters[expressive_feature_type]]
             encounters[expressive_feature_type] = len(annotations_encoded["duration"]) # update encounter index
             duration = None # append None for current duration, will be fixed later           
+        else: # not use_implied_duration ; not using implied duration
+            duration = 0
         annotations_encoded["duration"].append(duration) # add a duration value if there is one
         
         # deal with value field
@@ -223,11 +227,12 @@ def scrape_annotations(annotations: List[Annotation], song_length: int) -> pd.Da
             value = "rehearsal-mark"
         annotations_encoded["value"].append(check_text(text = value))
     
-    # get final durations
-    for expressive_feature_type in tuple(encounters.keys()):
-        if encounters[expressive_feature_type] is not None:
-            annotations_encoded["duration"][encounters[expressive_feature_type]] = song_length - annotations_encoded["time"][encounters[expressive_feature_type]]
-    
+    # get final if using implied durationdurations
+    if use_implied_duration:
+        for expressive_feature_type in tuple(encounters.keys()):
+            if encounters[expressive_feature_type] is not None:
+                annotations_encoded["duration"][encounters[expressive_feature_type]] = song_length - annotations_encoded["time"][encounters[expressive_feature_type]]
+        
     # make sure untouched columns get filled
     for dimension in filter(lambda dimension: len(annotations_encoded[dimension]) == 0, tuple(annotations_encoded.keys())):
         annotations_encoded[dimension] = rep(x = None, times = len(annotations_encoded["type"]))
@@ -236,53 +241,53 @@ def scrape_annotations(annotations: List[Annotation], song_length: int) -> pd.Da
     return pd.DataFrame(data = annotations_encoded, columns = DIMENSIONS)
 
 
-def scrape_barlines(barlines: List[Barline], song_length: int) -> pd.DataFrame:
-    """Scrape barlines. song_length is the length of the song (in time steps)."""
+def scrape_barlines(barlines: List[Barline], song_length: int, use_implied_duration: bool = True) -> pd.DataFrame:
+    """Scrape barlines. song_length is the length of the song (in time steps). use_implied_duration is whether or not to calculate an 'implied duration' value for features without duration."""
     barlines = list(filter(lambda barline: not ((barline.subtype == "single") or ("repeat" in barline.subtype.lower())), barlines)) # filter out single barlines
     barlines_encoded = {key: rep(x = None, times = len(barlines)) for key in DIMENSIONS} # create dictionary of lists
     barlines.append(Barline(time = song_length, measure = 0)) # for duration
     for i, barline in enumerate(barlines[:-1]):
         barlines_encoded["type"][i] = EXPRESSIVE_FEATURE_TYPE_STRING
         barlines_encoded["value"][i] = check_text(text = (f"{barline.subtype.lower()}-" if barline.subtype is not None else "") + "barline")
-        barlines_encoded["duration"][i] = barlines[i + 1].time - barline.time
+        barlines_encoded["duration"][i] = barlines[i + 1].time - barline.time if use_implied_duration else 0
         barlines_encoded["time"][i] = barline.time
     return pd.DataFrame(data = barlines_encoded, columns = DIMENSIONS) # create dataframe from scraped values
 
 
-def scrape_timesigs(timesigs: List[TimeSignature], song_length: int) -> pd.DataFrame:
-    """Scrape timesigs. song_length is the length of the song (in time steps)."""
+def scrape_timesigs(timesigs: List[TimeSignature], song_length: int, use_implied_duration: bool = True) -> pd.DataFrame:
+    """Scrape timesigs. song_length is the length of the song (in time steps). use_implied_duration is whether or not to calculate an 'implied duration' value for features without duration."""
     timesigs = timesigs[1:] # get rid of first timesig, since we are tracking changes in timesig
     timesigs_encoded = {key: rep(x = None, times = len(timesigs)) for key in DIMENSIONS} # create dictionary of lists
     timesigs.append(TimeSignature(time = song_length, measure = 0, numerator = 4, denominator = 4)) # for duration
     for i, timesig in enumerate(timesigs[:-1]):
         timesigs_encoded["type"][i] = EXPRESSIVE_FEATURE_TYPE_STRING
         timesigs_encoded["value"][i] = check_text(text = f"timesig-change") # check_text(text = f"{timesig.numerator}/{timesig.denominator}")
-        timesigs_encoded["duration"][i] = timesigs[i + 1].time - timesig.time
+        timesigs_encoded["duration"][i] = timesigs[i + 1].time - timesig.time if use_implied_duration else 0
         timesigs_encoded["time"][i] = timesig.time
     return pd.DataFrame(data = timesigs_encoded, columns = DIMENSIONS) # create dataframe from scraped values
 
 
-def scrape_keysigs(keysigs: List[KeySignature], song_length: int) -> pd.DataFrame:
-    """Scrape keysigs. song_length is the length of the song (in time steps)."""
+def scrape_keysigs(keysigs: List[KeySignature], song_length: int, use_implied_duration: bool = True) -> pd.DataFrame:
+    """Scrape keysigs. song_length is the length of the song (in time steps). use_implied_duration is whether or not to calculate an 'implied duration' value for features without duration."""
     keysigs = keysigs[1:] # get rid of first keysig, since we are tracking changes in keysig
     keysigs_encoded = {key: rep(x = None, times = len(keysigs)) for key in DIMENSIONS} # create dictionary of lists
     keysigs.append(KeySignature(time = song_length, measure = 0)) # for duration
     for i, keysig in enumerate(keysigs[:-1]):
         keysigs_encoded["type"][i] = EXPRESSIVE_FEATURE_TYPE_STRING
         keysigs_encoded["value"][i] = check_text(text = f"keysig-change") # check_text(text = f"{keysig.root_str} {keysig.mode}") # or keysig.root or keysig.fifths
-        keysigs_encoded["duration"][i] = keysigs[i + 1].time - keysig.time
+        keysigs_encoded["duration"][i] = keysigs[i + 1].time - keysig.time if use_implied_duration else 0
         keysigs_encoded["time"][i] = keysig.time
     return pd.DataFrame(data = keysigs_encoded, columns = DIMENSIONS) # create dataframe from scraped values
 
 
-def scrape_tempos(tempos: List[Tempo], song_length: int) -> pd.DataFrame:
-    """Scrape tempos. song_length is the length of the song (in time steps)."""
+def scrape_tempos(tempos: List[Tempo], song_length: int, use_implied_duration: bool = True) -> pd.DataFrame:
+    """Scrape tempos. song_length is the length of the song (in time steps). use_implied_duration is whether or not to calculate an 'implied duration' value for features without duration."""
     tempos_encoded = {key: rep(x = None, times = len(tempos)) for key in DIMENSIONS} # create dictionary of lists
     tempos.append(Tempo(time = song_length, measure = 0, qpm = 0.0)) # for duration
     for i, tempo in enumerate(tempos[:-1]):
         tempos_encoded["type"][i] = EXPRESSIVE_FEATURE_TYPE_STRING
         tempos_encoded["value"][i] = check_text(text = representation.QPM_TEMPO_MAPPER(qpm = tempo.qpm)) # check_text(text = tempo.text.lower() if tempo.text is not None else "tempo-marking")
-        tempos_encoded["duration"][i] = tempos[i + 1].time - tempo.time
+        tempos_encoded["duration"][i] = tempos[i + 1].time - tempo.time if use_implied_duration else 0
         tempos_encoded["time"][i] = tempo.time
     return pd.DataFrame(data = tempos_encoded, columns = DIMENSIONS) # create dataframe from scraped values
 
@@ -384,20 +389,20 @@ def scrape_pedals(annotations: List[Annotation], minimum_duration: float, mscz: 
 # WRAPPER FUNCTIONS MAKE CODE EASIER TO READ
 ##################################################
 
-def get_system_level_expressive_features(mscz: BetterMusic) -> pd.DataFrame:
+def get_system_level_expressive_features(mscz: BetterMusic, use_implied_duration: bool = True) -> pd.DataFrame:
     """Wrapper function to make code more readable. Extracts system-level expressive features."""
     song_length = mscz.get_song_length() # get the song length
-    system_annotations = scrape_annotations(annotations = mscz.annotations, song_length = song_length)
-    system_barlines = scrape_barlines(barlines = mscz.barlines, song_length = song_length)
-    system_timesigs = scrape_timesigs(timesigs = mscz.time_signatures, song_length = song_length)
-    system_keysigs = scrape_keysigs(keysigs = mscz.key_signatures, song_length = song_length)
-    system_tempos = scrape_tempos(tempos = mscz.tempos, song_length = song_length)
+    system_annotations = scrape_annotations(annotations = mscz.annotations, song_length = song_length, use_implied_duration = use_implied_duration)
+    system_barlines = scrape_barlines(barlines = mscz.barlines, song_length = song_length, use_implied_duration = use_implied_duration)
+    system_timesigs = scrape_timesigs(timesigs = mscz.time_signatures, song_length = song_length, use_implied_duration = use_implied_duration)
+    system_keysigs = scrape_keysigs(keysigs = mscz.key_signatures, song_length = song_length, use_implied_duration = use_implied_duration)
+    system_tempos = scrape_tempos(tempos = mscz.tempos, song_length = song_length, use_implied_duration = use_implied_duration)
     return pd.concat(objs = (system_annotations, system_barlines, system_timesigs, system_keysigs, system_tempos), axis = 0, ignore_index = True)
 
-def get_staff_level_expressive_features(mscz: BetterMusic, track: Track) -> pd.DataFrame:
+def get_staff_level_expressive_features(track: Track, mscz: BetterMusic, use_implied_duration: bool = True) -> pd.DataFrame:
     """Wrapper function to make code more readable. Extracts staff-level expressive features."""
     staff_notes = scrape_notes(notes = track.notes)
-    staff_annotations = scrape_annotations(annotations = track.annotations, song_length = mscz.get_song_length())
+    staff_annotations = scrape_annotations(annotations = track.annotations, song_length = mscz.get_song_length(), use_implied_duration = use_implied_duration)
     staff_articulations = scrape_articulations(annotations = track.annotations, maximum_gap = 2 * mscz.resolution) # 2 beats = 2 * mscz.resolution
     staff_slurs = scrape_slurs(annotations = track.annotations, minimum_duration = 1.5, mscz = mscz) # minimum duration for slurs to be recorded is 1.5 seconds
     staff_pedals = scrape_pedals(annotations = track.annotations, minimum_duration = 1.5, mscz = mscz) # minimum duration for pedals to be recorded is 1.5 seconds
@@ -453,7 +458,7 @@ def extract(path: str, path_output_prefix: str):
     ##################################################
         
     # scrape system level expressive features
-    system_level_expressive_features = get_system_level_expressive_features(mscz = mscz)
+    system_level_expressive_features = get_system_level_expressive_features(mscz = mscz, use_implied_duration = USE_IMPLIED_DURATION)
 
     for i, track in enumerate(mscz.tracks):
 
@@ -462,19 +467,32 @@ def extract(path: str, path_output_prefix: str):
             continue
 
         # scrape staff-level features
-        staff_level_expressive_features = get_staff_level_expressive_features(mscz = mscz, track = track)
+        staff_level_expressive_features = get_staff_level_expressive_features(track = track, mscz = mscz, use_implied_duration = USE_IMPLIED_DURATION)
 
         # create dataframe, do some wrangling to semi-encode values
         data = pd.concat(objs = (pd.DataFrame(columns = DIMENSIONS), system_level_expressive_features, staff_level_expressive_features), axis = 0, ignore_index = True) # combine system and staff expressive features
         data["instrument"] = rep(x = track.program, times = len(data)) # add the instrument column
-        # timings
+
+        # convert time to seconds for certain types of sorting that might require it
         data["time.s"] = data["time"].apply(lambda time_steps: mscz.metrical_time_to_absolute_time(time_steps = time_steps)) # get time in seconds
         data = data.sort_values(by = "time").reset_index(drop = True) # sort by time
         if len(data) > 0: # set start beat to 0
             data["time"] = data["time"] - data.at[0, "time"]
             data["time.s"] = data["time.s"] - data.at[0, "time.s"]
-        data["beat"] = data["time"].apply(lambda time_steps: time_steps // mscz.resolution) # add beat
-        data["position"] = data["time"].apply(lambda time_steps: time_steps % mscz.resolution) # add position
+
+        # calculate beat and position values
+        # data["beat"] = data["time"].apply(lambda time_steps: time_steps // mscz.resolution) # add beat
+        # data["position"] = data["time"].apply(lambda time_steps: time_steps % mscz.resolution) # add position
+        beat_index = 0
+        beats = sorted(list(set([beat.time for beat in mscz.beats] + [mscz.get_song_length(),]))) # add song length to end of beats for calculating position
+        for i in data.index: # assumes data is sorted by time_step values
+            if data.at[i, "time"] >= beats[beat_index + 1]: # if we've moved to the next beat
+                beat_index += 1 # increment beat index
+            data.at[i, "beat"] = beat_index  # convert base to base 0
+            data.at[i, "position"] = int((representation.RESOLUTION * (data.at[i, "time"] - beats[beat_index])) / (beats[beat_index + 1] - beats[beat_index]))
+
+        # remove duplicates due to beat and position quantization
+        data = data.drop_duplicates(subset = DIMENSIONS[:DIMENSIONS.index("time")], keep = "first", ignore_index = True)
 
         # don't save low-quality data
         # if len(data) < 50:
@@ -536,8 +554,10 @@ if __name__ == "__main__":
 
     # some constants
     METADATA_MAPPING_FILEPATH = f"{args.file_output_dir}/metadata_to_data.csv"
-    TIMING_OUTPUT_FILEPATH = f"{args.file_output_dir}/data_timing.txt"
-    MAPPING_OUTPUT_FILEPATH = f"{args.file_output_dir}/data.csv"
+    prefix = basename(args.output_dir)
+    TIMING_OUTPUT_FILEPATH = f"{args.file_output_dir}/{prefix}.timing.txt"
+    MAPPING_OUTPUT_FILEPATH = f"{args.file_output_dir}/{prefix}.csv"
+    USE_IMPLIED_DURATION = not bool(args.use_only_explicit_duration)
 
     # for getting metadata
     METADATA = pd.read_csv(filepath_or_buffer = METADATA_MAPPING_FILEPATH, sep = ",", header = 0, index_col = False)
