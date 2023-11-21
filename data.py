@@ -40,7 +40,6 @@ FILE_OUTPUT_DIR = "/data2/pnlong/musescore"
 MSCZ_FILEPATHS = f"{FILE_OUTPUT_DIR}/relevant_mscz_files.txt"
 OUTPUT_COLUMNS = ("path", "musescore", "track", "metadata", "version", "n")
 NA_STRING = "NA"
-EXPRESSIVE_FEATURE_TYPE_STRING = "expressive-feature"
 
 ##################################################
 
@@ -196,7 +195,7 @@ def scrape_annotations(annotations: List[Annotation], song_length: int, use_impl
         annotations_encoded["time"].append(annotation.time)
 
         # event type
-        annotations_encoded["type"].append(EXPRESSIVE_FEATURE_TYPE_STRING)
+        annotations_encoded["type"].append(representation.EXPRESSIVE_FEATURE_TYPE_STRING)
 
         # duration
         if "duration" in annotation_attributes:
@@ -247,7 +246,7 @@ def scrape_barlines(barlines: List[Barline], song_length: int, use_implied_durat
     barlines_encoded = {key: rep(x = None, times = len(barlines)) for key in DIMENSIONS} # create dictionary of lists
     barlines.append(Barline(time = song_length, measure = 0)) # for duration
     for i, barline in enumerate(barlines[:-1]):
-        barlines_encoded["type"][i] = EXPRESSIVE_FEATURE_TYPE_STRING
+        barlines_encoded["type"][i] = representation.EXPRESSIVE_FEATURE_TYPE_STRING
         barlines_encoded["value"][i] = check_text(text = (f"{barline.subtype.lower()}-" if barline.subtype is not None else "") + "barline")
         barlines_encoded["duration"][i] = barlines[i + 1].time - barline.time if use_implied_duration else 0
         barlines_encoded["time"][i] = barline.time
@@ -260,7 +259,7 @@ def scrape_timesigs(timesigs: List[TimeSignature], song_length: int, use_implied
     timesigs_encoded = {key: rep(x = None, times = len(timesigs)) for key in DIMENSIONS} # create dictionary of lists
     timesigs.append(TimeSignature(time = song_length, measure = 0, numerator = 4, denominator = 4)) # for duration
     for i, timesig in enumerate(timesigs[:-1]):
-        timesigs_encoded["type"][i] = EXPRESSIVE_FEATURE_TYPE_STRING
+        timesigs_encoded["type"][i] = representation.EXPRESSIVE_FEATURE_TYPE_STRING
         timesigs_encoded["value"][i] = check_text(text = f"timesig-change") # check_text(text = f"{timesig.numerator}/{timesig.denominator}")
         timesigs_encoded["duration"][i] = timesigs[i + 1].time - timesig.time if use_implied_duration else 0
         timesigs_encoded["time"][i] = timesig.time
@@ -273,7 +272,7 @@ def scrape_keysigs(keysigs: List[KeySignature], song_length: int, use_implied_du
     keysigs_encoded = {key: rep(x = None, times = len(keysigs)) for key in DIMENSIONS} # create dictionary of lists
     keysigs.append(KeySignature(time = song_length, measure = 0)) # for duration
     for i, keysig in enumerate(keysigs[:-1]):
-        keysigs_encoded["type"][i] = EXPRESSIVE_FEATURE_TYPE_STRING
+        keysigs_encoded["type"][i] = representation.EXPRESSIVE_FEATURE_TYPE_STRING
         keysigs_encoded["value"][i] = check_text(text = f"keysig-change") # check_text(text = f"{keysig.root_str} {keysig.mode}") # or keysig.root or keysig.fifths
         keysigs_encoded["duration"][i] = keysigs[i + 1].time - keysig.time if use_implied_duration else 0
         keysigs_encoded["time"][i] = keysig.time
@@ -285,7 +284,7 @@ def scrape_tempos(tempos: List[Tempo], song_length: int, use_implied_duration: b
     tempos_encoded = {key: rep(x = None, times = len(tempos)) for key in DIMENSIONS} # create dictionary of lists
     tempos.append(Tempo(time = song_length, measure = 0, qpm = 0.0)) # for duration
     for i, tempo in enumerate(tempos[:-1]):
-        tempos_encoded["type"][i] = EXPRESSIVE_FEATURE_TYPE_STRING
+        tempos_encoded["type"][i] = representation.EXPRESSIVE_FEATURE_TYPE_STRING
         tempos_encoded["value"][i] = check_text(text = representation.QPM_TEMPO_MAPPER(qpm = tempo.qpm)) # check_text(text = tempo.text.lower() if tempo.text is not None else "tempo-marking")
         tempos_encoded["duration"][i] = tempos[i + 1].time - tempo.time if use_implied_duration else 0
         tempos_encoded["time"][i] = tempo.time
@@ -316,7 +315,7 @@ def scrape_articulations(annotations: List[Annotation], maximum_gap: int, articu
         for articulation_subtype in tuple(encounters.keys()):
             if (time - encounters[articulation_subtype]["end"]) > maximum_gap: # if the articulation chunk is over
                 if encounters[articulation_subtype]["count"] >= articulation_count_threshold:
-                    articulations_encoded["type"].append(EXPRESSIVE_FEATURE_TYPE_STRING)
+                    articulations_encoded["type"].append(representation.EXPRESSIVE_FEATURE_TYPE_STRING)
                     articulations_encoded["value"].append(split_camel_case(string = check_text(text = articulation_subtype if articulation_subtype is not None else "articulation")))
                     articulations_encoded["duration"].append(encounters[articulation_subtype]["end"] - encounters[articulation_subtype]["start"])
                     articulations_encoded["time"].append(encounters[articulation_subtype]["start"])
@@ -348,7 +347,7 @@ def scrape_slurs(annotations: List[Annotation], minimum_duration: float, mscz: B
                 start = mscz.metrical_time_to_absolute_time(time_steps = annotation.time)
                 duration = mscz.metrical_time_to_absolute_time(time_steps = annotation.time + annotation.annotation.duration) - start
                 if duration > minimum_duration:
-                    slurs_encoded["type"].append(EXPRESSIVE_FEATURE_TYPE_STRING)
+                    slurs_encoded["type"].append(representation.EXPRESSIVE_FEATURE_TYPE_STRING)
                     slurs_encoded["value"].append(check_text(text = "slur"))
                     slurs_encoded["duration"].append(annotation.annotation.duration)
                     slurs_encoded["time"].append(annotation.time)
@@ -371,7 +370,7 @@ def scrape_pedals(annotations: List[Annotation], minimum_duration: float, mscz: 
             start = mscz.metrical_time_to_absolute_time(time_steps = annotation.time)
             duration = mscz.metrical_time_to_absolute_time(time_steps = annotation.time + annotation.annotation.duration) - start
             if duration > minimum_duration:
-                pedals_encoded["type"].append(EXPRESSIVE_FEATURE_TYPE_STRING)
+                pedals_encoded["type"].append(representation.EXPRESSIVE_FEATURE_TYPE_STRING)
                 pedals_encoded["value"].append(check_text(text = "pedal"))
                 pedals_encoded["duration"].append(annotation.annotation.duration)
                 pedals_encoded["time"].append(annotation.time)
@@ -391,18 +390,17 @@ def scrape_pedals(annotations: List[Annotation], minimum_duration: float, mscz: 
 
 def get_system_level_expressive_features(mscz: BetterMusic, use_implied_duration: bool = True) -> pd.DataFrame:
     """Wrapper function to make code more readable. Extracts system-level expressive features."""
-    song_length = mscz.get_song_length() # get the song length
-    system_annotations = scrape_annotations(annotations = mscz.annotations, song_length = song_length, use_implied_duration = use_implied_duration)
-    system_barlines = scrape_barlines(barlines = mscz.barlines, song_length = song_length, use_implied_duration = use_implied_duration)
-    system_timesigs = scrape_timesigs(timesigs = mscz.time_signatures, song_length = song_length, use_implied_duration = use_implied_duration)
-    system_keysigs = scrape_keysigs(keysigs = mscz.key_signatures, song_length = song_length, use_implied_duration = use_implied_duration)
-    system_tempos = scrape_tempos(tempos = mscz.tempos, song_length = song_length, use_implied_duration = use_implied_duration)
+    system_annotations = scrape_annotations(annotations = mscz.annotations, song_length = mscz.song_length, use_implied_duration = use_implied_duration)
+    system_barlines = scrape_barlines(barlines = mscz.barlines, song_length = mscz.song_length, use_implied_duration = use_implied_duration)
+    system_timesigs = scrape_timesigs(timesigs = mscz.time_signatures, song_length = mscz.song_length, use_implied_duration = use_implied_duration)
+    system_keysigs = scrape_keysigs(keysigs = mscz.key_signatures, song_length = mscz.song_length, use_implied_duration = use_implied_duration)
+    system_tempos = scrape_tempos(tempos = mscz.tempos, song_length = mscz.song_length, use_implied_duration = use_implied_duration)
     return pd.concat(objs = (system_annotations, system_barlines, system_timesigs, system_keysigs, system_tempos), axis = 0, ignore_index = True)
 
 def get_staff_level_expressive_features(track: Track, mscz: BetterMusic, use_implied_duration: bool = True) -> pd.DataFrame:
     """Wrapper function to make code more readable. Extracts staff-level expressive features."""
     staff_notes = scrape_notes(notes = track.notes)
-    staff_annotations = scrape_annotations(annotations = track.annotations, song_length = mscz.get_song_length(), use_implied_duration = use_implied_duration)
+    staff_annotations = scrape_annotations(annotations = track.annotations, song_length = mscz.song_length, use_implied_duration = use_implied_duration)
     staff_articulations = scrape_articulations(annotations = track.annotations, maximum_gap = 2 * mscz.resolution) # 2 beats = 2 * mscz.resolution
     staff_slurs = scrape_slurs(annotations = track.annotations, minimum_duration = 1.5, mscz = mscz) # minimum duration for slurs to be recorded is 1.5 seconds
     staff_pedals = scrape_pedals(annotations = track.annotations, minimum_duration = 1.5, mscz = mscz) # minimum duration for pedals to be recorded is 1.5 seconds
@@ -472,6 +470,7 @@ def extract(path: str, path_output_prefix: str):
         # create dataframe, do some wrangling to semi-encode values
         data = pd.concat(objs = (pd.DataFrame(columns = DIMENSIONS), system_level_expressive_features, staff_level_expressive_features), axis = 0, ignore_index = True) # combine system and staff expressive features
         data["instrument"] = rep(x = track.program, times = len(data)) # add the instrument column
+        data["duration"] = (representation.RESOLUTION / mscz.resolution) * data["duration"] # semi-encode duration
 
         # convert time to seconds for certain types of sorting that might require it
         data["time.s"] = data["time"].apply(lambda time_steps: mscz.metrical_time_to_absolute_time(time_steps = time_steps)) # get time in seconds
@@ -480,16 +479,23 @@ def extract(path: str, path_output_prefix: str):
             data["time"] = data["time"] - data.at[0, "time"]
             data["time.s"] = data["time.s"] - data.at[0, "time.s"]
 
-        # calculate beat and position values
-        # data["beat"] = data["time"].apply(lambda time_steps: time_steps // mscz.resolution) # add beat
-        # data["position"] = data["time"].apply(lambda time_steps: time_steps % mscz.resolution) # add position
-        beat_index = 0
-        beats = sorted(list(set([beat.time for beat in mscz.beats] + [mscz.get_song_length(),]))) # add song length to end of beats for calculating position
-        for i in data.index: # assumes data is sorted by time_step values
-            if data.at[i, "time"] >= beats[beat_index + 1]: # if we've moved to the next beat
-                beat_index += 1 # increment beat index
-            data.at[i, "beat"] = beat_index  # convert base to base 0
-            data.at[i, "position"] = int((representation.RESOLUTION * (data.at[i, "time"] - beats[beat_index])) / (beats[beat_index + 1] - beats[beat_index]))
+        # calculate beat and position values (time signature agnostic)
+        data["beat"] = data["time"].apply(lambda time_steps: time_steps // mscz.resolution) # add beat
+        data["position"] = data["time"].apply(lambda time_steps: int((representation.RESOLUTION / mscz.resolution) * (time_steps % mscz.resolution))) # add position
+        # get beats (accounting for time signature) # beats = sorted(list(set([beat.time for beat in mscz.beats] + [mscz.song_length,]))) # add song length to end of beats for calculating position
+        # if len(mscz.time_signatures) > 0:
+        #     beats = []
+        #     timesigs = mscz.time_signatures + [TimeSignature(time = mscz.song_length, measure = 0, numerator = 4, denominator = 4),]
+        #     for i in range(len(timesigs) - 1):
+        #         beats += list(range(timesigs[i].time, timesigs[i + 1].time, int(mscz.resolution * (4 / timesigs[i].denominator))))
+        # else: # assume 4/4
+        #     beats = list(range(0, mscz.song_length + mscz.resolution, mscz.resolution))        
+        # beat_index = 0
+        # for i in data.index: # assumes data is sorted by time_step values
+        #     if data.at[i, "time"] >= beats[beat_index + 1]: # if we've moved to the next beat
+        #         beat_index += 1 # increment beat index
+        #     data.at[i, "beat"] = beat_index  # convert base to base 0
+        #     data.at[i, "position"] = int((representation.RESOLUTION * (data.at[i, "time"] - beats[beat_index])) / (beats[beat_index + 1] - beats[beat_index]))
 
         # remove duplicates due to beat and position quantization
         data = data.drop_duplicates(subset = DIMENSIONS[:DIMENSIONS.index("time")], keep = "first", ignore_index = True)
@@ -587,7 +593,7 @@ if __name__ == "__main__":
 
     # see if I've already completed some path
     if exists(MAPPING_OUTPUT_FILEPATH):
-        completed_paths = set(pd.read_csv(filepath_or_buffer = MAPPING_OUTPUT_FILEPATH, sep = ",", header = 0, index_col = False)["path"].tolist())
+        completed_paths = set(pd.read_csv(filepath_or_buffer = MAPPING_OUTPUT_FILEPATH, sep = ",", header = 0, index_col = False)["musescore"].tolist())
         paths = list(path for path in tqdm(iterable = paths, desc = "Determining Already-Completed Paths") if path not in completed_paths)
         paths = tuple(random.sample(paths, len(paths)))
 

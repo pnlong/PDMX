@@ -442,8 +442,8 @@ def extract_expressive_features(path: str, path_output_prefix: str):
             "is_drum" : bool(track.is_drum),
             "resolution" : mscz.resolution,
             "track_length" : {
-                "time_steps": mscz.get_song_length(),
-                "seconds": mscz.metrical_time_to_absolute_time(time_steps = mscz.get_song_length()),
+                "time_steps": mscz.song_length,
+                "seconds": mscz.metrical_time_to_absolute_time(time_steps = mscz.song_length),
                 "bars": len(mscz.barlines),
                 "beats": len(mscz.beats)},
             "n_annotations" : {

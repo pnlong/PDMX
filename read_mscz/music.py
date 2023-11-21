@@ -93,6 +93,7 @@ class BetterMusic(muspy.music.Music):
         self.lyrics = lyrics if lyrics is not None else []
         self.annotations = annotations if annotations is not None else []
         self.tracks = tracks if tracks is not None else []
+        self.song_length = self.get_song_length()
 
     ##################################################
 
@@ -216,10 +217,10 @@ class BetterMusic(muspy.music.Music):
     ##################################################
 
     def get_song_length(self) -> int:
-        if len(self.barlines) >= 2:
-            return int((2 * self.beats[-1].time) - self.beats[-2].time)
-        else:
-            return 0
+        max_time_obj = max(self.tempos + self.key_signatures + self.time_signatures + self.beats + self.barlines + self.lyrics + self.annotations + sum([track.notes + track.annotations + track.lyrics for track in self.tracks], []), key = lambda obj: obj.time)
+        max_time = max_time_obj.time + (max_time_obj.duration if hasattr(max_time_obj, "duration") else 0) + self.resolution # add a quarter note at the end for buffer
+        final_beat = self.beats[-1].time if len(self.beats) >= 1 else 0 # (2 * self.beats[-1].time) - self.beats[-2].time
+        return int(max(max_time, final_beat))
 
     ##################################################
 
