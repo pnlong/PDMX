@@ -23,12 +23,15 @@ import utils
 # CONSTANTS
 ##################################################
 
-# Configuration
+# configuration
 RESOLUTION = 12
 MAX_BEAT = 1024
 MAX_DURATION = 768  # Remember to modify known durations as well!
+
+# encoding
 CONDITIONINGS = ("sort", "prefix", "anticipation") # There are three options for conditioning 
 DEFAULT_CONDITIONING = CONDITIONINGS[0]
+ENCODING_ARRAY_TYPE = np.int64
 
 ##################################################
 
@@ -664,7 +667,7 @@ def encode(path: str, encoding: dict, conditioning: str = DEFAULT_CONDITIONING, 
         (beat, position, value, duration, program)
     Each row of the output is encoded as follows.
         (event_type, beat, position, value, duration, instrument)
-    """ 
+    """
 
     # LOAD IN DATA
 
@@ -698,11 +701,11 @@ def encode(path: str, encoding: dict, conditioning: str = DEFAULT_CONDITIONING, 
     # ENCODE
 
     # start the codes with an SOS row
-    codes = np.array(object = [(type_code_map["start-of-song"], 0, 0, 0, 0, 0)], dtype = np.int64)
+    codes = np.array(object = [(type_code_map["start-of-song"], 0, 0, 0, 0, 0)], dtype = ENCODING_ARRAY_TYPE)
 
     # extract/encode instruments
     programs = np.unique(ar = data[:, instrument_dim]) # get unique instrument values
-    instrument_codes = np.zeros(shape = (len(programs), codes.shape[1]), dtype = np.int64) # create empty array
+    instrument_codes = np.zeros(shape = (len(programs), codes.shape[1]), dtype = ENCODING_ARRAY_TYPE) # create empty array
     for i, program in enumerate(programs):
         if program is None: # skip unknown programs
             continue
@@ -733,7 +736,7 @@ def encode(path: str, encoding: dict, conditioning: str = DEFAULT_CONDITIONING, 
         return instrument
     
     # encode the notes / expressive features
-    core_codes = np.zeros(shape = (data.shape[0], codes.shape[1]), dtype = np.int64)
+    core_codes = np.zeros(shape = (data.shape[0], codes.shape[1]), dtype = ENCODING_ARRAY_TYPE)
     core_codes[:, 0] = list(map(lambda type_: type_code_map[str(type_)], data[:, 0])) # encode type column
     core_codes[:, beat_dim] = list(map(lambda beat: beat_code_map[int(beat)], data[:, beat_dim])) # encode beat
     core_codes[:, position_dim] = list(map(lambda position: position_code_map[int(position)], data[:, position_dim])) # encode position
@@ -745,26 +748,26 @@ def encode(path: str, encoding: dict, conditioning: str = DEFAULT_CONDITIONING, 
 
     # apply conditioning to core_codes
     if conditioning == CONDITIONINGS[0]: # sort-order
-        core_codes_with_time_steps = np.concatenate((core_codes, data[:, data.shape[1] - 2]), axis = 1) # add time steps column
+        core_codes_with_time_steps = np.concatenate((core_codes, data[:, data.shape[1] - 2].reshape(data.shape[0], 1)), axis = 1) # add time steps column
         time_steps_column = core_codes_with_time_steps.shape[1] - 1
         core_codes_with_time_steps = core_codes_with_time_steps[core_codes_with_time_steps[:, time_steps_column].argsort()] # sort by time (time steps)
-        core_codes = np.delete(arr = core_codes_with_time_steps, obj = time_steps_column, axis = 1) # remove time steps column
+        core_codes = np.delete(arr = core_codes_with_time_steps, obj = time_steps_column, axis = 1).astype(ENCODING_ARRAY_TYPE) # remove time steps column
         del core_codes_with_time_steps, time_steps_column
     elif conditioning == CONDITIONINGS[1]: # prefix
         expressive_feature_indicies = sorted(np.where(core_codes[:, 0] == type_code_map[EXPRESSIVE_FEATURE_TYPE_STRING])[0]) # get indicies of expressive features
         expressive_features = core_codes[expressive_feature_indicies] # extract expressive features
         notes = np.delete(arr = core_codes, obj = expressive_feature_indicies, axis = 0) # delete expressive features from core
-        core_codes = np.concatenate((expressive_features, codes[len(codes) - 1].reshape(1, codes.shape[1]), notes), axis = 0)
+        core_codes = np.concatenate((expressive_features, codes[len(codes) - 1].reshape(1, codes.shape[1]), notes), axis = 0) # sandwich: expressive features, start of notes row, 
         codes = np.delete(arr = codes, obj = len(codes) - 1, axis = 0) # remove start of notes row from codes
         del expressive_feature_indicies, expressive_features, notes
     elif conditioning == CONDITIONINGS[2]: # anticipation
-        core_codes_with_seconds = np.concatenate((core_codes, data[:, data.shape[1] - 1]), axis = 1) # add seconds column
+        core_codes_with_seconds = np.concatenate((core_codes, data[:, data.shape[1] - 1].reshape(data.shape[0], 1)), axis = 1) # add seconds column
         seconds_column = core_codes_with_seconds.shape[1] - 1 # get the index of the seconds column
         for i in range(core_codes_with_seconds.shape[0]): # iterate through core_codes_with_seconds
             if core_codes_with_seconds[i, 0] == type_code_map[EXPRESSIVE_FEATURE_TYPE_STRING]: # if the type is expressive feature
                 core_codes_with_seconds[i, seconds_column] -= sigma # add anticipation
         core_codes_with_seconds = core_codes_with_seconds[core_codes_with_seconds[:, seconds_column].argsort()] # sort by time (seconds)
-        core_codes = np.delete(arr = core_codes_with_seconds, obj = seconds_column, axis = 1) # remove seconds column
+        core_codes = np.delete(arr = core_codes_with_seconds, obj = seconds_column, axis = 1).astype(ENCODING_ARRAY_TYPE) # remove seconds column
         del core_codes_with_seconds, seconds_column
 
     # add core_codes to the general codes matrix
