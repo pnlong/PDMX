@@ -4,11 +4,12 @@
 
 # Create torch dataset object for training a neural network.
 
+# python /home/pnlong/model_musescore/dataset.py
+
 
 # IMPORTS
 ##################################################
 
-import pathlib
 import numpy as np
 import pandas as pd
 import torch
@@ -16,47 +17,46 @@ from torch.utils.data import Dataset
 import logging
 import sys
 import argparse
-import utils
 import pprint
 from tqdm import tqdm
+from typing import List
 
 import representation
 
-##################################################
-
-
-# CONSTANTS
-##################################################
-
-OUTPUT_DIRECTORY = ""
-
-##################################################
+#################################################
 
 
 # HELPER FUNCTIONS
 ##################################################
 
-def pad(data, maxlen = None):
+# padder function
+def pad(data: np.array, maxlen: int = None) -> np.array:
+
+    # deal with maxlen argument
     if maxlen is None:
-        max_len = max(len(x) for x in data)
+        max_len = max(len(sample) for sample in data)
     else:
-        for x in data:
-            assert len(x) <= max_len
+        for sample in data:
+            assert len(sample) <= max_len
+    
+    # check dimensionality of data
     if data[0].ndim == 1:
-        padded = [np.pad(array = x, pad_width = (0, max_len - len(x))) for x in data]
+        padded = [np.pad(array = sample, pad_width = (0, max_len - len(sample))) for sample in data]
     elif data[0].ndim == 2:
-        padded = [np.pad(array = x, pad_width = ((0, max_len - len(x)), (0, 0))) for x in data]
+        padded = [np.pad(array = sample, pad_width = ((0, max_len - len(sample)), (0, 0))) for sample in data]
     else:
-        raise ValueError("Got 3D data.")
+        raise ValueError("Got data in higher than two dimensions.")
+    
+    # return
     return np.stack(arrays = padded)
 
-
-def get_mask(data):
-    max_seq_len = max(len(sample) for sample in data)
-    mask = torch.zeros(size = (len(data), max_seq_len), dtype = torch.bool)
-    for i, seq in enumerate(data):
-        mask[i, : len(seq)] = 1
-    return mask
+# masking function
+def get_mask(data: np.array) -> np.array:
+    max_sequence_len = max(len(sample) for sample in data) # get the maximum sequence length
+    mask = torch.zeros(size = (data.shape[0], max_sequence_len), dtype = torch.bool) # instantiate mask
+    for i, sequence in enumerate(data):
+        mask[i, :len(sequence)] = 1 # mask values
+    return mask # return the mask
 
 ##################################################
 
@@ -69,23 +69,14 @@ class MusicDataset(Dataset):
     # CONSTRUCTOR
     ##################################################
 
-    def __init__(self,
-        filename,
-        data_dir,
-        encoding,
-        max_seq_len = None,
-        max_beat = None,
-        use_csv = False,
-        use_augmentation = False,
-    ):
+    def __init__(self, filename: str, data_dir: str, encoding: dict, max_sequence_len: int = None, max_beat: int = None, use_augmentation: bool = False):
         super().__init__()
-        self.data_dir = pathlib.Path(data_dir)
+        self.data_dir = data_dir
         with open(filename) as f:
-            self.names = [line.strip() for line in f if line]
+            self.paths = [line.strip() for line in f if line]
         self.encoding = encoding
-        self.max_seq_len = max_seq_len
+        self.max_sequence_len = max_sequence_len
         self.max_beat = max_beat
-        self.use_csv = use_csv
         self.use_augmentation = use_augmentation
 
     ##################################################
@@ -94,63 +85,61 @@ class MusicDataset(Dataset):
     ##################################################
 
     def __len__(self):
-        return len(self.names)
+        return len(self.paths)
     
     ##################################################
 
     # GET ITEM
     ##################################################
 
-    def __getitem__(self, idx):
+    def __getitem__(self, index: int):
+
         # Get the name
-        name = self.names[idx]
+        path = self.paths[index]
 
-        # Load data
-        if self.use_csv:
-            notes = utils.load_csv(self.data_dir / f"{name}.csv")
-        else:
-            notes = np.load(self.data_dir / f"{name}.npy")
+        # load data
+        data = np.load(file = path, allow_pickle = True)
 
-        # Check the shape of the loaded notes
-        assert notes.shape[1] == 5
+        # get number of beats
+        n_beats = data[-1, representation.DIMENSIONS.index("beat")] + 1
+        beat_column = representation.DIMENSIONS.index("beat")
 
-        # Data augmentation
+        # data augmentation
         if self.use_augmentation:
-            # Shift all the pitches for k semitones (k~Uniform(-5, 6))
-            pitch_shift = np.random.randint(-5, 7)
-            notes[:, 2] = np.clip(notes[:, 2] + pitch_shift, 0, 127)
 
-            # Randomly select a starting beat
-            n_beats = notes[-1, 0] + 1
-            if n_beats > self.max_beat:
+            # shift all the pitches for k semitones (k~Uniform(-5, 6))
+            pitch_shift = np.random.randint(low = -5, high = 7)
+            value_column = representation.DIMENSIONS.index("value")
+            data[:, value_column] = [np.clip(a = data[i, value_column] + (pitch_shift if (data[i, representation.DIMENSIONS.index("type")] in ("note", "grace-note")) else 0), a_min = 0, a_max = 127) for i in range(data.shape[0])] # apply pitch shift to pitches only
+            del value_column, pitch_shift
+
+            # randomly select a starting beat
+            if n_beats > self.max_beat: # make sure sequence isn't too long
                 trial = 0
-                # Avoid section with too few notes
-                while trial < 10:
-                    start_beat = np.random.randint(n_beats - self.max_beat)
-                    end_beat = start_beat + self.max_beat
-                    sliced_notes = notes[
-                        (notes[:, 0] >= start_beat) & (notes[:, 0] < end_beat)
-                    ]
-                    if len(sliced_notes) > 10:
+                while trial < 10: # avoid section with too few notes
+                    start_beat = np.random.randint(n_beats - self.max_beat) # randomly generate a start beat
+                    end_beat = start_beat + self.max_beat # get end beat from start_beat
+                    data_slice = data[(data[:, beat_column] >= start_beat) & (data[:, beat_column] < end_beat)]
+                    if len(data_slice) > 10: # get a sufficiently large slice of values
                         break
-                    trial += 1
-                sliced_notes[:, 0] = sliced_notes[:, 0] - start_beat
-                notes = sliced_notes
+                    trial += 1 # iterate trial
+                data_slice[:, beat_column] = data_slice[:, beat_column] - start_beat # make sure slice beats start at 0
+                data = data_slice
+                del data_slice
 
-        # Trim sequence to max_beat
+        # trim sequence to max_beat
         elif self.max_beat is not None:
-            n_beats = notes[-1, 0] + 1
             if n_beats > self.max_beat:
-                notes = notes[notes[:, 0] < self.max_beat]
+                data = data[data[:, beat_column] < self.max_beat]
+        
+        # encode the data
+        sequence = representation.encode(data = data, encoding = self.encoding, conditioning = self.conditioning, sigma = self.sigma)
 
-        # Encode the notes
-        seq = representation.encode_notes(notes, self.encoding)
+        # trim sequence to max_sequence_len
+        if self.max_sequence_len is not None and len(sequence) > self.max_sequence_len:
+            sequence = np.delete(arr = sequence, obj = range(self.max_sequence_len - 1, sequence.shape[0] - 1), axis = 0)
 
-        # Trim sequence to max_seq_len
-        if self.max_seq_len is not None and len(seq) > self.max_seq_len:
-            seq = np.concatenate((seq[: self.max_seq_len - 1], seq[-1:]))
-
-        return {"name": name, "seq": seq}
+        return {"name": path, "seq": sequence}
 
     ##################################################
 
@@ -158,13 +147,13 @@ class MusicDataset(Dataset):
     ##################################################
 
     @classmethod
-    def collate(cls, data):
-        seq = [sample["seq"] for sample in data]
+    def collate(cls, data: List[dict]):
+        sequence = [sample["seq"] for sample in data]
         return {
             "name": [sample["name"] for sample in data],
-            "seq": torch.tensor(pad(seq), dtype=torch.long),
-            "seq_len": torch.tensor([len(s) for s in seq], dtype=torch.long),
-            "mask": get_mask(seq),
+            "seq": torch.tensor(pad(data = sequence), dtype = torch.long),
+            "seq_len": torch.tensor([len(s) for s in sequence], dtype = torch.long),
+            "mask": get_mask(data = sequence),
         }
 
     ##################################################
@@ -176,7 +165,6 @@ class MusicDataset(Dataset):
 # PARSE ARGUMENTS
 ##################################################
 
-@utils.resolve_paths
 def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser()
@@ -191,48 +179,49 @@ def parse_args(args = None, namespace = None):
 
 if __name__ == "__main__":
 
-    # Parse the command-line arguments
+    # CONSTANTS
+    ##################################################
+
     args = parse_args()
 
     # Set default arguments
     if args.dataset is not None:
         if args.names is None:
-            args.names = pathlib.Path(
-                f"data/{args.dataset}/processed/names.txt"
-            )
+            args.names = f"data/{args.dataset}/processed/names.txt"
         if args.in_dir is None:
-            args.in_dir = pathlib.Path(f"data/{args.dataset}/processed/notes")
+            args.in_dir = f"data/{args.dataset}/processed/notes"
     if args.jobs is None:
         args.jobs = min(args.batch_size, 8)
 
     # Set up the logger
-    logging.basicConfig(
-        stream=sys.stdout,
-        level=logging.ERROR if args.quiet else logging.INFO,
-        format="%(message)s",
-    )
+    logging.basicConfig(stream = sys.stdout, level = logging.ERROR if args.quiet else logging.INFO, format = "%(message)s")
 
-    # Log arguments
-    logging.info(f"Using arguments:\n{pprint.pformat(vars(args))}")
+    ##################################################
 
-    # Load the encoding
-    encoding = representation.load_encoding(args.in_dir / "encoding.json")
+
+    # LOAD UP DATA
+    ##################################################
+    
+    encoding = representation.load_encoding(filename = args.in_dir / "encoding.json")
 
     # Create the dataset and data loader
     dataset = MusicDataset(
         args.names,
         args.in_dir,
         encoding=encoding,
-        max_seq_len=args.max_seq_len,
+        max_sequence_len=args.max_sequence_len,
         max_beat=args.max_beat,
         use_csv=args.use_csv,
         use_augmentation=args.aug,
     )
-    data_loader = torch.utils.data.DataLoader(
-        dataset, args.batch_size, True, collate_fn=MusicDataset.collate
-    )
+    data_loader = torch.utils.data.DataLoader(dataset, args.batch_size, True, collate_fn = MusicDataset.collate)
 
-    # Iterate over the loader
+    ##################################################
+
+
+    # TEST DATALOADER
+    ##################################################
+
     n_batches = 0
     n_samples = 0
     seq_lens = []
@@ -247,14 +236,18 @@ if __name__ == "__main__":
                     continue
                 logging.info(f"Shape of {key}: {value.shape}")
             logging.info(f"Name: {batch['name'][0]}")
-    logging.info(
-        f"Successfully loaded {n_batches} batches ({n_samples} samples)."
-    )
+    logging.info(f"Successfully loaded {n_batches} batches ({n_samples} samples).")
+    ##################################################
 
-    # Log sequence length statistics
+
+    # STATISTICS
+    ##################################################
+
     logging.info(f"Avg sequence length: {np.mean(seq_lens):2f}")
     logging.info(f"Min sequence length: {min(seq_lens)}")
     logging.info(f"Max sequence length: {max(seq_lens)}")
+
+    ##################################################
 
 
 ##################################################

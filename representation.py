@@ -661,7 +661,7 @@ def load_encoding(filename: str) -> dict:
 #     return np.array(notes)
 
 
-def encode(path: str, encoding: dict, conditioning: str = DEFAULT_CONDITIONING, sigma: float = 5.0) -> np.array:
+def encode(data: np.array, encoding: dict, conditioning: str = DEFAULT_CONDITIONING, sigma: float = 5.0) -> np.array:
     """Encode a note sequence into a sequence of codes.
     Each row of the input is a note specified as follows.
         (beat, position, value, duration, program)
@@ -672,7 +672,7 @@ def encode(path: str, encoding: dict, conditioning: str = DEFAULT_CONDITIONING, 
     # LOAD IN DATA
 
     # load in npy file from path parameter
-    data = np.load(file = path, allow_pickle = True)
+    # data = np.load(file = path, allow_pickle = True)
 
     # get variables
     max_beat = encoding["max_beat"]
@@ -761,6 +761,8 @@ def encode(path: str, encoding: dict, conditioning: str = DEFAULT_CONDITIONING, 
         codes = np.delete(arr = codes, obj = len(codes) - 1, axis = 0) # remove start of notes row from codes
         del expressive_feature_indicies, expressive_features, notes
     elif conditioning == CONDITIONINGS[2]: # anticipation
+        if sigma is None: # make sure sigma is not none
+            raise ValueError("NoneValue sigma argument provided for anticipation conditioning. Please provide a real number.")
         core_codes_with_seconds = np.concatenate((core_codes, data[:, data.shape[1] - 1].reshape(data.shape[0], 1)), axis = 1) # add seconds column
         seconds_column = core_codes_with_seconds.shape[1] - 1 # get the index of the seconds column
         for i in range(core_codes_with_seconds.shape[0]): # iterate through core_codes_with_seconds

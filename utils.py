@@ -47,7 +47,7 @@ def save_args(filename, args):
             args_dict[key] = str(value)
         else:
             args_dict[key] = value
-    save_json(filename, args_dict)
+    save_json(filename = filename, data = args_dict)
 
 
 def save_txt(filename, data):
@@ -66,23 +66,24 @@ def load_txt(filename):
 def save_json(filename, data):
     """Save data as a JSON file."""
     with open(filename, "w", encoding = "utf8") as f:
-        json.dump(data, f)
+        json.dump(obj = data, fp = f)
 
 
 def load_json(filename):
     """Load data from a JSON file."""
     with open(filename, encoding = "utf8") as f:
-        return json.load(f)
+        return json.load(fp = f)
 
 
 def save_csv(filename, data, header = ""):
     """Save data as a CSV file."""
-    np.savetxt(filename, data, fmt = "%d", delimiter = ",", header = header, comments = "")
+    np.savetxt(fname = filename, X = data, fmt = "%d", delimiter = ",", header = header, comments = "")
 
 
 def load_csv(filename, skiprows = 1):
     """Load data from a CSV file."""
-    return np.loadtxt(filename, dtype = int, delimiter = ",", skiprows = skiprows)
+    return np.loadtxt(fname = filename, dtype = int, delimiter = ",", skiprows = skiprows)
+
 ##################################################
 
 
@@ -99,17 +100,6 @@ def ignore_exceptions(func):
                 return func(*args, **kwargs)
             except Exception:
                 return None
-    return inner
-
-
-def resolve_paths(func):
-    """Decorator that resolves all paths."""
-    def inner(*args, **kwargs):
-        parsed = func(*args, **kwargs)
-        for key in vars(parsed).keys():
-            if isinstance(getattr(parsed, key), pathlib.Path):
-                setattr(parsed, key, getattr(parsed, key).expanduser().resolve())
-        return parsed
     return inner
 
 ##################################################
