@@ -22,6 +22,7 @@ import logging
 from tqdm import tqdm
 from time import strftime, gmtime
 from read_mscz.music import DIVIDE_BY_ZERO_CONSTANT
+from utils import rep
 
 ##################################################
 
@@ -160,7 +161,7 @@ def _group_by_copyright(df, label):
     df = df.groupby(by = "is_public_domain").size() # sum over each version
     df = df.reset_index().rename(columns = {0: "count"}) # make error type into column
     df["percent"] = 100 * df["count"] / df["count"].sum() # calculate percentage
-    df["type"] = [public_domain_labels_mapping.index(label)] * len(df)
+    df["type"] = rep(x = public_domain_labels_mapping.index(label), times = len(df))
     return df[["is_public_domain", "count", "percent", "type"]] # select only subset of columns
 
 def _make_pd_bar_chart(axes: plt.Axes, df: pd.DataFrame, col: str):
@@ -239,7 +240,7 @@ def make_percentile_plot(output_filepath: str):
         legend_values[2]: percentile(a = data_by["path"][data_by["path"]["is_valid"]]["n_expressive_features"], q = percentiles),
         legend_values[3]: percentile(a = data_by["path"][data_by["path"]["is_valid"] & data_by["path"]["is_public_domain"]]["n_expressive_features"], q = percentiles)
         }
-    df = pd.concat(objs = [pd.DataFrame(data = {"type": [legend_value] * len(percentiles), "percentile": percentiles, "log": log10(percentile_values[legend_value] + DIVIDE_BY_ZERO_CONSTANT)}) for legend_value in legend_values], axis = 0)
+    df = pd.concat(objs = [pd.DataFrame(data = {"type": rep(x = legend_value, times = len(percentiles)), "percentile": percentiles, "log": log10(percentile_values[legend_value] + DIVIDE_BY_ZERO_CONSTANT)}) for legend_value in legend_values], axis = 0)
 
     # create figure
     fig, axes = plt.subplot_mosaic(mosaic = [["log",]], constrained_layout = True, figsize = (8, 8))
@@ -357,7 +358,7 @@ if __name__ == "__main__":
         tracks_per_path = data_by["path"][["path", "size"]].merge(right = total_expressive_features_per_path, on = "path", how = "inner").merge(right = data.drop_duplicates(subset = "path").reset_index(drop = True)[["path", "expressive_features"]], on = "path", how = "left")
 
         # add n_expressive_features column
-        data_by["path"]["n_expressive_features"] = [0,] * len(data_by["path"])
+        data_by["path"]["n_expressive_features"] = rep(x = 0, times = len(data_by["path"]))
 
         # helper function for multiprocessing
         def extract_annotations_per_path(i: int):

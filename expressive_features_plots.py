@@ -23,6 +23,7 @@ import argparse
 import logging
 from parse_mscz_plots import OUTPUT_DIR, OUTPUT_RESOLUTION_DPI
 from read_mscz.music import DIVIDE_BY_ZERO_CONSTANT
+from utils import rep
 
 ##################################################
 
@@ -118,7 +119,7 @@ def extract_information(path: str) -> tuple:
 
     feature_types_summary = expressive_features[["type", "feature"]].groupby(by = "type").size() # group by type
     feature_types_summary = feature_types_summary.reset_index().rename(columns = {0: "count"}) # rename columns
-    feature_types_summary["path"] = [path] * len(feature_types_summary)
+    feature_types_summary["path"] = rep(x = path, times = len(feature_types_summary))
     feature_types_summary = feature_types_summary[FEATURE_TYPES_SUMMARY_COLUMNS]
     feature_types_summary.to_csv(path_or_buf = PLOT_DATA_OUTPUT_FILEPATHS[list(PLOT_DATA_OUTPUT_FILEPATHS.keys())[1]], sep = ",", na_rep = "NA", header = False, index = False, mode = "a")
 
@@ -134,7 +135,7 @@ def extract_information(path: str) -> tuple:
     # add some columns, set up for calculation of distance
     sparsity = expressive_features[["type", "feature", "time", "time_seconds"]]
     sparsity = sparsity.rename(columns = {"time": "time_steps", "time_seconds": "seconds"})
-    sparsity["path"] = [path] * len(sparsity)
+    sparsity["path"] = rep(x = path, times = len(sparsity))
     sparsity["beats"] = sparsity["time_steps"] / unpickled["resolution"]
     sparsity["fraction"] = sparsity["time_steps"] / (unpickled["track_length"]["time_steps"] + DIVIDE_BY_ZERO_CONSTANT)
     for successive_distance_column, distance_column in zip(successive_distance_columns, distance_columns): # add successive times columns
@@ -146,7 +147,7 @@ def extract_information(path: str) -> tuple:
         df = df.sort_values(columns[0]) # sort values
         df_values = df[columns] # store values of columns
         for column in columns: # for every column in columns
-            df[column] = [np.nan] * len(df) # set columns' values to None
+            df[column] = rep(x = np.nan, times = len(df)) # set columns' values to None
         df_indicies = df.index
         for i in range(len(df_indicies) - 1): # loop through entries
             for column in columns: # calculate for each column
@@ -294,7 +295,7 @@ def make_sparsity_plot(output_filepath_prefix: str, expressive_feature_types: li
             df = df[~pd.isna(df[columns[0]])] # filter out NA values
             df = df[["path"] + columns] # filter down to only necessary columns
             out_columns = [column.replace(SPARSITY_SUCCESSIVE_SUFFIX, "") for column in columns] # get rid of suffix if necessary
-            out = dict(zip(plot_types, [pd.DataFrame(columns = out_columns)] * len(plot_types))) # create output dataframe
+            out = dict(zip(plot_types, rep(x = pd.DataFrame(columns = out_columns), times = len(plot_types)))) # create output dataframe
             for plot_type in plot_types:
                 if plot_type == "mean":
                     df_temp = df.groupby(by = "path").mean()
@@ -331,7 +332,7 @@ def make_sparsity_plot(output_filepath_prefix: str, expressive_feature_types: li
     n_col = 5
     plot_mosaic = [expressive_feature_types[i:i + n_col] for i in range(0, len(expressive_feature_types), n_col)] # create plot grid
     if len(plot_mosaic[-1]) < len(plot_mosaic[-2]):
-        plot_mosaic[-1] += ["legend"] * (len(plot_mosaic[-2]) - len(plot_mosaic[-1]))
+        plot_mosaic[-1] += rep(x = "legend", times = (len(plot_mosaic[-2]) - len(plot_mosaic[-1])))
     is_bottom_plot = lambda expressive_feature_type: expressive_feature_types.index(expressive_feature_type) >= len(expressive_feature_types) - n_col
     fig, axes = plt.subplot_mosaic(mosaic = plot_mosaic, constrained_layout = True, figsize = (24, 16))
     fig.suptitle("Sparsity of Expressive Features", fontweight = "bold")
@@ -382,7 +383,7 @@ def make_sparsity_plot(output_filepath_prefix: str, expressive_feature_types: li
         if use_twin_axis_histogram:
             histogram_right_axis = axes[expressive_feature_type].twinx() # create twin x
         histogram_values = sparsity[["path"] + relevant_time_units] if expressive_feature_type == all_features_type_name else sparsity[sparsity["type"] == expressive_feature_type][["path"] + relevant_time_units_suffix].rename(columns = dict(zip(relevant_time_units_suffix, relevant_time_units))) # get subset of sparsity
-        histogram_values_current = dict(zip(relevant_time_units, [dict(zip(plot_types, [[],] * len(plot_types)))] * len(relevant_time_units)))
+        histogram_values_current = dict(zip(relevant_time_units, rep(x = dict(zip(plot_types, rep(x = [], times = len(plot_types)))), times = len(relevant_time_units))))
         for i, plot_type in enumerate(plot_types): # plot lines
             histogram_values_current_current = histogram_values
             if plot_type == "mean":

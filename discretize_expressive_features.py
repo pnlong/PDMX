@@ -21,6 +21,7 @@ import argparse
 import logging
 from re import sub
 from data import clean_up_text as data_text_clean
+from utils import rep
 
 ##################################################
 
@@ -151,7 +152,7 @@ if __name__ == "__main__":
         start_time = perf_counter() # start the timer
         with multiprocessing.Pool(processes = args.jobs) as pool:
             results = pool.starmap(func = extract_information,
-                                   iterable = tqdm(iterable = zip(data["expressive_features"], [temp_output_filepath] * len(data)), desc = "Obtaining Expressive Features", total = len(data)),
+                                   iterable = tqdm(iterable = zip(data["expressive_features"], rep(x = temp_output_filepath, times = len(data))), desc = "Obtaining Expressive Features", total = len(data)),
                                    chunksize = chunk_size)
         end_time = perf_counter() # stop the timer
         total_time = end_time - start_time # compute total time elapsed

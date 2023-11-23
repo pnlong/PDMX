@@ -762,7 +762,7 @@ def encode(data: np.array, encoding: dict, conditioning: str = DEFAULT_CONDITION
         del expressive_feature_indicies, expressive_features, notes
     elif conditioning == CONDITIONINGS[2]: # anticipation
         if sigma is None: # make sure sigma is not none
-            raise ValueError("NoneValue sigma argument provided for anticipation conditioning. Please provide a real number.")
+            raise ValueError("Encountered NoneValue sigma argument for anticipation conditioning. Please provide a real number for sigma.")
         core_codes_with_seconds = np.concatenate((core_codes, data[:, data.shape[1] - 1].reshape(data.shape[0], 1)), axis = 1) # add seconds column
         seconds_column = core_codes_with_seconds.shape[1] - 1 # get the index of the seconds column
         for i in range(core_codes_with_seconds.shape[0]): # iterate through core_codes_with_seconds

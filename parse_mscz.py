@@ -23,6 +23,7 @@ import json
 import pickle
 from read_mscz.read_mscz import read_musescore, get_musescore_version
 from read_mscz.classes import *
+from utils import rep, write_to_file
 ##################################################
 
 
@@ -32,6 +33,7 @@ OUTPUT_DIR = "/data2/pnlong/musescore/expressive_features"
 FILE_OUTPUT_DIR = "/data2/pnlong/musescore"
 EXPRESSIVE_FEATURE_COLUMNS = ("time", "measure", "duration", "type", "feature", "comment")
 OUTPUT_COLUMNS = ("path", "track", "expressive_features", "metadata", "version", "is_public_domain", "is_valid", "n_expressive_features")
+ERROR_COLUMNS = ("path", "error_type", "error_message")
 NA_STRING = "NA"
 N_EXPRESSIVE_FEATURES_TO_STORE_THRESHOLD = 2
 ##################################################
@@ -54,13 +56,6 @@ def parse_args(args = None, namespace = None):
 # HELPER FUNCTIONS
 ##################################################
 
-# implementation of R's rep function
-def rep(x: object, times: int, flatten: bool = False):
-    l = [x] * times
-    if flatten:
-        l = sum(l, [])
-    return l
-
 # make sure text is ok
 def check_text(text: str):
     if text:
@@ -78,23 +73,6 @@ def initialize_empty_lists(length: int) -> tuple:
     features = rep(x = None, times = length)
     comments = rep(x = None, times = length)
     return (times, measures, types, durations, features, comments)
-
-# create a csv row
-def create_csv_row(info: list, sep: str = ",") -> str:
-    return sep.join((str(item) if item != None else NA_STRING for item in info)) + "\n"
-
-# write a list to a file
-def write_to_file(info: list, output_filepath: str, columns: list = None):
-        
-        # write columns if the file is new
-        if not exists(output_filepath) and columns is not None: # write columns if they are not there yet
-            with open(output_filepath, "w") as output:
-                output.write(create_csv_row(info = columns))
-
-        # open connection to file
-        with open(output_filepath, "a") as output:
-            # write info
-            output.write(create_csv_row(info = info))
 
 ##################################################
 
@@ -389,9 +367,9 @@ def extract_expressive_features(path: str, path_output_prefix: str):
         else:
             error_type = "other"
         # output error message to file
-        write_to_file(info = (path, error_type, error_message.replace(",", "")), output_filepath = ERROR_MESSAGE_OUTPUT_FILEPATH, columns = ("path", "error_type", "error_message"))
+        write_to_file(info = dict(zip(ERROR_COLUMNS, (path, error_type, error_message.replace(",", "")))), output_filepath = ERROR_MESSAGE_OUTPUT_FILEPATH, columns = ERROR_COLUMNS)
         # write mapping
-        write_to_file(info = (path, None, None, metadata_path, version, is_public_domain, False, None), output_filepath = MAPPING_OUTPUT_FILEPATH, columns = OUTPUT_COLUMNS)
+        write_to_file(info = dict(zip(OUTPUT_COLUMNS, (path, None, None, metadata_path, version, is_public_domain, False, None))), output_filepath = MAPPING_OUTPUT_FILEPATH, columns = OUTPUT_COLUMNS)
 
         return None # exit here
 
@@ -475,7 +453,7 @@ def extract_expressive_features(path: str, path_output_prefix: str):
             path_output = None # because we didn't write this file
 
         # write mapping
-        write_to_file(info = (path, i, path_output, metadata_path, version, is_public_domain, True, len(expressive_features)), output_filepath = MAPPING_OUTPUT_FILEPATH, columns = OUTPUT_COLUMNS)
+        write_to_file(info = dict(zip(OUTPUT_COLUMNS, (path, i, path_output, metadata_path, version, is_public_domain, True, len(expressive_features)))), output_filepath = MAPPING_OUTPUT_FILEPATH, columns = OUTPUT_COLUMNS)
 
         ##################################################
 
@@ -486,7 +464,7 @@ def extract_expressive_features(path: str, path_output_prefix: str):
     end_time = perf_counter()
     total_time = end_time - start_time
 
-    write_to_file(info = (total_time,), output_filepath = TIMING_OUTPUT_FILEPATH)
+    write_to_file(info = {"time": total_time}, output_filepath = TIMING_OUTPUT_FILEPATH)
 
     ##################################################
 

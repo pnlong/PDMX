@@ -28,6 +28,7 @@ from representation import DIMENSIONS
 from read_mscz.read_mscz import read_musescore, get_musescore_version
 from read_mscz.classes import *
 from read_mscz.music import BetterMusic
+from utils import rep, split_camel_case, write_to_file
 
 ##################################################
 
@@ -39,7 +40,6 @@ OUTPUT_DIR = "/data2/pnlong/musescore/data"
 FILE_OUTPUT_DIR = "/data2/pnlong/musescore"
 MSCZ_FILEPATHS = f"{FILE_OUTPUT_DIR}/relevant_mscz_files.txt"
 OUTPUT_COLUMNS = ("path", "musescore", "track", "metadata", "version", "n")
-NA_STRING = "NA"
 
 ##################################################
 
@@ -63,36 +63,10 @@ def parse_args(args = None, namespace = None):
 # HELPER FUNCTIONS
 ##################################################
 
-# implementation of R's rep function
-def rep(x: object, times: int, flatten: bool = False):
-    l = [x] * times
-    if flatten:
-        l = sum(l, [])
-    return l
-
 # make sure text is ok
 def check_text(text: str):
     if text is not None:
         return sub(pattern = ": ", repl = ":", string = sub(pattern = ", ", repl = ",", string = " ".join(text.split()))).strip()
-    return None
-
-# convert camel case to words
-def split_camel_case(string: str, sep: str = "-"):
-    splitter = "_"
-    if string is not None:
-        string = [*string] # convert string to list of characters
-        currently_in_digit = False # boolean flag for dealing with numbers
-        for i, character in enumerate(string):
-            if not character.isdigit() and currently_in_digit: # update whether we are inside of digit
-                currently_in_digit = False
-            if character.isupper():
-                string[i] = splitter + character
-            elif character.isdigit() and not currently_in_digit:
-                string[i] = splitter + character
-                currently_in_digit = True
-        words = "".join(string).split(splitter) # convert to list of words
-        words = filter(lambda word: word != "", words) # filter out empty words
-        return sep.join(words).lower() # join into one string
     return None
 
 # clean up text objects
@@ -103,28 +77,6 @@ def clean_up_text(text: str):
         text = sub(pattern = "[^\w-]", repl = "", string = text) # extract alphanumeric
         return text.lower() # convert to lower case
     return None
-
-# create a csv row
-def create_csv_row(info: list, sep: str = ",") -> str:
-    return sep.join((str(item) if item != None else NA_STRING for item in info)) + "\n"
-
-# write a list to a file
-def write_to_file(info: dict, output_filepath: str, columns: list = None):
-        
-    # if there are provided columns
-    if columns is not None:
-
-        # reorder columns if possible
-        info = {column: info[column] for column in columns}
-
-        # write columns if they are not there yet
-        if not exists(output_filepath):
-            with open(output_filepath, "w") as output:
-                output.write(create_csv_row(info = columns))
-
-    # write info
-    with open(output_filepath, "a") as output:
-        output.write(create_csv_row(info = list(info.values())))
 
 ##################################################
 
