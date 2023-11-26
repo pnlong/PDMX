@@ -44,7 +44,7 @@ N_EXPRESSIVE_FEATURES_TO_STORE_THRESHOLD = 2
 
 def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
-    parser = argparse.ArgumentParser(description = "Extract expressive features from MuseScore files")
+    parser = argparse.ArgumentParser(prog = "Parse MuseScore", description = "Extract expressive features from MuseScore files.")
     parser.add_argument("-o", "--output_dir", type = str, default = OUTPUT_DIR, help = "Output directory")
     parser.add_argument("-f", "--file_output_dir", type = str, default = FILE_OUTPUT_DIR, help = "Directory to output any data tables")
     parser.add_argument("-j", "--jobs", type = int, default = int(multiprocessing.cpu_count() / 4), help = "Number of Jobs")

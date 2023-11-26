@@ -36,6 +36,7 @@ def inverse_dict(d):
 
 # implementation of R's rep function
 def rep(x: object, times: int, flatten: bool = False):
+    """An implementation of R's rep() function."""
     l = [x] * times
     if flatten:
         l = sum(l, [])
@@ -49,6 +50,7 @@ def rep(x: object, times: int, flatten: bool = False):
 
 # convert camel case to words
 def split_camel_case(string: str, sep: str = "-"):
+    """Split a camelCase string."""
     splitter = "_"
     if string is not None:
         string = [*string] # convert string to list of characters
@@ -120,11 +122,12 @@ def load_csv(filename: str, skiprows: int = 1):
 
 # create a csv row
 def create_csv_row(info: list, sep: str = ",") -> str:
+    """Create a csv row from a list."""
     return sep.join((str(item) if item != None else NA_STRING for item in info)) + "\n"
 
 # write a list to a file
 def write_to_file(info: dict, output_filepath: str, columns: list = None):
-        
+    """Write a dictionary (representing a row of data) to a file."""
     # if there are provided columns
     if columns is not None:
 

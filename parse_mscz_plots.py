@@ -45,7 +45,7 @@ LINE_COLORS = ("tab:blue", "tab:red", "tab:green", "tab:orange")
 
 def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
-    parser = argparse.ArgumentParser(description = "Make plots describing MuseScore dataset")
+    parser = argparse.ArgumentParser(prog = "Parse MuseScore Figures", description = "Make plots describing MuseScore dataset.")
     parser.add_argument("-i", "--input_dir", type = str, default = INPUT_DIR, help = "Directory that contains all data tables to be summarized (or where they will be created)")
     parser.add_argument("-o", "--output_dir", type = str, default = OUTPUT_DIR, help = "Output directory")
     parser.add_argument("-j", "--jobs", type = int, default = int(multiprocessing.cpu_count() / 4), help = "Number of Jobs")

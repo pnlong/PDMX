@@ -63,7 +63,7 @@ class Tempo(muspy.classes.Tempo):
     ----------
     time : int
         Start time of the tempo, in time steps.
-    measure : int
+    measure : int, optional, default: None
         Measure number where this element is found.
     qpm : float
         Tempo in qpm (quarters per minute).
@@ -73,8 +73,9 @@ class Tempo(muspy.classes.Tempo):
     """
 
     _attributes = OrderedDict([("time", int), ("measure", int), ("qpm", (float, int)), ("text", str)])
+    _optional_attributes = ["measure"]
 
-    def __init__(self, time: int, measure: int, qpm: float, text: str = None):
+    def __init__(self, time: int, qpm: float, text: str = None, measure: int = None):
         super().__init__(time = time, qpm = qpm)
         self.measure = measure
         self.text = text
@@ -87,7 +88,7 @@ class KeySignature(muspy.classes.KeySignature):
     ----------
     time : int
         Start time of the key signature, in time steps.
-    measure : int
+    measure : int, optional, default: None
         Measure number where this element is found.
     root : int, optional
         Root (tonic) of the key signature.
@@ -107,9 +108,9 @@ class KeySignature(muspy.classes.KeySignature):
     """
 
     _attributes = OrderedDict([("time", int), ("measure", int), ("root", int), ("mode", str), ("fifths", int), ("root_str", str)])
-    _optional_attributes = ["root", "mode", "fifths", "root_str"]
+    _optional_attributes = ["root", "mode", "fifths", "root_str", "measure"]
 
-    def __init__(self, time: int, measure: int, root: int = None, mode: str = None, fifths: int = None, root_str: str = None):
+    def __init__(self, time: int, root: int = None, mode: str = None, fifths: int = None, root_str: str = None, measure: int = None):
         super().__init__(time = time, root = root, mode = mode, fifths = fifths, root_str = root_str)
         self.measure = measure
 
@@ -121,7 +122,7 @@ class TimeSignature(muspy.classes.TimeSignature):
     ----------
     time : int
         Start time of the time signature, in time steps.
-    measure : int
+    measure : int, optional, default: None
         Measure number where this element is found.
     numerator : int
         Numerator of the time signature.
@@ -131,8 +132,9 @@ class TimeSignature(muspy.classes.TimeSignature):
     """
 
     _attributes = OrderedDict([("time", int), ("measure", int), ("numerator", int), ("denominator", int)])
+    _optional_attributes = ["measure"]
 
-    def __init__(self, time: int, measure: int, numerator: int, denominator: int):
+    def __init__(self, time: int, numerator: int = 4, denominator: int = 4, measure: int = None):
         super().__init__(time = time, numerator = numerator, denominator = denominator)
         self.measure = measure
 
@@ -144,7 +146,7 @@ class Beat(muspy.classes.Beat):
     ----------
     time : int
         Time of the beat, in time steps.
-    measure : int
+    measure : int, optional, default: None
         Measure number where this element is found.
     is_downbeat : bool, optional, default: False
         Is this beat a downbeat?
@@ -152,9 +154,9 @@ class Beat(muspy.classes.Beat):
     """
 
     _attributes = OrderedDict([("time", int), ("measure", int), ("is_downbeat", bool)])
-    _optional_attributes = ["is_downbeat"]
+    _optional_attributes = ["is_downbeat", "measure"]
 
-    def __init__(self, time: int, measure: int, is_downbeat: bool = False):
+    def __init__(self, time: int, is_downbeat: bool = False, measure: int = None):
         super().__init__(time = time)
         self.measure = measure
         self.is_downbeat = is_downbeat
@@ -167,7 +169,7 @@ class Barline(muspy.classes.Barline):
     ----------
     time : int
         Time of the barline, in time steps.
-    measure : int
+    measure : int, optional, default: None
         Measure number where this element is found.
     subtype : str, optional, default: 'single'
         Type of barline (double, dashed, etc.)
@@ -175,8 +177,9 @@ class Barline(muspy.classes.Barline):
     """
 
     _attributes = OrderedDict([("time", int), ("measure", int), ("subtype", str)])
+    _optional_attributes = ["measure"]
 
-    def __init__(self, time: int, measure: int, subtype: str = "single"):
+    def __init__(self, time: int, subtype: str = "single", measure: int = None):
         super().__init__(time = time)
         self.measure = measure
         self.subtype = subtype if (subtype is not None) else "single"
@@ -189,7 +192,7 @@ class Lyric(muspy.classes.Lyric):
     ----------
     time : int
         Start time of the lyric, in time steps.
-    measure : int
+    measure : int, optional, default: None
         Measure number where this element is found.
     lyric : str
         Lyric (sentence, word, syllable, etc.).
@@ -197,8 +200,9 @@ class Lyric(muspy.classes.Lyric):
     """
 
     _attributes = OrderedDict([("time", int), ("measure", int), ("lyric", str)])
+    _optional_attributes = ["measure"]
 
-    def __init__(self, time: int, measure: int, lyric: str):
+    def __init__(self, time: int, lyric: str, measure: int = None):
         super().__init__(time = time, lyric = lyric)
         self.measure = measure
 
@@ -210,7 +214,7 @@ class Annotation(muspy.classes.Annotation):
     ----------
     time : int
         Start time of the annotation, in time steps.
-    measure : int
+    measure : int, optional, default: None
         Measure number where this element is found.
     annotation : any
         Annotation of any type.
@@ -220,9 +224,9 @@ class Annotation(muspy.classes.Annotation):
     """
 
     _attributes = OrderedDict([("time", int), ("measure", int), ("annotation", object), ("group", str)])
-    _optional_attributes = ["group"]
+    _optional_attributes = ["measure", "group"]
 
-    def __init__(self, time: int, measure: int, annotation: Any, group: str = None):
+    def __init__(self, time: int, annotation: Any, measure: int = None, group: str = None):
         super().__init__(time = time, annotation = annotation, group = group)
         self.measure = measure
 
@@ -234,7 +238,7 @@ class Note(muspy.classes.Note):
     ----------
     time : int
         Start time of the note, in time steps.
-    measure : int
+    measure : int, optional, default: None
         Measure number where this element is found.
     pitch : int
         Note pitch, as a MIDI note number. Valid values are 0 to 127.
@@ -250,9 +254,9 @@ class Note(muspy.classes.Note):
     """
 
     _attributes = OrderedDict([("time", int), ("measure", int), ("pitch", int), ("duration", int), ("velocity", int), ("pitch_str", str), ("is_grace", bool)])
-    _optional_attributes = ["velocity", "pitch_str", "is_grace"]
+    _optional_attributes = ["velocity", "pitch_str", "is_grace", "measure"]
 
-    def __init__(self, time: int, measure: int, pitch: int, duration: int, velocity: int = None, pitch_str: str = None, is_grace: bool = False):
+    def __init__(self, time: int, pitch: int, duration: int, velocity: int = None, pitch_str: str = None, is_grace: bool = False, measure: int = None):
         super().__init__(time = time, pitch = pitch, duration = duration, velocity = velocity, pitch_str = pitch_str)
         self.measure = measure
         self.is_grace = is_grace
@@ -265,7 +269,7 @@ class Chord(muspy.classes.Chord):
     ----------
     time : int
         Start time of the chord, in time steps.
-    measure : int
+    measure : int, optional, default: None
         Measure number where this element is found.
     pitches : list of int
         Note pitches, as MIDI note numbers. Valid values are 0 to 127.
@@ -280,9 +284,9 @@ class Chord(muspy.classes.Chord):
     """
 
     _attributes = OrderedDict([("time", int), ("measure", int), ("pitches", int), ("duration", int), ("velocity", int), ("pitches_str", str)])
-    _optional_attributes = ["velocity", "pitches_str"]
+    _optional_attributes = ["velocity", "pitches_str", "measure"]
 
-    def __init__(self, time: int, measure: int, pitches: List[int], duration: int, velocity: int = None, pitches_str: List[int] = None):
+    def __init__(self, time: int, pitches: List[int], duration: int, velocity: int = None, pitches_str: List[int] = None, measure: int = None):
         super().__init__(time = time, pitches = pitches, duration = duration, velocity = velocity, pitches_str = pitches_str)
         self.measure = measure
 
@@ -417,7 +421,7 @@ class TechAnnotation(Text):
     ----------
     text : str
         The text contained in the text element.
-    tech_type : str
+    tech_type : str, optional, default: None
         The type of technical annotation to play.
     is_system : bool, optional, default: False
         Is this text system-wide (True) or just for a specific staff (False)?
@@ -425,8 +429,9 @@ class TechAnnotation(Text):
     """
 
     _attributes = OrderedDict([("text", str), ("tech_type", str), ("is_system", bool)])
+    _optional_attributes = ["tech_type", "is_system"]
 
-    def __init__(self, text: str, tech_type: str, is_system: bool = False):
+    def __init__(self, text: str, tech_type: str = None, is_system: bool = False):
         super().__init__(text = text, is_system = is_system)
         self.tech_type = tech_type
 

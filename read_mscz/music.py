@@ -63,10 +63,12 @@ class BetterMusic(muspy.music.Music):
         Annotations.
     tracks : list of :class:`read_mscz.Track`, default: []
         Music tracks.
+    song_length : int
+        The length of the song (in time steps).
 
     Note
     ----
-    Indexing a Music object returns the track of a certain index. That
+    Indexing a BetterMusic object returns the track of a certain index. That
     is, ``music[idx]`` returns ``music.tracks[idx]``. Length of a Music
     object is the number of tracks. That is, ``len(music)``  returns
     ``len(music.tracks)``.

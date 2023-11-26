@@ -8,15 +8,17 @@
 
 # IMPORTS
 ##################################################
-import pathlib
 import pprint
-
-import muspy
 import numpy as np
+import pandas as pd
 import pretty_midi
+import warnings
+from typing import List
 from re import sub
-
 import utils
+import argparse
+from read_mscz.music import BetterMusic
+from read_mscz.classes import *
 ##################################################
 
 
@@ -26,13 +28,32 @@ import utils
 # configuration
 RESOLUTION = 12
 MAX_BEAT = 1024
-MAX_DURATION = 768  # Remember to modify known durations as well!
+MAX_DURATION = 768  # remember to modify known durations as well!
 
 # encoding
-CONDITIONINGS = ("sort", "prefix", "anticipation") # There are three options for conditioning 
+CONDITIONINGS = ("sort", "prefix", "anticipation") # there are three options for conditioning 
 DEFAULT_CONDITIONING = CONDITIONINGS[0]
 ENCODING_ARRAY_TYPE = np.int64
+SIGMA = 5.0 # for anticipation conditioning
 
+##################################################
+
+
+
+
+
+##################################################
+##################################################
+##################################################
+#
+#   __  __                _              
+#  |  \/  |__ _ _ __ _ __(_)_ _  __ _ ___
+#  | |\/| / _` | '_ \ '_ \ | ' \/ _` (_-<
+#  |_|  |_\__,_| .__/ .__/_|_||_\__, /__/
+#              |_|  |_|         |___/    
+#
+##################################################
+##################################################
 ##################################################
 
 
@@ -104,9 +125,10 @@ TEMPO_QPM_MAP = { # each value is the maximum BPM before we go up a tempo, found
     "prestissimo": 1e10, # some arbitrary large number
 }
 QPM_TEMPO_MAP = utils.inverse_dict(TEMPO_QPM_MAP)
+DEFAULT_QPM = 112
 def QPM_TEMPO_MAPPER(qpm: float):
     if qpm is None: # default if qpm argument is none
-        qpm = 112 # default bpm
+        qpm = DEFAULT_QPM # default bpm
     for bpm in QPM_TEMPO_MAP.keys():
         if qpm <= bpm:
             return QPM_TEMPO_MAP[bpm]
@@ -279,6 +301,7 @@ EXPRESSIVE_FEATURES = {
     #     "symbol",
     # ],
 }
+EXPRESSIVE_FEATURE_TYPE_MAP = {expressive_feature_subtype : expressive_feature_type for expressive_feature_type in tuple(EXPRESSIVE_FEATURES.keys()) for expressive_feature_subtype in EXPRESSIVE_FEATURES[expressive_feature_type]}
 VALUE_CODE_MAP = [None,] + list(range(128)) + sum(list(EXPRESSIVE_FEATURES.values()), [])
 VALUE_CODE_MAP = {VALUE_CODE_MAP[i]: i for i in range(len(VALUE_CODE_MAP))}
 CODE_VALUE_MAP = utils.inverse_dict(VALUE_CODE_MAP)
@@ -593,6 +616,316 @@ N_TOKENS = [
 ##################################################
 
 
+
+
+
+##################################################
+##################################################
+##################################################
+#
+#   ___                 _ _           
+#  | __|_ _  __ ___  __| (_)_ _  __ _ 
+#  | _|| ' \/ _/ _ \/ _` | | ' \/ _` |
+#  |___|_||_\__\___/\__,_|_|_||_\__, |
+#                               |___/ 
+#
+##################################################
+##################################################
+##################################################
+#
+# ['Metadata', 'Tempo', 'KeySignature', 'TimeSignature', 'Beat', 'Barline', 'Lyric', 'Annotation', 'Note', 'Chord', 'Track', 'Text', 'Subtype', 'RehearsalMark', 'TechAnnotation', 'Dynamic', 'Fermata', 'Arpeggio', 'Tremolo', 'ChordLine', 'Ornament', 'Articulation', 'Notehead', 'Symbol', 'Point', 'Bend', 'TremoloBar', 'Spanner', 'SubtypeSpanner', 'TempoSpanner', 'TextSpanner', 'HairPinSpanner', 'SlurSpanner', 'PedalSpanner', 'TrillSpanner', 'VibratoSpanner', 'GlissandoSpanner', 'OttavaSpanner']
+# Explicit objects to scrape:
+#   - Notes >
+#   - Grace Notes (type field) >
+#   - Barlines >
+#   - Time Signatures >
+#   - Key Signatures >
+#   - Tempo, TempoSpanner >
+#   - Text, TextSpanner >
+#   - RehearsalMark >
+#   - Dynamic >
+#   - HairPinSpanner >
+#   - Fermata >
+#   - TechAnnotation >
+#   - Symbol >
+# Implicit objects to scrape:
+#   - Articulation (Total # in some time; 4 horizontally in a row) -- we are looking for articulation chunks! >
+#   - SlurSpanner, higher the tempo, the longer the slur needs to be >
+#   - PedalSpanner, higher the tempo, the longer the slur needs to be >
+# Punting on:
+#   - Notehead
+#   - Arpeggio
+#   - Ornament
+#   - Ottava
+#   - Bend
+#   - TrillSpanner
+#   - VibratoSpanner
+#   - GlissandoSpanner
+#   - Tremolo, TremoloBar
+#   - Vertical Density
+#   - Horizontal Density
+#   - Any Drum Tracks
+
+
+# TEXT CLEANUP FUNCTIONS FOR SCRAPING
+##################################################
+
+# make sure text is ok
+def check_text(text: str):
+    if text is not None:
+        return sub(pattern = ": ", repl = ":", string = sub(pattern = ", ", repl = ",", string = " ".join(text.split()))).strip()
+    return None
+
+# clean up text objects
+def clean_up_text(text: str):
+    if text is not None:
+        text = sub(pattern = "-", repl = " ", string = utils.split_camel_case(string = text)) # get rid of camel case, deal with long spins of dashes
+        text = sub(pattern = " ", repl = "-", string = check_text(text = text)) # replace any whitespace with dashes
+        text = sub(pattern = "[^\w-]", repl = "", string = text) # extract alphanumeric
+        return text.lower() # convert to lower case
+    return None
+
+##################################################
+
+
+# SCRAPE EXPLICIT FEATURES
+##################################################
+
+desired_expressive_feature_types = ("Text", "TextSpanner", "RehearsalMark", "Dynamic", "HairPinSpanner", "Fermata", "TempoSpanner", "TechAnnotation", "Symbol")
+def scrape_annotations(annotations: List[Annotation], song_length: int, use_implied_duration: bool = True) -> pd.DataFrame:
+    """Scrape annotations. song_length is the length of the song (in time steps). use_implied_duration is whether or not to calculate an 'implied duration' value for features without duration."""
+
+    annotations_encoded = {key: [] for key in DIMENSIONS} # create dictionary of lists
+    if use_implied_duration:
+        encounters = dict(zip(desired_expressive_feature_types, utils.rep(x = None, times = len(desired_expressive_feature_types)))) # to track durations
+
+    for annotation in annotations:
+
+        # get the expressive feature type we are working with
+        expressive_feature_type = annotation.annotation.__class__.__name__
+        if expressive_feature_type not in desired_expressive_feature_types: # ignore expressive we are not interested in
+            continue
+        
+        annotation_attributes = vars(annotation.annotation).keys()
+
+        # time
+        annotations_encoded["time"].append(annotation.time)
+
+        # event type
+        annotations_encoded["type"].append(EXPRESSIVE_FEATURE_TYPE_STRING)
+
+        # duration
+        if "duration" in annotation_attributes:
+            duration = annotation.annotation.duration # get the duration
+        elif use_implied_duration: # deal with implied duration (time until next of same type)
+            if encounters[expressive_feature_type] is not None: # to deal with the first encounter
+                annotations_encoded["duration"][encounters[expressive_feature_type]] = annotation.time - annotations_encoded["time"][encounters[expressive_feature_type]]
+            encounters[expressive_feature_type] = len(annotations_encoded["duration"]) # update encounter index
+            duration = None # append None for current duration, will be fixed later           
+        else: # not use_implied_duration ; not using implied duration
+            duration = 0
+        annotations_encoded["duration"].append(duration) # add a duration value if there is one
+        
+        # deal with value field
+        value = None
+        if "text" in annotation_attributes:
+            value = clean_up_text(text = annotation.annotation.text)
+        elif "subtype" in annotation_attributes:
+            value = utils.split_camel_case(string = annotation.annotation.subtype)
+        if (value is None) or (value == ""): # if there is no text or subtype value, make the value the expressive feature type (e.g. "TempoSpanner")
+            value = utils.split_camel_case(string = sub(pattern = "Spanner", repl = "", string = expressive_feature_type))
+        # deal with special cases
+        if value in ("dynamic", "other-dynamics"):
+            value = "dynamic-marking"
+        elif expressive_feature_type == "Fermata":
+            value = "fermata"
+        elif expressive_feature_type == "RehearsalMark" and value.isdigit():
+            value = "rehearsal-mark"
+        annotations_encoded["value"].append(check_text(text = value))
+    
+    # get final if using implied durationdurations
+    if use_implied_duration:
+        for expressive_feature_type in tuple(encounters.keys()):
+            if encounters[expressive_feature_type] is not None:
+                annotations_encoded["duration"][encounters[expressive_feature_type]] = song_length - annotations_encoded["time"][encounters[expressive_feature_type]]
+        
+    # make sure untouched columns get filled
+    for dimension in filter(lambda dimension: len(annotations_encoded[dimension]) == 0, tuple(annotations_encoded.keys())):
+        annotations_encoded[dimension] = utils.rep(x = None, times = len(annotations_encoded["type"]))
+
+    # create dataframe from scraped values
+    return pd.DataFrame(data = annotations_encoded, columns = DIMENSIONS)
+
+
+def scrape_barlines(barlines: List[Barline], song_length: int, use_implied_duration: bool = True) -> pd.DataFrame:
+    """Scrape barlines. song_length is the length of the song (in time steps). use_implied_duration is whether or not to calculate an 'implied duration' value for features without duration."""
+    barlines = list(filter(lambda barline: not ((barline.subtype == "single") or ("repeat" in barline.subtype.lower())), barlines)) # filter out single barlines
+    barlines_encoded = {key: utils.rep(x = None, times = len(barlines)) for key in DIMENSIONS} # create dictionary of lists
+    barlines.append(Barline(time = song_length, measure = 0)) # for duration
+    for i, barline in enumerate(barlines[:-1]):
+        barlines_encoded["type"][i] = EXPRESSIVE_FEATURE_TYPE_STRING
+        barlines_encoded["value"][i] = check_text(text = (f"{barline.subtype.lower()}-" if barline.subtype is not None else "") + "barline")
+        barlines_encoded["duration"][i] = barlines[i + 1].time - barline.time if use_implied_duration else 0
+        barlines_encoded["time"][i] = barline.time
+    return pd.DataFrame(data = barlines_encoded, columns = DIMENSIONS) # create dataframe from scraped values
+
+
+def scrape_timesigs(timesigs: List[TimeSignature], song_length: int, use_implied_duration: bool = True) -> pd.DataFrame:
+    """Scrape timesigs. song_length is the length of the song (in time steps). use_implied_duration is whether or not to calculate an 'implied duration' value for features without duration."""
+    timesigs = timesigs[1:] # get rid of first timesig, since we are tracking changes in timesig
+    timesigs_encoded = {key: utils.rep(x = None, times = len(timesigs)) for key in DIMENSIONS} # create dictionary of lists
+    timesigs.append(TimeSignature(time = song_length, measure = 0, numerator = 4, denominator = 4)) # for duration
+    for i, timesig in enumerate(timesigs[:-1]):
+        timesigs_encoded["type"][i] = EXPRESSIVE_FEATURE_TYPE_STRING
+        timesigs_encoded["value"][i] = check_text(text = f"timesig-change") # check_text(text = f"{timesig.numerator}/{timesig.denominator}")
+        timesigs_encoded["duration"][i] = timesigs[i + 1].time - timesig.time if use_implied_duration else 0
+        timesigs_encoded["time"][i] = timesig.time
+    return pd.DataFrame(data = timesigs_encoded, columns = DIMENSIONS) # create dataframe from scraped values
+
+
+def scrape_keysigs(keysigs: List[KeySignature], song_length: int, use_implied_duration: bool = True) -> pd.DataFrame:
+    """Scrape keysigs. song_length is the length of the song (in time steps). use_implied_duration is whether or not to calculate an 'implied duration' value for features without duration."""
+    keysigs = keysigs[1:] # get rid of first keysig, since we are tracking changes in keysig
+    keysigs_encoded = {key: utils.rep(x = None, times = len(keysigs)) for key in DIMENSIONS} # create dictionary of lists
+    keysigs.append(KeySignature(time = song_length, measure = 0)) # for duration
+    for i, keysig in enumerate(keysigs[:-1]):
+        keysigs_encoded["type"][i] = EXPRESSIVE_FEATURE_TYPE_STRING
+        keysigs_encoded["value"][i] = check_text(text = f"keysig-change") # check_text(text = f"{keysig.root_str} {keysig.mode}") # or keysig.root or keysig.fifths
+        keysigs_encoded["duration"][i] = keysigs[i + 1].time - keysig.time if use_implied_duration else 0
+        keysigs_encoded["time"][i] = keysig.time
+    return pd.DataFrame(data = keysigs_encoded, columns = DIMENSIONS) # create dataframe from scraped values
+
+
+def scrape_tempos(tempos: List[Tempo], song_length: int, use_implied_duration: bool = True) -> pd.DataFrame:
+    """Scrape tempos. song_length is the length of the song (in time steps). use_implied_duration is whether or not to calculate an 'implied duration' value for features without duration."""
+    tempos_encoded = {key: utils.rep(x = None, times = len(tempos)) for key in DIMENSIONS} # create dictionary of lists
+    tempos.append(Tempo(time = song_length, measure = 0, qpm = 0.0)) # for duration
+    for i, tempo in enumerate(tempos[:-1]):
+        tempos_encoded["type"][i] = EXPRESSIVE_FEATURE_TYPE_STRING
+        tempos_encoded["value"][i] = check_text(text = QPM_TEMPO_MAPPER(qpm = tempo.qpm)) # check_text(text = tempo.text.lower() if tempo.text is not None else "tempo-marking")
+        tempos_encoded["duration"][i] = tempos[i + 1].time - tempo.time if use_implied_duration else 0
+        tempos_encoded["time"][i] = tempo.time
+    return pd.DataFrame(data = tempos_encoded, columns = DIMENSIONS) # create dataframe from scraped values
+
+
+def scrape_notes(notes: List[Note]) -> pd.DataFrame:
+    """Scrape notes (and grace notes)."""
+    notes_encoded = {key: utils.rep(x = None, times = len(notes)) for key in DIMENSIONS} # create dictionary of lists
+    for i, note in enumerate(notes):
+        notes_encoded["type"][i] = "grace-note" if note.is_grace else "note" # get the note type (grace or normal)
+        notes_encoded["value"][i] = note.pitch # or note.pitch_str
+        notes_encoded["duration"][i] = note.duration
+        notes_encoded["time"][i] = note.time
+    return pd.DataFrame(data = notes_encoded, columns = DIMENSIONS) # create dataframe from scraped values
+
+##################################################
+
+
+# SCRAPE IMPLICIT FEATURES
+##################################################
+
+def scrape_articulations(annotations: List[Annotation], maximum_gap: int, articulation_count_threshold: int = 4) -> pd.DataFrame:
+    """Scrape articulations. maximum_gap is the maximum distance (in time steps) between articulations, which, when exceeded, forces the ending of the current articulation chunk and the creation of a new one. articulation_count_threshold is the minimum number of articulations in a chunk to make it worthwhile recording."""
+    articulations_encoded = {key: [] for key in DIMENSIONS} # create dictionary of lists
+    encounters = {}
+    def check_all_subtypes_for_chunk_ending(time): # helper function to check if articulation subtypes chunk ended
+        for articulation_subtype in tuple(encounters.keys()):
+            if (time - encounters[articulation_subtype]["end"]) > maximum_gap: # if the articulation chunk is over
+                if encounters[articulation_subtype]["count"] >= articulation_count_threshold:
+                    articulations_encoded["type"].append(EXPRESSIVE_FEATURE_TYPE_STRING)
+                    articulations_encoded["value"].append(utils.split_camel_case(string = check_text(text = articulation_subtype if articulation_subtype is not None else "articulation")))
+                    articulations_encoded["duration"].append(encounters[articulation_subtype]["end"] - encounters[articulation_subtype]["start"])
+                    articulations_encoded["time"].append(encounters[articulation_subtype]["start"])
+                del encounters[articulation_subtype] # erase articulation subtype, let it be recreated when it comes up again
+    for annotation in annotations:
+        check_all_subtypes_for_chunk_ending(time = annotation.time)
+        if annotation.annotation.__class__.__name__ == "Articulation":
+            articulation_subtype = annotation.annotation.subtype # get the articulation subtype
+            if articulation_subtype in encounters.keys(): # if we've encountered this articulation before
+                encounters[articulation_subtype]["end"] = annotation.time
+                encounters[articulation_subtype]["count"] += 1
+            else:
+                encounters[articulation_subtype] = {"start": annotation.time, "end": annotation.time, "count": 1} # if we are yet to encounter this articulation
+        else: # ignore non Articulations
+            continue
+    if len(annotations) > 0: # to avoid index error
+        check_all_subtypes_for_chunk_ending(time = annotations[-1].time + (2 * maximum_gap)) # one final check
+    for dimension in filter(lambda dimension: len(articulations_encoded[dimension]) == 0, tuple(articulations_encoded.keys())): # make sure untouched columns get filled
+        articulations_encoded[dimension] = utils.rep(x = None, times = len(articulations_encoded["type"]))
+    return pd.DataFrame(data = articulations_encoded, columns = DIMENSIONS) # create dataframe from scraped values
+
+
+def scrape_slurs(annotations: List[Annotation], minimum_duration: float, music: BetterMusic) -> pd.DataFrame:
+    """Scrape slurs. minimum_duration is the minimum duration (in seconds) a slur needs to be to make it worthwhile recording."""
+    slurs_encoded = {key: [] for key in DIMENSIONS} # create dictionary of lists
+    for annotation in annotations:
+        if annotation.annotation.__class__.__name__ == "SlurSpanner":
+            if annotation.annotation.is_slur:
+                start = music.metrical_time_to_absolute_time(time_steps = annotation.time)
+                duration = music.metrical_time_to_absolute_time(time_steps = annotation.time + annotation.annotation.duration) - start
+                if duration > minimum_duration:
+                    slurs_encoded["type"].append(EXPRESSIVE_FEATURE_TYPE_STRING)
+                    slurs_encoded["value"].append(check_text(text = "slur"))
+                    slurs_encoded["duration"].append(annotation.annotation.duration)
+                    slurs_encoded["time"].append(annotation.time)
+                else: # if slur is too short
+                    continue
+            else: # if annotation is a tie
+                continue
+        else: # ignore non slurs
+            continue
+    for dimension in filter(lambda dimension: len(slurs_encoded[dimension]) == 0, tuple(slurs_encoded.keys())): # make sure untouched columns get filled
+        slurs_encoded[dimension] = utils.rep(x = None, times = len(slurs_encoded["type"]))
+    return pd.DataFrame(data = slurs_encoded, columns = DIMENSIONS) # create dataframe from scraped values
+
+
+def scrape_pedals(annotations: List[Annotation], minimum_duration: float, music: BetterMusic) -> pd.DataFrame:
+    """Scrape pedals. minimum_duration is the minimum duration (in seconds) a pedal needs to be to make it worthwhile recording."""
+    pedals_encoded = {key: [] for key in DIMENSIONS} # create dictionary of lists
+    for annotation in annotations:
+        if annotation.annotation.__class__.__name__ == "PedalSpanner":
+            start = music.metrical_time_to_absolute_time(time_steps = annotation.time)
+            duration = music.metrical_time_to_absolute_time(time_steps = annotation.time + annotation.annotation.duration) - start
+            if duration > minimum_duration:
+                pedals_encoded["type"].append(EXPRESSIVE_FEATURE_TYPE_STRING)
+                pedals_encoded["value"].append(check_text(text = "pedal"))
+                pedals_encoded["duration"].append(annotation.annotation.duration)
+                pedals_encoded["time"].append(annotation.time)
+            else: # if pedal is too short
+                continue
+        else: # ignore non pedals
+            continue
+    for dimension in filter(lambda dimension: len(pedals_encoded[dimension]) == 0, tuple(pedals_encoded.keys())): # make sure untouched columns get filled
+        pedals_encoded[dimension] = utils.rep(x = None, times = len(pedals_encoded["type"]))
+    return pd.DataFrame(data = pedals_encoded, columns = DIMENSIONS) # create dataframe from scraped values
+
+##################################################
+
+
+# WRAPPER FUNCTIONS MAKE CODE EASIER TO READ
+##################################################
+
+def get_system_level_expressive_features(music: BetterMusic, use_implied_duration: bool = True) -> pd.DataFrame:
+    """Wrapper function to make code more readable. Extracts system-level expressive features."""
+    system_annotations = scrape_annotations(annotations = music.annotations, song_length = music.song_length, use_implied_duration = use_implied_duration)
+    system_barlines = scrape_barlines(barlines = music.barlines, song_length = music.song_length, use_implied_duration = use_implied_duration)
+    system_timesigs = scrape_timesigs(timesigs = music.time_signatures, song_length = music.song_length, use_implied_duration = use_implied_duration)
+    system_keysigs = scrape_keysigs(keysigs = music.key_signatures, song_length = music.song_length, use_implied_duration = use_implied_duration)
+    system_tempos = scrape_tempos(tempos = music.tempos, song_length = music.song_length, use_implied_duration = use_implied_duration)
+    return pd.concat(objs = (system_annotations, system_barlines, system_timesigs, system_keysigs, system_tempos), axis = 0, ignore_index = True)
+
+def get_staff_level_expressive_features(track: Track, music: BetterMusic, use_implied_duration: bool = True) -> pd.DataFrame:
+    """Wrapper function to make code more readable. Extracts staff-level expressive features."""
+    staff_notes = scrape_notes(notes = track.notes)
+    staff_annotations = scrape_annotations(annotations = track.annotations, song_length = music.song_length, use_implied_duration = use_implied_duration)
+    staff_articulations = scrape_articulations(annotations = track.annotations, maximum_gap = 2 * music.resolution) # 2 beats = 2 * music.resolution
+    staff_slurs = scrape_slurs(annotations = track.annotations, minimum_duration = 1.5, music = music) # minimum duration for slurs to be recorded is 1.5 seconds
+    staff_pedals = scrape_pedals(annotations = track.annotations, minimum_duration = 1.5, music = music) # minimum duration for pedals to be recorded is 1.5 seconds
+    return pd.concat(objs = (staff_notes, staff_annotations, staff_articulations, staff_slurs, staff_pedals), axis = 0, ignore_index = True)
+
+##################################################
+
+
 # ENCODER FUNCTIONS
 ##################################################
 
@@ -602,7 +935,7 @@ def get_encoding() -> dict:
         "resolution": RESOLUTION,
         "max_beat": MAX_BEAT,
         "max_duration": MAX_DURATION,
-        "dimensions": DIMENSIONS,
+        "dimensions": DIMENSIONS[:DIMENSIONS.index("time")],
         "n_tokens": N_TOKENS,
         "type_code_map": TYPE_CODE_MAP,
         "beat_code_map": BEAT_CODE_MAP,
@@ -641,30 +974,83 @@ def load_encoding(filename: str) -> dict:
     return encoding
 
 
-# def extract_notes(music: BetterMusic, resolution: int) -> np.array:
-#     """Return a MusPy music object as a note sequence.
-#     Each row of the output is a note specified as follows.
-#         (beat, position, value, duration, program)
-#     """
-#     # Check resolution
-#     assert music.resolution == resolution
-#     # Extract notes
-#     notes = []
-#     for track in music:
-#         if track.is_drum or track.program not in KNOWN_PROGRAMS:
-#             continue
-#         for note in track:
-#             beat, position = divmod(note.time, resolution)
-#             notes.append((beat, position, note.pitch, note.duration, track.program))
-#     # Deduplicate and sort the notes
-#     notes = sorted(set(notes))
-#     return np.array(notes)
+def extract_data(music: BetterMusic, use_implied_duration: bool = True) -> np.array:
+    """Return a BetterMusic object as a data sequence.
+    Each row of the output is a note specified as follows.
+        (event_type, beat, position, value, duration, program, time, time (in seconds))
+    """
+
+    # create output dataframe
+    output = np.empty(shape = (0, len(DIMENSIONS)), dtype = np.object_)
+
+    # time column index
+    time_dim = DIMENSIONS.index("time")
+
+    # scrape system level expressive features
+    system_level_expressive_features = get_system_level_expressive_features(music = music, use_implied_duration = use_implied_duration)
+
+    for track in music.tracks:
+
+        # do not record if track is drum or is an unknown program
+        if track.is_drum or track.program not in KNOWN_PROGRAMS:
+            continue
+
+        # scrape staff-level features
+        staff_level_expressive_features = get_staff_level_expressive_features(track = track, music = music, use_implied_duration = use_implied_duration)
+
+        # create dataframe, do some wrangling to semi-encode values
+        data = pd.concat(objs = (pd.DataFrame(columns = DIMENSIONS), system_level_expressive_features, staff_level_expressive_features), axis = 0, ignore_index = True) # combine system and staff expressive features
+        data["instrument"] = utils.rep(x = track.program, times = len(data)) # add the instrument column
+        data["duration"] = (RESOLUTION / music.resolution) * data["duration"] # semi-encode duration
+
+        # convert time to seconds for certain types of sorting that might require it
+        data["time.s"] = data["time"].apply(lambda time_steps: music.metrical_time_to_absolute_time(time_steps = time_steps)) # get time in seconds
+        # data = data.sort_values(by = "time").reset_index(drop = True) # sort by time
+
+        # calculate beat and position values (time signature agnostic)
+        data["beat"] = data["time"].apply(lambda time_steps: int(time_steps / music.resolution)) # add beat
+        data["position"] = data["time"].apply(lambda time_steps: int((RESOLUTION / music.resolution) * (time_steps % music.resolution))) # add position
+        # get beats (accounting for time signature) # beats = sorted(list(set([beat.time for beat in music.beats] + [music.song_length,]))) # add song length to end of beats for calculating position
+        # if len(music.time_signatures) > 0:
+        #     beats = []
+        #     timesigs = music.time_signatures + [TimeSignature(time = music.song_length, measure = 0, numerator = 4, denominator = 4),]
+        #     for i in range(len(timesigs) - 1):
+        #         beats += list(range(timesigs[i].time, timesigs[i + 1].time, int(music.resolution * (4 / timesigs[i].denominator))))
+        # else: # assume 4/4
+        #     beats = list(range(0, music.song_length + music.resolution, music.resolution))        
+        # beat_index = 0
+        # for i in data.index: # assumes data is sorted by time_step values
+        #     if data.at[i, "time"] >= beats[beat_index + 1]: # if we've moved to the next beat
+        #         beat_index += 1 # increment beat index
+        #     data.at[i, "beat"] = beat_index  # convert base to base 0
+        #     data.at[i, "position"] = int((RESOLUTION * (data.at[i, "time"] - beats[beat_index])) / (beats[beat_index + 1] - beats[beat_index]))
+
+        # remove duplicates due to beat and position quantization
+        data = data.drop_duplicates(subset = DIMENSIONS[:time_dim], keep = "first", ignore_index = True)
+
+        # don't save low-quality data
+        # if len(data) < 50:
+        #     continue
+
+        # convert to np array so that we can save as npy file, which loads faster
+        data = np.array(object = data, dtype = np.object_)
+
+        # add to output array
+        output = np.concatenate((output, data), axis = 0, dtype = np.object_)
+
+    # sort by time
+    output = output[output[:, time_dim].argsort()]
+    if len(output) > 0: # set start beat to 0
+        output[:, time_dim] = output[:, time_dim] - output[0, time_dim]
+        output[:, time_dim + 1] = output[:, time_dim + 1] - output[0, time_dim + 1]
+
+    return output
 
 
-def encode(data: np.array, encoding: dict, conditioning: str = DEFAULT_CONDITIONING, sigma: float = 5.0) -> np.array:
+def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_CONDITIONING, sigma: float = SIGMA) -> np.array:
     """Encode a note sequence into a sequence of codes.
     Each row of the input is a note specified as follows.
-        (beat, position, value, duration, program)
+        (event_type, beat, position, value, duration, program, time, time (in seconds))
     Each row of the output is encoded as follows.
         (event_type, beat, position, value, duration, instrument)
     """
@@ -697,7 +1083,7 @@ def encode(data: np.array, encoding: dict, conditioning: str = DEFAULT_CONDITION
     # make sure conditioning value is correct
     if conditioning not in CONDITIONINGS:
         conditioning = DEFAULT_CONDITIONING
-
+    
     # ENCODE
 
     # start the codes with an SOS row
@@ -754,15 +1140,22 @@ def encode(data: np.array, encoding: dict, conditioning: str = DEFAULT_CONDITION
         core_codes = np.delete(arr = core_codes_with_time_steps, obj = time_steps_column, axis = 1).astype(ENCODING_ARRAY_TYPE) # remove time steps column
         del core_codes_with_time_steps, time_steps_column
     elif conditioning == CONDITIONINGS[1]: # prefix
+        core_codes_with_time_steps = np.concatenate((core_codes, data[:, data.shape[1] - 2].reshape(data.shape[0], 1)), axis = 1) # add time steps column
+        time_steps_column = core_codes_with_time_steps.shape[1] - 1
         expressive_feature_indicies = sorted(np.where(core_codes[:, 0] == type_code_map[EXPRESSIVE_FEATURE_TYPE_STRING])[0]) # get indicies of expressive features
-        expressive_features = core_codes[expressive_feature_indicies] # extract expressive features
-        notes = np.delete(arr = core_codes, obj = expressive_feature_indicies, axis = 0) # delete expressive features from core
-        core_codes = np.concatenate((expressive_features, codes[len(codes) - 1].reshape(1, codes.shape[1]), notes), axis = 0) # sandwich: expressive features, start of notes row, 
+        expressive_features = core_codes_with_time_steps[expressive_feature_indicies] # extract expressive features
+        expressive_features = expressive_features[expressive_features[:, time_steps_column].argsort()] # sort by time
+        expressive_features = np.delete(arr = expressive_features, obj = time_steps_column, axis = 1).astype(ENCODING_ARRAY_TYPE) # delete time steps column
+        notes = np.delete(arr = core_codes_with_time_steps, obj = expressive_feature_indicies, axis = 0) # delete expressive features from core
+        notes = notes[notes[:, time_steps_column].argsort()] # sort by time
+        notes = np.delete(arr = notes, obj = time_steps_column, axis = 1).astype(ENCODING_ARRAY_TYPE) # delete time steps column
+        core_codes = np.concatenate((expressive_features, codes[len(codes) - 1].reshape(1, codes.shape[1]), notes), axis = 0, dtype = ENCODING_ARRAY_TYPE) # sandwich: expressive features, start of notes row, 
         codes = np.delete(arr = codes, obj = len(codes) - 1, axis = 0) # remove start of notes row from codes
-        del expressive_feature_indicies, expressive_features, notes
+        del core_codes_with_time_steps, time_steps_column, expressive_feature_indicies, expressive_features, notes
     elif conditioning == CONDITIONINGS[2]: # anticipation
         if sigma is None: # make sure sigma is not none
-            raise ValueError("Encountered NoneValue sigma argument for anticipation conditioning. Please provide a real number for sigma.")
+            warnings.warn(f"Encountered NoneValue sigma argument for anticipation conditioning. Using sigma = {SIGMA}.", RuntimeWarning)
+            sigma = SIGMA
         core_codes_with_seconds = np.concatenate((core_codes, data[:, data.shape[1] - 1].reshape(data.shape[0], 1)), axis = 1) # add seconds column
         seconds_column = core_codes_with_seconds.shape[1] - 1 # get the index of the seconds column
         for i in range(core_codes_with_seconds.shape[0]): # iterate through core_codes_with_seconds
@@ -781,21 +1174,50 @@ def encode(data: np.array, encoding: dict, conditioning: str = DEFAULT_CONDITION
 
     return codes
 
+
+def encode(music: BetterMusic, use_implied_duration: bool = True, encoding: dict = get_encoding(), conditioning: str = DEFAULT_CONDITIONING, sigma: float = SIGMA) -> np.array:
+    """Given a BetterMusic object, encode it."""
+
+    # extract data
+    data = extract_data(music = music, use_implied_duration = use_implied_duration)
+
+    # encode data
+    codes = encode_data(data = data, encoding = encoding, conditioning = conditioning, sigma = sigma)
+
+    return codes
+
+##################################################
+
+
+
+
+
+##################################################
+##################################################
+##################################################
+#
+#   ___                 _ _           
+#  |   \ ___ __ ___  __| (_)_ _  __ _ 
+#  | |) / -_) _/ _ \/ _` | | ' \/ _` |
+#  |___/\___\__\___/\__,_|_|_||_\__, |
+#                               |___/ 
+#
+##################################################
+##################################################
 ##################################################
 
 
 # DECODER FUNCTIONS
 ##################################################
 
-def decode_notes(codes, encoding):
-    """Decode codes into a note sequence.
-
+def decode_data(codes: np.array, encoding: dict = get_encoding()) -> List[list]:
+    """Decode codes into a data sequence.
     Each row of the input is encoded as follows.
-
         (event_type, beat, position, value, duration, instrument)
-
+    Each row of the output is decoded the same way.
     """
-    # Get variables and maps
+
+    # get variables and maps
     code_type_map = encoding["code_type_map"]
     code_beat_map = encoding["code_beat_map"]
     code_position_map = encoding["code_position_map"]
@@ -804,75 +1226,111 @@ def decode_notes(codes, encoding):
     code_instrument_map = encoding["code_instrument_map"]
     instrument_program_map = encoding["instrument_program_map"]
 
-    # Get the dimension indices
+    # get the dimension indices
     beat_dim = encoding["dimensions"].index("beat")
     position_dim = encoding["dimensions"].index("position")
     value_dim = encoding["dimensions"].index("value")
     duration_dim = encoding["dimensions"].index("duration")
     instrument_dim = encoding["dimensions"].index("instrument")
 
-    # Decode the codes into a sequence of notes
-    notes = []
+    # decode the codes into a sequence of data
+    data = []
     for row in codes:
         event_type = code_type_map[int(row[0])]
         if event_type in ("start-of-song", "instrument", "start-of-notes"):
             continue
         elif event_type == "end-of-song":
             break
-        elif event_type == "note":
+        elif event_type in ("note", "grace-note", EXPRESSIVE_FEATURE_TYPE_STRING):
             beat = code_beat_map[int(row[beat_dim])]
             position = code_position_map[int(row[position_dim])]
             value = code_value_map[int(row[value_dim])]
             duration = code_duration_map[int(row[duration_dim])]
-            instrument = code_instrument_map[int(row[instrument_dim])]
-            program = instrument_program_map[instrument]
-            notes.append((beat, position, value, duration, program))
+            program = instrument_program_map[code_instrument_map[int(row[instrument_dim])]]
+            data.append((event_type, beat, position, value, duration, program))
         else:
             raise ValueError("Unknown event type.")
 
-    return notes
+    return data
 
 
-def reconstruct(notes, resolution):
-    """Reconstruct a note sequence to a MusPy Music object."""
-    # Construct the MusPy Music object
-    music = muspy.Music(resolution=resolution, tempos=[muspy.Tempo(0, 100)])
+def reconstruct(data: np.array, resolution: int, encoding: dict = get_encoding()) -> BetterMusic:
+    """Reconstruct a data sequence as a BetterMusic object."""
 
-    # Append the tracks
-    programs = sorted(set(note[-1] for note in notes))
+    # construct the BetterMusic object with defaults
+    music = BetterMusic(resolution = resolution, tempos = [Tempo(time = 0, qpm = DEFAULT_QPM)], key_signatures = [KeySignature(time = 0)], time_signatures = [TimeSignature(time = 0)])
+
+    # append the tracks
+    programs = sorted(set(row[-1] for row in data)) # get programs
     for program in programs:
-        music.tracks.append(muspy.Track(program))
+        music.tracks.append(Track(program = program, is_drum = False, name = encoding["program_instrument_map"][program])) # append to tracks
 
-    # Append the notes
-    for beat, position, value, duration, program in notes:
-        time = beat * resolution + position
-        track_idx = programs.index(program)
-        music[track_idx].notes.append(muspy.Note(time, value, duration))
+    # append the notes
+    for event_type, beat, position, value, duration, program in data:
+        track_idx = programs.index(program) # get track index
+        time = (beat * resolution) + position # get time in time steps
+        duration = (resolution / encoding["resolution"]) * duration # get duration in time steps
+        if event_type in ("note", "grace-note"):
+            music.tracks[track_idx].notes.append(Note(time = time, pitch = value, duration = duration, is_grace = (event_type == "grace_note")))
+        elif event_type == EXPRESSIVE_FEATURE_TYPE_STRING:
+            expressive_feature_type = EXPRESSIVE_FEATURE_TYPE_MAP[value]
+            match expressive_feature_type:
+                case "Barline":
+                    music.barlines.append(Barline(time = time, subtype = value))
+                case "KeySignature":
+                    music.key_signatures.append(KeySignature(time = time, ))
+                case "TimeSignature":
+                    music.time_signatures.append(TimeSignature(time = time, numerator = 0, denominator = 0))
+                case "Tempo":
+                    music.tempos.append(Tempo(time = time, qpm = TEMPO_QPM_MAP[value], text = value))
+                case "TempoSpanner":
+                    music.annotations.append(Annotation(time = time, annotation = TempoSpanner(duration = duration, subtype = value)))
+                case "RehearsalMark":
+                    music.annotations.append(Annotation(time = time, annotation = RehearsalMark(text = value)))
+                case "Fermata":
+                    music.annotations.append(Annotation(time = time, annotation = Fermata()))
+                case "Text":
+                    music.annotations.append(Annotation(time = time, annotation = Text(text = value, is_system = True)))
+                case "TextSpanner":
+                    music.annotations.append(Annotation(time = time, annotation = TextSpanner(duration = duration, text = value, is_system = True)))
+                case "SlurSpanner":
+                    music.tracks[track_idx].annotations.append(Annotation(time = time, annotation = SlurSpanner(duration = duration, is_slur = True)))
+                case "PedalSpanner":
+                    music.tracks[track_idx].annotations.append(Annotation(time = time, annotation = PedalSpanner(duration = duration)))
+                case "Dynamic":
+                    music.tracks[track_idx].annotations.append(Annotation(time = time, annotation = Dynamic(subtype = value)))
+                case "HairPinSpanner":
+                    music.tracks[track_idx].annotations.append(Annotation(time = time, annotation = HairPinSpanner(duration = duration, subtype = value)))
+                case "Articulation":
+                    music.tracks[track_idx].annotations.append(Annotation(time = time, annotation = Articulation(subtype = value)))
+                case "TechAnnotation":
+                    music.tracks[track_idx].annotations.append(Annotation(time = time, annotation = TechAnnotation(text = value)))
+        else:
+            raise ValueError("Unknown event type.")
 
+    # return the filled BetterMusic
     return music
 
 
-def decode(codes, encoding):
+def decode(codes: np.array, encoding: dict = get_encoding()) -> BetterMusic:
     """Decode codes into a MusPy Music object.
-
     Each row of the input is encoded as follows.
-
         (event_type, beat, position, value, duration, instrument)
-
     """
-    # Get resolution
+
+    # get resolution
     resolution = encoding["resolution"]
 
-    # Decode codes into a note sequence
-    notes = decode_notes(codes, encoding)
+    # decode codes into a note sequence
+    data = decode_data(codes = codes, encoding = encoding)
 
-    # Reconstruct the music object
-    music = reconstruct(notes, resolution)
+    # reconstruct the music object
+    music = reconstruct(data = data, resolution = resolution, encoding = encoding)
 
     return music
 
 
-def dump(data, encoding):
+def dump(data: np.array, encoding: dict = get_encoding()) -> str:
     """Decode the codes and dump as a string."""
     # Get maps
     code_type_map = encoding["code_type_map"]
@@ -919,38 +1377,47 @@ def dump(data, encoding):
 
     return "\n".join(lines)
 
+##################################################
 
-def save_txt(filename, data, encoding):
+
+# SAVE DATA
+##################################################
+
+def save_txt(filename: str, data: np.array, encoding: dict = get_encoding()):
     """Dump the codes into a TXT file."""
     with open(filename, "w") as f:
-        f.write(dump(data, encoding))
+        f.write(dump(data = data, encoding = encoding))
 
 
-def save_csv_notes(filename, data):
+def save_csv_data(filename: str, data: np.array):
     """Save the representation as a CSV file."""
     assert data.shape[1] == 5
-    np.savetxt(
-        filename,
-        data,
-        fmt="%d",
-        delimiter=",",
-        header="beat,position,value,duration,program",
-        comments="",
-    )
+    np.savetxt(fname = filename, X = data, fmt = "%d", delimiter = ",", header = "beat,position,value,duration,program", comments = "")
 
 
-def save_csv_codes(filename, data):
+def save_csv_codes(filename: str, data: np.array):
     """Save the representation as a CSV file."""
     assert data.shape[1] == 6
-    np.savetxt(
-        filename,
-        data,
-        fmt="%d",
-        delimiter=",",
-        header="type,beat,position,value,duration,instrument",
-        comments="",
-    )
+    np.savetxt(fname = filename, X = data, fmt = "%d", delimiter = ",", header = "type,beat,position,value,duration,instrument", comments = "")
 
+##################################################
+
+
+
+
+
+##################################################
+##################################################
+##################################################
+#
+#   ___     _            
+#  | __|_ _| |_ _ _ __ _ 
+#  | _|\ \ /  _| '_/ _` |
+#  |___/_\_\\__|_| \__,_|
+#
+#
+##################################################
+##################################################
 ##################################################
 
 
@@ -958,18 +1425,24 @@ def save_csv_codes(filename, data):
 ##################################################
 
 if __name__ == "__main__":
-    """Main function."""
-    # Get the encoding
+
+    ENCODING_FILEPATH = "/data2/pnlong/musescore/encoding.json"
+
+    # get arguments
+    parser = argparse.ArgumentParser(prog = "Representation", description = "Test Encoding/Decoding mechanisms for MuseScore data.")
+    parser.add_argument("-e", "--encoding_filepath", type = str, default = ENCODING_FILEPATH, help = "Absolute filepath to encoding file")
+    args = parser.parse_args()
+
+    # get the encoding
     encoding = get_encoding()
 
-    # Save the encoding
-    filename = pathlib.Path(__file__).parent / "encoding.json"
-    utils.save_json(filename, encoding)
+    # save the encoding
+    utils.save_json(filename = args.encoding_filepath, data = encoding)
 
-    # Load encoding
-    encoding = load_encoding(filename)
+    # load encoding
+    encoding = load_encoding(filename = args.encoding_filepath)
 
-    # Print the maps
+    # print the maps
     print(f"{' Maps ':=^40}")
     for key, value in encoding.items():
         if key in (
@@ -980,20 +1453,20 @@ if __name__ == "__main__":
         ):
             print("-" * 40)
             print(f"{key}:")
-            pprint.pprint(value, indent=2)
+            pprint.pprint(value, indent = 2)
 
-    # Print the variables
+    # print the variables
     print(f"{' Variables ':=^40}")
     print(f"resolution: {encoding['resolution']}")
     print(f"max_beat: {encoding['max_beat']}")
     print(f"max_duration: {encoding['max_duration']}")
 
-    # Print the number of tokens
+    # print the number of tokens
     print(f"{' Number of tokens ':=^40}")
-    for key, value in zip(DIMENSIONS, N_TOKENS):
+    for key, value in zip(encoding["dimensions"], encoding["n_tokens"]):
         print(f"{key}: {value}")
 
-    # Print an example
+    # print an example
     print(f"{'Example':=^40}")
     codes = np.array(
         (
@@ -1022,13 +1495,13 @@ if __name__ == "__main__":
     print(f"Codes:\n{codes}")
 
     print("-" * 40)
-    print(f"Decoded:\n{dump(codes, encoding)}")
+    print(f"Decoded:\n{dump(data = codes, encoding = encoding)}")
 
-    music = decode(codes, encoding)
+    music = decode(codes = codes, encoding = encoding)
     print("-" * 40)
     print(f"Decoded music:\n{music}")
 
-    encoded = encode(music, encoding)
+    encoded = encode(music = music, encoding = encoding)
     print("-" * 40)
     print(f"Encoded:\n{encoded}")
     assert np.all(codes == encoded)
