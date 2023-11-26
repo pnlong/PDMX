@@ -475,7 +475,7 @@ if __name__ == "__main__":
     # output filepaths for data used in plots
     PLOT_DATA_OUTPUT_FILEPATHS = {plot_type : f"{args.file_output_dir}/{plot_type}.csv" for plot_type in ("density", "feature_types_summary", "sparsity")}
 
-    logging.basicConfig(level = logging.INFO)
+    logging.basicConfig(level = logging.INFO, format = "%(message)s")
     ##################################################
 
 

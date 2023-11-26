@@ -176,7 +176,7 @@ def parse_args(args = None, namespace = None):
     parser = argparse.ArgumentParser(prog = "Dataset", description = "Create and test PyTorch Dataset for MuseScore data.")
     parser.add_argument("-p", "--paths", type = str, default = DEFAULT_PATHS, help = "Filepath to list of paths to data")
     parser.add_argument("-e", "--encoding", type = str, default = None, help = "Filepath to encoding .json file")
-    parser.add_argument("-b", "--batch_size", type = int, default = 8, help = "Batch Size")
+    parser.add_argument("-bs", "--batch_size", type = int, default = 8, help = "Batch size")
     return parser.parse_args(args = args, namespace = namespace)
 
 ##################################################
@@ -194,7 +194,7 @@ if __name__ == "__main__":
     args = parse_args()
 
     # set up the logger
-    logging.basicConfig(level = logging.INFO)
+    logging.basicConfig(level = logging.INFO, format = "%(message)s")
 
     ##################################################
 

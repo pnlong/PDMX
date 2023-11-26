@@ -1,3 +1,11 @@
+# README
+# Phillip Long
+# November 25, 2023
+
+# Train a neural network.
+
+# python /home/pnlong/model_musescore/train.py
+
 # Absolute positional embedding (APE):
 # python /home/pnlong/mmt/train.py -d sod -o /data2/pnlong/mmt/exp/sod/ape -g 0
 
@@ -7,9 +15,14 @@
 # No positional embedding (NPE):
 # python /home/pnlong/mmt/train.py -d sod -o /data2/pnlong/mmt/exp/sod/npe --no-abs_pos_emb --no-rel_pos_emb -g 0
 
+
+# IMPORTS
+##################################################
+
 import argparse
 import logging
-import pathlib
+from os.path import exists
+from os import makedirs, mkdir
 import pprint
 import shutil
 import sys
@@ -17,167 +30,76 @@ import sys
 import numpy as np
 import torch
 import torch.utils.data
-import tqdm
+from tqdm import tqdm
 
 import dataset
 import music_x_transformers
 import representation
 import utils
-from utils import DATA_DIRECTORY
+
+##################################################
 
 
-@utils.resolve_paths
+# CONSTANTS
+##################################################
+
+DATA_DIR = "/data2/pnlong/musescore/data"
+PATHS_TRAIN = f"{DATA_DIR}/train.txt"
+PATHS_VALID = f"{DATA_DIR}/valid.txt"
+OUTPUT_DIR = "/data2/pnlong/musescore/data"
+ENCODING_FILEPATH = "/data2/pnlong/musescore/encoding.json"
+
+##################################################
+
+
+# ARGUMENTS
+##################################################
+
 def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-d",
-        "--dataset",
-        choices = ("sod", "lmd", "lmd_full", "snd"),
-        required = True,
-        help = "dataset key",
-    )
-    parser.add_argument(
-        "-t", "--train_names", type = pathlib.Path, help = "training names"
-    )
-    parser.add_argument(
-        "-v", "--valid_names", type = pathlib.Path, help = "validation names"
-    )
-    parser.add_argument(
-        "-i", "--in_dir", type = pathlib.Path, help = "input data directory"
-    )
-    parser.add_argument(
-        "-o", "--out_dir", type = pathlib.Path, help = "output directory"
-    )
-    # Data
-    parser.add_argument(
-        "-bs",
-        "--batch_size",
-        default = 8,
-        type = int,
-        help = "batch size",
-    )
-    parser.add_argument(
-        "--use_csv",
-        action = "store_true",
-        help = "whether to save outputs in CSV format (default to NPY format)",
-    )
-    parser.add_argument(
-        "--aug",
-        action = argparse.BooleanOptionalAction,
-        default = True,
-        help = "whether to use data augmentation",
-    )
-    # Model
-    parser.add_argument(
-        "--max_seq_len",
-        default = 1024,
-        type = int,
-        help = "maximum sequence length",
-    )
-    parser.add_argument(
-        "--max_beat",
-        default = 256,
-        type = int,
-        help = "maximum number of beats",
-    )
-    parser.add_argument("--dim", default = 512, type = int, help = "model dimension")
-    parser.add_argument(
-        "-l", "--layers", default = 6, type = int, help = "number of layers"
-    )
-    parser.add_argument(
-        "--heads", default = 8, type = int, help = "number of attention heads"
-    )
-    parser.add_argument(
-        "--dropout", default = 0.2, type = float, help = "dropout rate"
-    )
-    parser.add_argument(
-        "--abs_pos_emb",
-        action = argparse.BooleanOptionalAction,
-        default = True,
-        help = "whether to use absolute positional embedding",
-    )
-    parser.add_argument(
-        "--rel_pos_emb",
-        action = argparse.BooleanOptionalAction,
-        default = False,
-        help = "whether to use relative positional embedding",
-    )
-    # Training
-    parser.add_argument(
-        "--steps",
-        default = 200000,
-        type = int,
-        help = "number of steps",
-    )
-    parser.add_argument(
-        "--valid_steps",
-        default = 1000,
-        type = int,
-        help = "validation frequency",
-    )
-    parser.add_argument(
-        "--early_stopping",
-        action = argparse.BooleanOptionalAction,
-        default = True,
-        help = "whether to use early stopping",
-    )
-    parser.add_argument(
-        "-e",
-        "--early_stopping_tolerance",
-        default = 20,
-        type = int,
-        help = "number of extra validation rounds before early stopping",
-    )
-    parser.add_argument(
-        "-lr",
-        "--learning_rate",
-        default = 0.0005,
-        type = float,
-        help = "learning rate",
-    )
-    parser.add_argument(
-        "--lr_warmup_steps",
-        default = 5000,
-        type = int,
-        help = "learning rate warmup steps",
-    )
-    parser.add_argument(
-        "--lr_decay_steps",
-        default = 100000,
-        type = int,
-        help = "learning rate decay end steps",
-    )
-    parser.add_argument(
-        "--lr_decay_multiplier",
-        default = 0.1,
-        type = float,
-        help = "learning rate multiplier at the end",
-    )
-    parser.add_argument(
-        "--grad_norm_clip",
-        default = 1.0,
-        type = float,
-        help = "gradient norm clipping",
-    )
-    # Others
-    parser.add_argument("-g", "--gpu", type = int, help = "gpu number")
-    parser.add_argument(
-        "-j",
-        "--jobs",
-        default = 4,
-        type = int,
-        help = "number of workers for data loading",
-    )
-    parser.add_argument(
-        "-q", "--quiet", action = "store_true", help = "show warnings only"
-    )
+    # paths
+    parser.add_argument("-i", "--data_dir", default = DATA_DIR, type = str, help = "Input data directory")
+    parser.add_argument("-t", "--paths_train", default = PATHS_TRAIN, type = str, help = ".txt file with absolute filepaths to training dataset.")
+    parser.add_argument("-v", "--paths_valid", default = PATHS_VALID, type = str, help = ".txt file with absolute filepaths to validation dataset.")
+    parser.add_argument("-e", "--encoding", default = ENCODING_FILEPATH, type = str, help = ".json file with encoding information.")
+    parser.add_argument("-o", "--output_dir", default = OUTPUT_DIR, type = str, help = "Output directory")
+    # data
+    parser.add_argument("-bs", "--batch_size", default = 8, type = int, help = "Batch size")
+    parser.add_argument("--aug", action = argparse.BooleanOptionalAction, default = True, help = "Whether to use data augmentation")
+    parser.add_argument("-c", "--conditioning", default = representation.DEFAULT_CONDITIONING, choices = representation.CONDITIONINGS, type = str, help = "Conditioning type")
+    parser.add_argument("-s", "--sigma", default = representation.SIGMA, type = float, help = "Sigma anticipation value (for anticipation conditioning)")
+    # model
+    parser.add_argument("--max_sequence_length", default = 1024, type = int, help = "Maximum sequence length")
+    parser.add_argument("--max_beat", default = 256, type = int, help = "Maximum number of beats")
+    parser.add_argument("--dim", default = 512, type = int, help = "Model dimension")
+    parser.add_argument("-l", "--layers", default = 6, type = int, help = "Number of layers")
+    parser.add_argument("--heads", default = 8, type = int, help = "Number of attention heads")
+    parser.add_argument("--dropout", default = 0.2, type = float, help = "Dropout rate")
+    parser.add_argument("--abs_pos_emb", action = argparse.BooleanOptionalAction, default = True, help = "Whether to use absolute positional embedding")
+    parser.add_argument("--rel_pos_emb", action = argparse.BooleanOptionalAction, default = False, help = "Whether to use relative positional embedding")
+    # training
+    parser.add_argument("--steps", default = 200000, type = int, help = "Number of steps")
+    parser.add_argument("--valid_steps", default = 1000, type = int, help = "Validation frequency")
+    parser.add_argument("--early_stopping", action = argparse.BooleanOptionalAction, default = True, help = "Whether to use early stopping")
+    parser.add_argument("--early_stopping_tolerance", default = 20, type = int, help = "Number of extra validation rounds before early stopping")
+    parser.add_argument("-lr", "--learning_rate", default = 0.0005, type = float, help = "Learning rate")
+    parser.add_argument("--lr_warmup_steps", default = 5000, type = int, help = "Learning rate warmup steps")
+    parser.add_argument("--lr_decay_steps", default = 100000, type = int, help = "Learning rate decay end steps")
+    parser.add_argument("--lr_decay_multiplier", default = 0.1, type = float, help = "Learning rate multiplier at the end")
+    parser.add_argument("--grad_norm_clip", default = 1.0, type = float, help = "Gradient norm clipping")
+    # others
+    parser.add_argument("-g", "--gpu", default = 0, type = int, help = "GPU number")
+    parser.add_argument("-j", "--jobs", default = 4, type = int, help = "Number of workers for data loading")
     return parser.parse_args(args = args, namespace = namespace)
 
+##################################################
 
-def get_lr_multiplier(
-    step, warmup_steps, decay_end_steps, decay_end_multiplier
-):
+
+# HELPER FUNCTIONS
+##################################################
+
+def get_lr_multiplier(step: int, warmup_steps: int, decay_end_steps: int, decay_end_multiplier: float) -> float:
     """Return the learning rate multiplier with a warmup and decay schedule.
 
     The learning rate multiplier starts from 0 and linearly increases to 1
@@ -192,101 +114,75 @@ def get_lr_multiplier(
     position = (step - warmup_steps) / (decay_end_steps - warmup_steps)
     return 1 - (1 - decay_end_multiplier) * position
 
+##################################################
 
-def main():
-    """Main function."""
-    # Parse the command-line arguments
+
+# MAIN FUNCTION
+##################################################
+
+if __name__ == "__main__":
+
+    # CONSTANTS
+    ##################################################
+
+    # parse the command-line arguments
     args = parse_args()
 
-    # Set default arguments
-    if args.dataset is not None:
-        if args.train_names is None:
-            args.train_names = pathlib.Path(
-                f"{DATA_DIRECTORY}data/{args.dataset}/processed/train-names.txt"
-            )
-        if args.valid_names is None:
-            args.valid_names = pathlib.Path(
-                f"{DATA_DIRECTORY}data/{args.dataset}/processed/valid-names.txt"
-            )
-        if args.in_dir is None:
-            args.in_dir = pathlib.Path(f"{DATA_DIRECTORY}data/{args.dataset}/processed/notes/")
-        if args.out_dir is None:
-            args.out_dir = pathlib.Path(f"exp/test_{args.dataset}")
+    # check filepath arguments
+    if not exists(args.paths_train):
+        raise ValueError("Invalid --paths_train argument. File does not exist.")
+    if not exists(args.paths_valid):
+        raise ValueError("Invalid --paths_valid argument. File does not exist.")
+    if not exists(args.data_dir):
+        raise ValueError("Invalid --data_dir argument. Directory does not exist, so there is no data on which to train.")
+    if not exists(args.output_dir):
+        makedirs(args.output_dir)
+    CHECKPOINTS_DIR = f"{args.output_dir}/checkpoints"
+    if not exists(CHECKPOINTS_DIR):
+        mkdir(CHECKPOINTS_DIR)
 
-    # Make sure the output directory exists
-    args.out_dir.mkdir(exist_ok = True)
-    (args.out_dir / "checkpoints").mkdir(exist_ok = True)
+    # set up the logger
+    logging.basicConfig(level = logging.INFO, format = "%(message)s", handlers = [logging.FileHandler(f"{args.output_dir}/train.log", "w"), logging.StreamHandler(sys.stdout)])
 
-    # Set up the logger
-    logging.basicConfig(
-        level = logging.ERROR if args.quiet else logging.INFO,
-        format = "%(message)s",
-        handlers = [
-            logging.FileHandler(args.out_dir / "train.log", "w"),
-            logging.StreamHandler(sys.stdout),
-        ],
-    )
-
-    # Log command called
+    # log command called
     logging.info(f"Running command: python {' '.join(sys.argv)}")
 
-    # Log arguments
+    # log arguments
     logging.info(f"Using arguments:\n{pprint.pformat(vars(args))}")
 
-    # Save command-line arguments
-    logging.info(f"Saved arguments to {args.out_dir / 'train-args.json'}")
-    utils.save_args(args.out_dir / "train-args.json", args)
+    # save command-line arguments
+    args_output_filepath = f"{args.output_dir}/train-args.json"
+    logging.info(f"Saved arguments to {args_output_filepath}")
+    utils.save_args(filename = args_output_filepath, args = args)
 
-    # Get the specified device
-    device = torch.device(
-        f"cuda:{args.gpu}" if args.gpu is not None else "cpu"
-    )
+    ##################################################
+
+
+    # SET UP TRAINING (LOAD DATASET, DATA LOADERS)
+    ##################################################
+
+    # get the specified device
+    device = torch.device(f"cuda:{args.gpu}" if args.gpu is not None else "cpu")
     logging.info(f"Using device: {device}")
 
-    # Load the encoding
-    encoding = representation.load_encoding(args.in_dir / "encoding.json")
+    # load the encoding
+    encoding = representation.load_encoding(filename = args.encoding) if exists(args.encoding) else representation.get_encoding()
 
-    # Create the dataset and data loader
+    # create the dataset and data loader
     logging.info(f"Creating the data loader...")
-    train_dataset = dataset.MusicDataset(
-        args.train_names,
-        args.in_dir,
-        encoding,
-        max_seq_len = args.max_seq_len,
-        max_beat = args.max_beat,
-        use_augmentation = args.aug,
-        use_csv = args.use_csv,
-    )
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset,
-        args.batch_size,
-        shuffle = True,
-        num_workers = args.jobs,
-        collate_fn = dataset.MusicDataset.collate,
-    )
-    valid_dataset = dataset.MusicDataset(
-        args.valid_names,
-        args.in_dir,
-        encoding,
-        max_seq_len = args.max_seq_len,
-        max_beat = args.max_beat,
-        use_csv = args.use_csv,
-    )
-    valid_loader = torch.utils.data.DataLoader(
-        valid_dataset,
-        args.batch_size,
-        num_workers = args.jobs,
-        collate_fn = dataset.MusicDataset.collate,
-    )
+    dataset_train = dataset.MusicDataset(paths = args.paths_train, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, max_sequence_length = args.max_sequence_length, max_beat = args.max_beat, use_augmentation = args.aug)
+    data_loader_train = torch.utils.data.DataLoader(dataset = dataset_train, batch_size = args.batch_size, shuffle = True, num_workers = args.jobs, collate_fn = dataset.MusicDataset.collate)
+    dataset_valid = dataset.MusicDataset(paths = args.paths_valid, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, max_sequence_length = args.max_sequence_length, max_beat = args.max_beat, use_augmentation = args.aug)
+    data_loader_valid = torch.utils.data.DataLoader(dataset = dataset_valid, batch_size = args.batch_size, shuffle = True, num_workers = args.jobs, collate_fn = dataset.MusicDataset.collate)
 
-    # Create the model
+    # create the model
     logging.info(f"Creating model...")
     model = music_x_transformers.MusicXTransformer(
         dim = args.dim,
         encoding = encoding,
         depth = args.layers,
         heads = args.heads,
-        max_seq_len = args.max_seq_len,
+        max_sequence_length = args.max_sequence_length,
         max_beat = args.max_beat,
         rotary_pos_emb = args.rel_pos_emb,
         use_abs_pos_emb = args.abs_pos_emb,
@@ -295,172 +191,173 @@ def main():
         ff_dropout = args.dropout,
     ).to(device)
 
-    # Summarize the model
-    n_parameters = sum(p.numel() for p in model.parameters())
-    n_trainables = sum(
-        p.numel() for p in model.parameters() if p.requires_grad
-    )
-    logging.info(f"Number of parameters: {n_parameters}")
-    logging.info(f"Number of trainable parameters: {n_trainables}")
+    # summarize the model
+    logging.info(f"Number of parameters: {sum(p.numel() for p in model.parameters())}")
+    logging.info(f"Number of trainable parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
 
-    # Create the optimizer
-    optimizer = torch.optim.Adam(model.parameters(), args.learning_rate)
+    # create the optimizer
+    optimizer = torch.optim.Adam(params = model.parameters(), lr = args.learning_rate)
     scheduler = torch.optim.lr_scheduler.LambdaLR(
-        optimizer,
+        optimizer = optimizer,
         lr_lambda = lambda step: get_lr_multiplier(
-            step,
-            args.lr_warmup_steps,
-            args.lr_decay_steps,
-            args.lr_decay_multiplier,
-        ),
-    )
+            step = step,
+            warmup_steps = args.lr_warmup_steps,
+            decay_end_steps = args.lr_decay_steps,
+            decay_end_multiplier = args.lr_decay_multiplier
+            )
+        )
 
-    # Create a file to record losses
-    loss_csv = open(args.out_dir / "loss.csv", "w")
-    loss_csv.write(
-        "step,train_loss,valid_loss,type_loss,beat_loss,position_loss,"
-        "pitch_loss,duration_loss,instrument_loss\n"
-    )
+    # create a file to record losses
+    loss_csv = open(f"{args.output_dir}/loss.csv", "w")
+    loss_csv.write("step,train_loss,valid_loss,type_loss,beat_loss,position_loss,pitch_loss,duration_loss,instrument_loss\n")
 
-    # Initialize variables
+    ##################################################
+
+
+    # TRAINING PROCESS
+    ##################################################
+
+    # initialize variables
     step = 0
     min_val_loss = float("inf")
     if args.early_stopping:
         count_early_stopping = 0
 
-    # Iterate for the specified number of steps
-    train_iterator = iter(train_loader)
+    # iterate for the specified number of steps
+    train_iterator = iter(data_loader_train)
     while step < args.steps:
 
-        # Training
+        # TRAIN
+        ##################################################
+
         logging.info(f"Training...")
+
         model.train()
         recent_losses = []
+        for batch in (progress_bar := tqdm(iterable = range(args.valid_steps), desc = "Training", ncols = 80)):
 
-        for batch in (pbar := tqdm.tqdm(range(args.valid_steps), ncols = 80)):
-            # Get next batch
+            # get next batch
             try:
                 batch = next(train_iterator)
             except StopIteration:
-                # Reinitialize dataset iterator
-                train_iterator = iter(train_loader)
+                train_iterator = iter(data_loader_train) # reinitialize dataset iterator
                 batch = next(train_iterator)
 
-            # Get input and output pair
-            seq = batch["seq"].to(device)
+            # get input and output pair
+            sequence = batch["sequence"].to(device)
             mask = batch["mask"].to(device)
 
-            # Update the model parameters
+            # update the model parameters
             optimizer.zero_grad()
-            loss = model(seq, mask = mask)
+            loss = model(sequence, mask = mask)
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(
-                model.parameters(), args.grad_norm_clip
-            )
+            torch.nn.utils.clip_grad_norm_(parameters = model.parameters(), max_norm = args.grad_norm_clip)
             optimizer.step()
             scheduler.step()
 
-            # Compute the moving average of the loss
+            # compute the moving average of the loss
             recent_losses.append(float(loss))
             if len(recent_losses) > 10:
                 del recent_losses[0]
-            train_loss = np.mean(recent_losses)
-            pbar.set_postfix(loss = f"{train_loss:8.4f}")
+            train_loss = np.mean(a = recent_losses, axis = 0)
+            progress_bar.set_postfix(loss = f"{train_loss:8.4f}")
 
+            # increment step
             step += 1
 
-        # Release GPU memory right away
-        del seq, mask
+        # release GPU memory right away
+        del sequence, mask
 
-        # Validation
+        ##################################################
+
+
+        # VALIDATE
+        ##################################################
+
         logging.info(f"Validating...")
+
         model.eval()
         with torch.no_grad():
+
             total_loss = 0
-            total_losses = [0] * 6
+            total_losses = [0] * len(encoding["dimensions"])
             count = 0
-            for batch in valid_loader:
-                # Get input and output pair
-                seq = batch["seq"].to(device)
+            for batch in data_loader_valid:
+
+                # get input and output pair
+                sequence = batch["sequence"].to(device)
                 mask = batch["mask"].to(device)
 
-                # Pass through the model
-                loss, losses = model(seq, return_list = True, mask = mask)
+                # pass through the model
+                loss, losses = model(sequence, return_list = True, mask = mask)
 
-                # Accumulate validation loss
+                # accumulate validation loss
                 count += len(batch)
                 total_loss += len(batch) * float(loss)
-                for idx in range(6):
-                    total_losses[idx] += float(losses[idx])
+                for index in range(len(encoding["dimensions"])):
+                    total_losses[index] += float(losses[index])
+        
+        # get loss
         val_loss = total_loss / count
-        individual_losses = [l / count for l in total_losses]
+        individual_losses = [loss / count for loss in total_losses]
+
+        # output statistics
         logging.info(f"Validation loss: {val_loss:.4f}")
-        logging.info(
-            f"Individual losses: type = {individual_losses[0]:.4f}, "
-            f"beat: {individual_losses[1]:.4f}, "
-            f"position: {individual_losses[2]:.4f}, "
-            f"pitch: {individual_losses[3]:.4f}, "
-            f"duration: {individual_losses[4]:.4f}, "
-            f"instrument: {individual_losses[5]:.4f}"
-        )
+        logging.info(f"Individual losses: type = {individual_losses[0]:.4f}, beat: {individual_losses[1]:.4f}, position: {individual_losses[2]:.4f}, pitch: {individual_losses[3]:.4f}, duration: {individual_losses[4]:.4f}, instrument: {individual_losses[5]:.4f}")
 
-        # Release GPU memory right away
-        del seq, mask
+        # release GPU memory right away
+        del sequence, mask
 
-        # Write losses to file
-        loss_csv.write(
-            f"{step},{train_loss},{val_loss},{individual_losses[0]},"
-            f"{individual_losses[1]},{individual_losses[2]},"
-            f"{individual_losses[3]},{individual_losses[4]},"
-            f"{individual_losses[5]}\n"
-        )
+        ##################################################
 
-        # Save the model
-        checkpoint_filename = args.out_dir / "checkpoints" / f"model_{step}.pt"
-        torch.save(model.state_dict(), checkpoint_filename)
-        logging.info(f"Saved the model to: {checkpoint_filename}")
 
-        # Copy the model if it is the best model so far
+        # RECORD LOSS, SAVE MODEL
+        ##################################################
+
+        # write losses to file
+        loss_csv.write(f"{step},{train_loss},{val_loss}," + ",".join(map(str, individual_losses)) + "\n")
+
+        # save the model
+        checkpoint_filepath = f"{CHECKPOINTS_DIR}/model_{step}.pth"
+        torch.save(obj = model.state_dict(), f = checkpoint_filepath)
+        logging.info(f"Saved the model to: {checkpoint_filepath}")
+
+        # copy the model if it is the best model so far
         if val_loss < min_val_loss:
             min_val_loss = val_loss
-            shutil.copyfile(
-                checkpoint_filename,
-                args.out_dir / "checkpoints" / "best_model.pt",
-            )
-            # Reset the early stopping counter if we found a better model
-            if args.early_stopping:
+            shutil.copyfile(src = checkpoint_filepath, dst = f"{CHECKPOINTS_DIR}/best_model.pth")
+            if args.early_stopping: # reset the early stopping counter if we found a better model
                 count_early_stopping = 0
-        elif args.early_stopping:
-            # Increment the early stopping counter if no improvement is found
+        elif args.early_stopping: # increment the early stopping counter if no improvement is found
             count_early_stopping += 1
 
-        # Early stopping
-        if (
-            args.early_stopping
-            and count_early_stopping > args.early_stopping_tolerance
-        ):
-            logging.info(
-                "Stopped the training for no improvements in "
-                f"{args.early_stopping_tolerance} rounds."
-            )
+        # early stopping
+        if (args.early_stopping and count_early_stopping > args.early_stopping_tolerance):
+            logging.info(f"Stopped the training for no improvements in {args.early_stopping_tolerance} rounds.")
             break
 
-    # Log minimum validation loss
+        ##################################################
+
+    
+    # STATISTICS
+    ##################################################
+
+    # log minimum validation loss
     logging.info(f"Minimum validation loss achieved: {min_val_loss}")
 
-    # Save the optimizer states
-    optimizer_filename = args.out_dir / "checkpoints" / f"optimizer_{step}.pt"
-    torch.save(optimizer.state_dict(), optimizer_filename)
-    logging.info(f"Saved the optimizer state to: {optimizer_filename}")
+    # save the optimizer states
+    optimizer_filepath = f"{CHECKPOINTS_DIR}/optimizer_{step}.pth"
+    torch.save(obj = optimizer.state_dict(), f = optimizer_filepath)
+    logging.info(f"Saved the optimizer state to: {optimizer_filepath}")
 
-    # Save the scheduler states
-    scheduler_filename = args.out_dir / "checkpoints" / f"scheduler_{step}.pt"
-    torch.save(scheduler.state_dict(), scheduler_filename)
-    logging.info(f"Saved the scheduler state to: {scheduler_filename}")
+    # save the scheduler states
+    scheduler_filepath = f"{CHECKPOINTS_DIR}/scheduler_{step}.pth"
+    torch.save(obj = scheduler.state_dict(), f = scheduler_filepath)
+    logging.info(f"Saved the scheduler state to: {scheduler_filepath}")
 
-    # Close the file
+    # close the file
     loss_csv.close()
 
+    ##################################################
 
-if __name__ == "__main__":
-    main()
+##################################################

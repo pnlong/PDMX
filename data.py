@@ -178,7 +178,7 @@ if __name__ == "__main__":
     METADATA = {data : (metadata if not pd.isna(metadata) else None) for data, metadata in zip(METADATA["data_path"], METADATA["metadata_path"])}
 
     # set up logging
-    logging.basicConfig(level = logging.INFO)
+    logging.basicConfig(level = logging.INFO, format = "%(message)s")
 
     ##################################################
 

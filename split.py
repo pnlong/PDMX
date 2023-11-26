@@ -58,7 +58,7 @@ if __name__ == "__main__":
     args = parse_args()
 
     # set up the logger
-    logging.basicConfig(level = logging.INFO)
+    logging.basicConfig(level = logging.INFO, format = "%(message)s")
 
     ##################################################
 

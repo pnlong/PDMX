@@ -1,3 +1,15 @@
+# README
+# Phillip Long
+# November 25, 2023
+
+# Create neural network model.
+
+# python /home/pnlong/model_musescore/music_x_transformers.py
+
+
+# IMPORTS
+##################################################
+
 import argparse
 import logging
 import pathlib
@@ -27,28 +39,20 @@ from x_transformers.x_transformers import (
 )
 
 import representation
-import utils
+
+##################################################
 
 
-@utils.resolve_paths
+# ARGUMENTS
+##################################################
 def parse_args(args=None, namespace=None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-d",
-        "--dataset",
-        choices=("sod", "lmd"),
-        required=True,
-        help="dataset key",
-    )
-    parser.add_argument(
-        "-i", "--in_dir", type=pathlib.Path, help="input data directory"
-    )
-    parser.add_argument(
-        "-q", "--quiet", action="store_true", help="show warnings only"
-    )
-    return parser.parse_args(args=args, namespace=namespace)
-
+    parser.add_argument("-d", "--dataset", choices = ("sod", "lmd"), required = True, help = "dataset key")
+    parser.add_argument("-i", "--in_dir", type = pathlib.Path, help = "input data directory")
+    parser.add_argument("-q", "--quiet", action = "store_true", help = "show warnings only")
+    return parser.parse_args(args = args, namespace = namespace)
+##################################################
 
 class MusicTransformerWrapper(nn.Module):
     def __init__(
@@ -517,34 +521,37 @@ class MusicXTransformer(nn.Module):
     def generate(self, seq_in, seq_len, **kwargs):
         return self.decoder.generate(seq_in, seq_len, **kwargs)
 
-    def forward(self, seq, mask=None, **kwargs):
-        return self.decoder(seq, mask=mask, **kwargs)
+    def forward(self, sequence, mask=None, **kwargs):
+        return self.decoder(sequence, mask=mask, **kwargs)
 
 
-def main():
-    """Main function."""
-    # Parse the command-line arguments
+# MAIN FUNCTION
+##################################################
+
+if __name__ == "__main__":
+
+    # parse the command-line arguments
     args = parse_args()
 
-    # Set default arguments
+    # set default arguments
     if args.dataset is not None:
         if args.in_dir is None:
             args.in_dir = pathlib.Path(f"data/{args.dataset}/processed/notes")
 
-    # Set up the logger
+    # set up the logger
     logging.basicConfig(
         stream=sys.stdout,
         level=logging.ERROR if args.quiet else logging.INFO,
         format="%(levelname)-8s %(message)s",
     )
 
-    # Log arguments
+    # log arguments
     logging.info(f"Using arguments:\n{pprint.pformat(vars(args))}")
 
-    # Load the encoding
+    # load the encoding
     encoding = representation.load_encoding(args.in_dir / "encoding.json")
 
-    # Create the model
+    # create the model
     model = MusicXTransformer(
         dim=128,
         encoding=encoding,
@@ -559,7 +566,7 @@ def main():
         ff_dropout=0.1,
     )
 
-    # Summarize the model
+    # summarize the model
     n_parameters = sum(p.numel() for p in model.parameters())
     n_trainables = sum(
         p.numel() for p in model.parameters() if p.requires_grad
@@ -567,14 +574,12 @@ def main():
     print(f"Number of parameters: {n_parameters}")
     print(f"Number of trainable parameters: {n_trainables}")
 
-    # Create test data
-    seq = torch.randint(0, 4, (1, 1024, 6))
+    # create test data
+    sequence = torch.randint(0, 4, (1, 1024, 6))
     mask = torch.ones((1, 1024)).bool()
 
-    # Pass test data through the model
-    loss = model(seq, mask=mask)
+    # pass test data through the model
+    loss = model(sequence, mask=mask)
     loss.backward()
 
-
-if __name__ == "__main__":
-    main()
+##################################################

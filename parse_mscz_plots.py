@@ -333,7 +333,7 @@ if __name__ == "__main__":
     TIMING_FILEPATH = f"{args.input_dir}/expressive_features.timing.txt"
     N_EXPRESSIVE_FEATURES_PER_PATH_FILEPATH = f"{args.input_dir}/n_expressive_features_per_path.csv"
 
-    logging.basicConfig(level = logging.INFO)
+    logging.basicConfig(level = logging.INFO, format = "%(message)s")
     ##################################################
 
 

@@ -28,7 +28,7 @@ OUTPUT_FILEPATH = "/data2/pnlong/musescore/metadata_to_data.csv"
 
 if __name__ == "__main__":
 
-    logging.basicConfig(level = logging.INFO)
+    logging.basicConfig(level = logging.INFO, format = "%(message)s")
 
     if not exists(OUTPUT_FILEPATH):
 
