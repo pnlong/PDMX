@@ -7,13 +7,13 @@
 # python /home/pnlong/model_musescore/train.py
 
 # Absolute positional embedding (APE):
-# python /home/pnlong/mmt/train.py -d sod -o /data2/pnlong/mmt/exp/sod/ape -g 0
+# python /home/pnlong/model_musescore/train.py -o /data2/pnlong/mmt/exp/sod/ape
 
 # Relative positional embedding (RPE):
-# python /home/pnlong/mmt/train.py -d sod -o /data2/pnlong/mmt/exp/sod/rpe --no-abs_pos_emb --rel_pos_emb -g 0
+# python /home/pnlong/model_musescore/train.py -o /data2/pnlong/mmt/exp/sod/rpe --no-abs_pos_emb --rel_pos_emb
 
 # No positional embedding (NPE):
-# python /home/pnlong/mmt/train.py -d sod -o /data2/pnlong/mmt/exp/sod/npe --no-abs_pos_emb --no-rel_pos_emb -g 0
+# python /home/pnlong/model_musescore/train.py -o /data2/pnlong/mmt/exp/sod/npe --no-abs_pos_emb --no-rel_pos_emb
 
 
 # IMPORTS
@@ -72,7 +72,7 @@ def parse_args(args = None, namespace = None):
     # model
     parser.add_argument("--max_sequence_length", default = 1024, type = int, help = "Maximum sequence length")
     parser.add_argument("--max_beat", default = 256, type = int, help = "Maximum number of beats")
-    parser.add_argument("--dim", default = 512, type = int, help = "Model dimension")
+    parser.add_argument("--dimension", default = 512, type = int, help = "Model dimension")
     parser.add_argument("-l", "--layers", default = 6, type = int, help = "Number of layers")
     parser.add_argument("--heads", default = 8, type = int, help = "Number of attention heads")
     parser.add_argument("--dropout", default = 0.2, type = float, help = "Dropout rate")
@@ -178,7 +178,7 @@ if __name__ == "__main__":
     # create the model
     logging.info(f"Creating model...")
     model = music_x_transformers.MusicXTransformer(
-        dim = args.dim,
+        dim = args.dimension,
         encoding = encoding,
         depth = args.layers,
         heads = args.heads,
@@ -186,8 +186,8 @@ if __name__ == "__main__":
         max_beat = args.max_beat,
         rotary_pos_emb = args.rel_pos_emb,
         use_abs_pos_emb = args.abs_pos_emb,
-        emb_dropout = args.dropout,
-        attn_dropout = args.dropout,
+        embedding_dropout = args.dropout,
+        attention_dropout = args.dropout,
         ff_dropout = args.dropout,
     ).to(device)
 

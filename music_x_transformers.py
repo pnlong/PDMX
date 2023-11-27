@@ -12,520 +12,460 @@
 
 import argparse
 import logging
-import pathlib
-import pprint
+from os.path import exists
 import sys
+from typing import Union, List
 
 import torch
 import torch.nn.functional as F
 from einops import repeat
 from torch import nn
-from x_transformers.autoregressive_wrapper import (
-    ENTMAX_ALPHA,
-    entmax,
-    exists,
-    top_a,
-    top_k,
-    top_p,
-)
-from x_transformers.x_transformers import (
-    AbsolutePositionalEmbedding,
-    AttentionLayers,
-    Decoder,
-    TokenEmbedding,
-    always,
-    default,
-    exists,
-)
+from x_transformers.autoregressive_wrapper import (ENTMAX_ALPHA, entmax, exists, top_a, top_k, top_p)
+from x_transformers.x_transformers import (AbsolutePositionalEmbedding, AttentionLayers, Decoder, TokenEmbedding, always, default, exists)
 
 import representation
 
 ##################################################
 
 
-# ARGUMENTS
-##################################################
-def parse_args(args=None, namespace=None):
-    """Parse command-line arguments."""
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-d", "--dataset", choices = ("sod", "lmd"), required = True, help = "dataset key")
-    parser.add_argument("-i", "--in_dir", type = pathlib.Path, help = "input data directory")
-    parser.add_argument("-q", "--quiet", action = "store_true", help = "show warnings only")
-    return parser.parse_args(args = args, namespace = namespace)
+# MUSIC TRANSFORMER WRAPPER CLASS
 ##################################################
 
 class MusicTransformerWrapper(nn.Module):
+
+    # INITIALIZER
+    ##################################################
+
     def __init__(
-        self,
-        *,
-        encoding,
-        max_seq_len,
-        attn_layers,
-        emb_dim=None,
-        max_beat=None,
-        max_mem_len=0.0,
-        shift_mem_down=0,
-        emb_dropout=0.0,
-        num_memory_tokens=None,
-        tie_embedding=False,
-        use_abs_pos_emb=True,
-        l2norm_embed=False,
-    ):
+            self,
+            *,
+            encoding: dict,
+            max_sequence_length: int,
+            attention_layers: AttentionLayers,
+            embedding_dim: int = None,
+            max_beat: int = None,
+            max_memory_length: float = 0.0,
+            shift_memory_down: int = 0,
+            embedding_dropout: int = 0.0,
+            n_memory_tokens: int = None,
+            tie_embedding: bool = False,
+            use_abs_pos_emb: bool = True,
+            l2norm_embedding: bool = False
+        ):
+        
+        # initialize
         super().__init__()
-        assert isinstance(
-            attn_layers, AttentionLayers
-        ), "attention layers must be one of Encoder or Decoder"
+        assert isinstance(attention_layers, AttentionLayers), "attention layers must be one of Encoder or Decoder" # make sure attention_layers is of the correct type
 
-        dim = attn_layers.dim
-        emb_dim = default(emb_dim, dim)
+        # get dimensions
+        dim = attention_layers.dim
+        embedding_dim = default(embedding_dim, dim)
 
-        self.max_seq_len = max_seq_len
-        self.max_mem_len = max_mem_len
-        self.shift_mem_down = shift_mem_down
+        # set some lengths
+        self.max_sequence_length = max_sequence_length
+        self.max_memory_length = max_memory_length
+        self.shift_memory_down = shift_memory_down
 
+        # adjust n_tokens
         n_tokens = encoding["n_tokens"]
         if max_beat is not None:
             beat_dim = encoding["dimensions"].index("beat")
             n_tokens[beat_dim] = max_beat + 1
 
-        self.l2norm_embed = l2norm_embed
-        self.token_emb = nn.ModuleList(
-            [
-                TokenEmbedding(emb_dim, n, l2norm_embed=l2norm_embed)
-                for n in n_tokens
-            ]
-        )
-        self.pos_emb = (
-            AbsolutePositionalEmbedding(
-                emb_dim, max_seq_len, l2norm_embed=l2norm_embed
-            )
-            if (use_abs_pos_emb and not attn_layers.has_pos_emb)
-            else always(0)
-        )
+        # deal with embedding
+        self.l2norm_embedding = l2norm_embedding
+        self.token_embedding = nn.ModuleList([TokenEmbedding(dim = embedding_dim, num_tokens = n, l2norm_embed = l2norm_embedding) for n in n_tokens])
+        self.positional_embedding = AbsolutePositionalEmbedding(dim = embedding_dim, max_seq_len = max_sequence_length, l2norm_embed = l2norm_embedding) if (use_abs_pos_emb and not attention_layers.has_pos_emb) else always(0)
 
-        self.emb_dropout = nn.Dropout(emb_dropout)
+        # dropout
+        self.embedding_dropout = nn.Dropout(p = embedding_dropout)
 
-        self.project_emb = (
-            nn.Linear(emb_dim, dim) if emb_dim != dim else nn.Identity()
-        )
-        self.attn_layers = attn_layers
-        self.norm = nn.LayerNorm(dim)
+        # embedding and layers
+        self.project_embedding = nn.Linear(in_features = embedding_dim, out_features = dim) if embedding_dim != dim else nn.Identity()
+        self.attention_layers = attention_layers
+        self.norm = nn.LayerNorm(normalized_shape = dim)
 
+        # run initializer helper function
         self.init_()
 
-        self.to_logits = (
-            nn.ModuleList([nn.Linear(dim, n) for n in n_tokens])
-            if not tie_embedding
-            else [lambda t: t @ emb.weight.t() for emb in self.token_emb]
-        )
+        # get to logits
+        self.to_logits = nn.ModuleList(modules = [nn.Linear(in_features = dim, out_features = n) for n in n_tokens]) if not tie_embedding else [lambda t: t @ embedding.weight.t() for embedding in self.token_embedding]
 
         # memory tokens (like [cls]) from Memory Transformers paper
-        num_memory_tokens = default(num_memory_tokens, 0)
-        self.num_memory_tokens = num_memory_tokens
-        if num_memory_tokens > 0:
-            self.memory_tokens = nn.Parameter(
-                torch.randn(num_memory_tokens, dim)
-            )
+        n_memory_tokens = default(n_memory_tokens, 0)
+        self.n_memory_tokens = n_memory_tokens
+        if n_memory_tokens > 0:
+            self.memory_tokens = nn.Parameter(data = torch.randn(n_memory_tokens, dim))
 
+    # intialize helper
     def init_(self):
-        if self.l2norm_embed:
-            for emb in self.token_emb:
-                nn.init.normal_(emb.emb.weight, std=1e-5)
-            nn.init.normal_(self.pos_emb.emb.weight, std=1e-5)
+
+        if self.l2norm_embedding:
+            for embedding in self.token_embedding:
+                nn.init.normal_(tensor = embedding.emb.weight, std = 1e-5)
+            nn.init.normal_(self.positional_embedding.emb.weight, std = 1e-5)
             return
 
-        for emb in self.token_emb:
-            nn.init.kaiming_normal_(emb.emb.weight)
+        else:
+            for embedding in self.token_embedding:
+                nn.init.kaiming_normal_(tensor = embedding.emb.weight)
+
+    ##################################################
+
+
+    # FORWARD PASS
+    ##################################################
 
     def forward(
         self,
-        x,  # shape : (b, n , d)
-        return_embeddings=False,
-        mask=None,
-        return_mems=False,
-        return_attn=False,
-        mems=None,
+        x: torch.tensor, # shape : (b, n, d)
+        return_embeddings: bool = False,
+        mask: torch.tensor = None,
+        return_memories: bool = False,
+        return_attention: bool = False,
+        memories: list = None,
         **kwargs,
     ):
+        
+        # extract shape info from x
         b, _, _ = x.shape
-        num_mem = self.num_memory_tokens
+        n_memories = self.n_memory_tokens
 
-        x = sum(
-            emb(x[..., i]) for i, emb in enumerate(self.token_emb)
-        )
-        x += self.pos_emb(x)
-        x = self.emb_dropout(x)
+        # calculate x
+        x = sum(embedding(x[..., i]) for i, embedding in enumerate(self.token_embedding))
+        x += self.positional_embedding(x)
+        x = self.embedding_dropout(x)
+        x = self.project_embedding(x)
 
-        x = self.project_emb(x)
+        # deal with multiple memories
+        if n_memories > 0:
+            memory = repeat(tensor = self.memory_tokens, pattern = "n d -> b n d", b = b)
+            x = torch.cat(tensor = (memory, x), dim = 1)
+            if exists(mask): # auto-handle masking after appending memory tokens
+                mask = F.pad(input = mask, pad = (n_memories, 0), value = True)
 
-        if num_mem > 0:
-            mem = repeat(self.memory_tokens, "n d -> b n d", b=b)
-            x = torch.cat((mem, x), dim=1)
+        # if shifting memory down
+        if self.shift_memory_down and exists(memories):
+            memories_left, memories_right = memories[: self.shift_memory_down], memories[self.shift_memory_down :]
+            memories = [*memories_right, *memories_left]
 
-            # auto-handle masking after appending memory tokens
-            if exists(mask):
-                mask = F.pad(mask, (num_mem, 0), value=True)
-
-        if self.shift_mem_down and exists(mems):
-            mems_l, mems_r = (
-                mems[: self.shift_mem_down],
-                mems[self.shift_mem_down :],
-            )
-            mems = [*mems_r, *mems_l]
-
-        x, intermediates = self.attn_layers(
-            x, mask=mask, mems=mems, return_hiddens=True, **kwargs
-        )
+        # intermediates
+        x, intermediates = self.attention_layers(x, mask = mask, mems = memories, return_hiddens = True, **kwargs)
         x = self.norm(x)
 
-        mem, x = x[:, :num_mem], x[:, num_mem:]
+        # redefine memory and x
+        memory, x = x[:, :n_memories], x[:, n_memories:]
+        output = [to_logit(x) for to_logit in self.to_logits] if not return_embeddings else x
 
-        out = (
-            [to_logit(x) for to_logit in self.to_logits]
-            if not return_embeddings
-            else x
-        )
-
-        if return_mems:
+        # if returning memories
+        if return_memories:
             hiddens = intermediates.hiddens
-            new_mems = (
-                list(
-                    map(
-                        lambda pair: torch.cat(pair, dim=-2),
-                        zip(mems, hiddens),
-                    )
-                )
-                if exists(mems)
-                else hiddens
-            )
-            new_mems = list(
-                map(
-                    lambda t: t[..., -self.max_mem_len :, :].detach(), new_mems
-                )
-            )
-            return out, new_mems
+            new_memories = list(map(lambda pair: torch.cat(tensors = pair, dim = -2), zip(memories, hiddens))) if exists(memories) else hiddens
+            new_memories = list(map(lambda t: t[..., -self.max_memory_length :, :].detach(), new_memories))
+            return output, new_memories
 
-        if return_attn:
-            attn_maps = list(
-                map(
-                    lambda t: t.post_softmax_attn,
-                    intermediates.attn_intermediates,
-                )
-            )
-            return out, attn_maps
+        # if returning attention
+        if return_attention:
+            attention_maps = list(map(lambda t: t.post_softmax_attention, intermediates.attention_intermediates))
+            return output, attention_maps
 
-        return out
+        # otherwise, return output
+        return output
+
+    ##################################################
+
+##################################################
 
 
-def sample(logits, kind, threshold, temperature, min_p_pow, min_p_ratio):
+# HELPER FUNCTION TO SAMPLE
+##################################################
+
+def sample(logits: torch.tensor, kind: str, threshold: float, temperature: float, min_p_pow: float, min_p_ratio: float):
     """Sample from the logits with a specific sampling strategy."""
     if kind == "top_k":
-        probs = F.softmax(top_k(logits, thres=threshold) / temperature, dim=-1)
+        probs = F.softmax(top_k(logits = logits, thres = threshold) / temperature, dim = -1)
     elif kind == "top_p":
-        probs = F.softmax(top_p(logits, thres=threshold) / temperature, dim=-1)
+        probs = F.softmax(top_p(logits = logits, thres = threshold) / temperature, dim = -1)
     elif kind == "top_a":
-        probs = F.softmax(
-            top_a(logits, min_p_pow=min_p_pow, min_p_ratio=min_p_ratio)
-            / temperature,
-            dim=-1,
-        )
+        probs = F.softmax(top_a(logits = logits, min_p_pow = min_p_pow, min_p_ratio = min_p_ratio) / temperature, dim = -1)
     elif kind == "entmax":
-        probs = entmax(logits / temperature, alpha=ENTMAX_ALPHA, dim=-1)
+        probs = entmax(logits / temperature, alpha = ENTMAX_ALPHA, dim = -1)
     else:
         raise ValueError(f"Unknown sampling strategy: {kind}")
 
-    return torch.multinomial(probs, 1)
+    return torch.multinomial(input = probs, num_samples = 1)
 
+##################################################
+
+
+# MUSIC AUTOREGRESSIVE WRAPPER
+##################################################
 
 class MusicAutoregressiveWrapper(nn.Module):
-    def __init__(self, net, encoding, ignore_index=-100, pad_value=0):
+
+    # INTIALIZER
+    ##################################################
+
+    def __init__(self, net: MusicTransformerWrapper, encoding: dict, ignore_index: int = -100, pad_value: int = 0):
+        
+        # intialize some fields
         super().__init__()
         self.pad_value = pad_value
         self.ignore_index = ignore_index
-
         self.net = net
-        self.max_seq_len = net.max_seq_len
+        self.max_sequence_length = net.max_sequence_length
 
-        # Get the type codes
+        # get the type codes
         self.sos_type_code = encoding["type_code_map"]["start-of-song"]
         self.eos_type_code = encoding["type_code_map"]["end-of-song"]
         self.son_type_code = encoding["type_code_map"]["start-of-notes"]
         self.instrument_type_code = encoding["type_code_map"]["instrument"]
-        self.note_type_code = encoding["type_code_map"]["note"]
+        self.value_type_codes = {encoding["type_code_map"]["note"], encoding["type_code_map"]["grace-note"], encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING]}
 
-        # Get the dimension indices
-        self.dimensions = {
-            key: encoding["dimensions"].index(key)
-            for key in (
-                "type",
-                "beat",
-                "position",
-                "pitch",
-                "duration",
-                "instrument",
-            )
-        }
+        # get the dimension indices
+        self.dimensions = {dimension: i for i, dimension in enumerate(encoding["dimensions"])}
         assert self.dimensions["type"] == 0
+
+    ##################################################
+
+    
+    # GENERATE TOKENS
+    ##################################################
 
     @torch.no_grad()
     def generate(
         self,
-        start_tokens,  # shape : (b, n, d)
-        seq_len,
-        eos_token=None,
-        temperature=1.0,  # int or list of int
-        filter_logits_fn="top_k",  # str or list of str
-        filter_thres=0.9,  # int or list of int
-        min_p_pow=2.0,
-        min_p_ratio=0.02,
-        monotonicity_dim=None,
-        return_attn=False,
+        start_tokens: torch.tensor, # shape : (b, n, d)
+        sequence_length: int,
+        eos_token: str = None,
+        temperature: Union[float, List[float]] = 1.0, # int or list of int
+        filter_logits_fn: Union[str, List[str]] = "top_k", # str or list of str
+        filter_threshold: Union[float, List[float]] = 0.9, # int or list of int
+        min_p_pow: float = 2.0,
+        min_p_ratio: float = 0.02,
+        monotonicity_dim: Union[int, List[int]] = None,
+        return_attention: bool = False,
         **kwargs,
     ):
+        
+        # get shape from start_tokens
         _, t, dim = start_tokens.shape
 
+        # convert temperature to list
         if isinstance(temperature, (float, int)):
             temperature = [temperature] * dim
         elif len(temperature) == 1:
             temperature = temperature * dim
         else:
-            assert (
-                len(temperature) == dim
-            ), f"`temperature` must be of length {dim}"
-
+            assert len(temperature) == dim, f"`temperature` must be of length {dim}"
+        # convert filter_logits_fn to list
         if isinstance(filter_logits_fn, str):
             filter_logits_fn = [filter_logits_fn] * dim
         elif len(filter_logits_fn) == 1:
             filter_logits_fn = filter_logits_fn * dim
         else:
-            assert (
-                len(filter_logits_fn) == dim
-            ), f"`filter_logits_fn` must be of length {dim}"
-
-        if isinstance(filter_thres, (float, int)):
-            filter_thres = [filter_thres] * dim
-        elif len(filter_thres) == 1:
-            filter_thres = filter_thres * dim
+            assert len(filter_logits_fn) == dim, f"`filter_logits_fn` must be of length {dim}"
+        # convert filter_threshold to list
+        if isinstance(filter_threshold, (float, int)):
+            filter_threshold = [filter_threshold] * dim
+        elif len(filter_threshold) == 1:
+            filter_threshold = filter_threshold * dim
         else:
-            assert (
-                len(filter_thres) == dim
-            ), f"`filter_thres` must be of length {dim}"
-
+            assert len(filter_threshold) == dim, f"`filter_threshold` must be of length {dim}"
+        # deal with monotonicity_dim
         if isinstance(monotonicity_dim, str):
             monotonicity_dim = [self.dimensions[monotonicity_dim]]
         else:
-            monotonicity_dim = [self.dimensions[d] for d in monotonicity_dim]
+            monotonicity_dim = [self.dimensions[dim] for dim in monotonicity_dim]
 
+        # get some constants
         was_training = self.net.training
-        num_dims = len(start_tokens.shape)
-
-        if num_dims == 2:
+        n_dims = len(start_tokens.shape)
+        if n_dims == 2:
             start_tokens = start_tokens[None, :, :]
 
+        # deal with masking
         self.net.eval()
-        out = start_tokens
+        output = start_tokens
         mask = kwargs.pop("mask", None)
-
         if mask is None:
-            mask = torch.ones(
-                (out.shape[0], out.shape[1]),
-                dtype=torch.bool,
-                device=out.device,
-            )
+            mask = torch.ones(size = (output.shape[0], output.shape[1]), dtype = torch.bool, device = output.device)
 
-        if monotonicity_dim is not None:
-            current_values = {
-                d: torch.max(start_tokens[:, :, d], 1)[0]
-                for d in monotonicity_dim
-            }
-        else:
-            current_values = None
+        # deal with current values
+        current_values = {d: torch.max(input = start_tokens[:, :, d], dim = 1)[0] for d in monotonicity_dim} if monotonicity_dim is not None else None
 
-        instrument_dim = self.dimensions["instrument"]
-        type_dim = self.dimensions["type"]
-        for _ in range(seq_len):
-            x = out[:, -self.max_seq_len :]
-            mask = mask[:, -self.max_seq_len :]
+        # loop through sequence
+        instrument_dim = self.dimensions["instrument"] # get index of instrument
+        type_dim = self.dimensions["type"] # get index of type
+        for _ in range(sequence_length):
 
-            if return_attn:
-                logits, attn = self.net(
-                    x, mask=mask, return_attn=True, **kwargs
-                )
-                logits = [l[:, -1, :] for l in logits]
+            # get current x and mask
+            x = output[:, -self.max_sequence_length :]
+            mask = mask[:, -self.max_sequence_length :]
+
+            # get logits (and perhaps attention)
+            if return_attention:
+                logits, attention = self.net(x, mask = mask, return_attention = True, **kwargs)
+                logits = [logit[:, -1, :] for logit in logits]
             else:
-                logits = [
-                    l[:, -1, :] for l in self.net(x, mask=mask, **kwargs)
-                ]
+                logits = [logit[:, -1, :] for logit in self.net(x, mask = mask, return_attention = False, **kwargs)]
 
-            # Enforce monotonicity
+            # enforce monotonicity
             if monotonicity_dim is not None and 0 in monotonicity_dim:
                 for i, v in enumerate(current_values[0]):
                     logits[0][i, :v] = -float("inf")
 
-            # Filter out sos token
+            # filter out sos token
             logits[0][type_dim, 0] = -float("inf")
 
-            # Sample from the logits
-            sample_type = sample(
-                logits[0],
-                filter_logits_fn[0],
-                filter_thres[0],
-                temperature[0],
-                min_p_pow,
-                min_p_ratio,
-            )
+            # sample from the logits
+            sample_type = sample(logits = logits[0], kind = filter_logits_fn[0], threshold = filter_threshold[0], temperature = temperature[0], min_p_pow = min_p_pow, min_p_ratio = min_p_ratio)
 
-            # Update current values
+            # update current values
             if monotonicity_dim is not None and 0 in monotonicity_dim:
-                current_values[0] = torch.maximum(
-                    current_values[0], sample_type.reshape(-1)
-                )
+                current_values[0] = torch.maximum(input = current_values[0], other = sample_type.reshape(-1))
 
-            # Iterate after each sample
+            # iterate after each sample
             samples = [[s_type] for s_type in sample_type]
-            for idx, s_type in enumerate(sample_type):
-                # A start-of-song, end-of-song or start-of-notes code
-                if s_type in (
-                    self.sos_type_code,
-                    self.eos_type_code,
-                    self.son_type_code,
-                ):
-                    samples[idx] += [torch.zeros_like(s_type)] * (
-                        len(logits) - 1
-                    )
-                # An instrument code
+            for i, s_type in enumerate(sample_type):
+
+                # a start-of-song, end-of-song or start-of-notes code
+                if s_type in (self.sos_type_code, self.eos_type_code, self.son_type_code):
+                    samples[i] += [torch.zeros_like(input = s_type)] * (len(logits) - 1)
+
+                # an instrument code
                 elif s_type == self.instrument_type_code:
-                    samples[idx] += [torch.zeros_like(s_type)] * (
-                        len(logits) - 2
-                    )
+                    samples[i] += [torch.zeros_like(input = s_type)] * (len(logits) - 2)
                     logits[instrument_dim][:, 0] = -float("inf")  # avoid none
-                    sampled = sample(
-                        logits[instrument_dim][idx : idx + 1],
-                        filter_logits_fn[instrument_dim],
-                        filter_thres[instrument_dim],
-                        temperature[instrument_dim],
-                        min_p_pow,
-                        min_p_ratio,
-                    )[0]
-                    samples[idx].append(sampled)
-                # A note code
-                elif s_type == self.note_type_code:
+                    sampled = sample(logits = logits[instrument_dim][i : i + 1], kind = filter_logits_fn[instrument_dim], threshold = filter_threshold[instrument_dim], temperature = temperature[instrument_dim], min_p_pow = min_p_pow, min_p_ratio = min_p_ratio)[0]
+                    samples[i].append(sampled)
+
+                # a value code
+                elif s_type in self.value_type_codes:
                     for d in range(1, dim):
-                        # Enforce monotonicity
-                        if (
-                            monotonicity_dim is not None
-                            and d in monotonicity_dim
-                        ):
-                            logits[d][idx, : current_values[d][idx]] = -float(
-                                "inf"
-                            )
-
-                        # Sample from the logits
+                        # enforce monotonicity
+                        if monotonicity_dim is not None and d in monotonicity_dim:
+                            logits[d][i, : current_values[d][i]] = -float("inf")
+                        # sample from the logits
                         logits[d][:, 0] = -float("inf")  # avoid none
-                        sampled = sample(
-                            logits[d][idx : idx + 1],
-                            filter_logits_fn[d],
-                            filter_thres[d],
-                            temperature[d],
-                            min_p_pow,
-                            min_p_ratio,
-                        )[0]
-                        samples[idx].append(sampled)
-
-                        # Update current values
-                        if (
-                            monotonicity_dim is not None
-                            and d in monotonicity_dim
-                        ):
-                            current_values[d][idx] = torch.max(
-                                current_values[d][idx], sampled
-                            )[0]
+                        sampled = sample(logits = logits[d][i : i + 1], kind = filter_logits_fn[d], threshold = filter_threshold[d], temperature = temperature[d], min_p_pow = min_p_pow, min_p_ratio = min_p_ratio)[0]
+                        samples[i].append(sampled)
+                        # update current values
+                        if monotonicity_dim is not None and d in monotonicity_dim:
+                            current_values[d][i] = torch.max(input = current_values[d][i], other = sampled)[0]
                 else:
                     raise ValueError(f"Unknown event type code: {s_type}")
 
-            stacked = torch.stack(
-                [torch.cat(s).expand(1, -1) for s in samples], 0
-            )
-            out = torch.cat((out, stacked), dim=1)
-            mask = F.pad(mask, (0, 1), value=True)
+            # wrangle output a bit
+            stacked = torch.stack(tensors = [torch.cat(s).expand(1, -1) for s in samples], dim = 0)
+            output = torch.cat(tensors = (output, stacked), dim = 1)
+            mask = F.pad(input = mask, pad = (0, 1), value = True)
 
+            # if end of song token
             if exists(eos_token):
-                is_eos_tokens = out[..., 0] == eos_token
-
-                # Mask out everything after the eos tokens
-                if is_eos_tokens.any(dim=1).all():
+                is_eos_tokens = output[..., 0] == eos_token
+                # mask out everything after the eos tokens
+                if is_eos_tokens.any(dim = 1).all():
                     for i, is_eos_token in enumerate(is_eos_tokens):
-                        idx = torch.argmax(is_eos_token.byte())
-                        out[i, idx + 1 :] = self.pad_value
+                        i = torch.argmax(input = is_eos_token.byte())
+                        output[i, i + 1 :] = self.pad_value
                     break
 
-        out = out[:, t:]
+        # wrangle output
+        output = output[:, t:]
+        if n_dims == 1:
+            output = output.squeeze(0)
 
-        if num_dims == 1:
-            out = out.squeeze(0)
-
+        # turn of training
         self.net.train(was_training)
 
-        if return_attn:
-            return out, attn
+        # either return just the output or attention as well
+        if return_attention:
+            return output, attention
+        return output
 
-        return out
+    ##################################################
 
-    def forward(self, x, return_list=False, **kwargs):
+
+    # FORWARD PASS
+    ##################################################
+
+    def forward(self, x: torch.tensor, return_list: bool = False, **kwargs):
+
+        # create subsets of x
         xi = x[:, :-1]
         xo = x[:, 1:]
 
-        # help auto-solve a frequent area of confusion around input masks in auto-regressive
-        # if user supplies a mask that is only off by one from the source sequence, resolve it for them
+        # help auto-solve a frequent area of confusion around input masks in auto-regressive, if user supplies a mask that is only off by one from the source sequence, resolve it for them
         mask = kwargs.get("mask", None)
         if mask is not None and mask.shape[1] == x.shape[1]:
             mask = mask[:, :-1]
             kwargs["mask"] = mask
 
-        out = self.net(xi, **kwargs)
-        losses = [
-            F.cross_entropy(
-                out[i].transpose(1, 2),
-                xo[..., i],
-                ignore_index=self.ignore_index,
-            )
-            for i in range(len(out))
-        ]
-        loss = sum(losses)
+        # create output
+        output = self.net(xi, **kwargs)
+        losses = [F.cross_entropy(input = output[i].transpose(1, 2), target = xo[..., i], ignore_index = self.ignore_index) for i in range(len(output))] # calculate losses
+        loss = sum(losses) # loss is the sum of losses
 
+        # return the losses or just loss
         if return_list:
             return loss, losses
         return loss
 
+    ##################################################
+
+##################################################
+
+
+# THE MUSIC X TRANSFORMER
+##################################################
 
 class MusicXTransformer(nn.Module):
+    
+    # initializer
     def __init__(self, *, dim, encoding, **kwargs):
         super().__init__()
         assert "dim" not in kwargs, "dimension must be set with `dim` keyword"
         transformer_kwargs = {
-            "max_seq_len": kwargs.pop("max_seq_len"),
+            "max_sequence_length": kwargs.pop("max_sequence_length"),
             "max_beat": kwargs.pop("max_beat"),
-            "emb_dropout": kwargs.pop("emb_dropout", 0),
+            "embedding_dropout": kwargs.pop("embedding_dropout", 0),
             "use_abs_pos_emb": kwargs.pop("use_abs_pos_emb", True),
         }
-        self.decoder = MusicTransformerWrapper(
-            encoding=encoding,
-            attn_layers=Decoder(dim=dim, **kwargs),
-            **transformer_kwargs,
-        )
-        self.decoder = MusicAutoregressiveWrapper(
-            self.decoder, encoding=encoding
-        )
+        self.decoder = MusicTransformerWrapper(encoding = encoding, attention_layers = Decoder(dim = dim, **kwargs), **transformer_kwargs)
+        self.decoder = MusicAutoregressiveWrapper(net = self.decoder, encoding = encoding)
 
+    # generate
     @torch.no_grad()
-    def generate(self, seq_in, seq_len, **kwargs):
-        return self.decoder.generate(seq_in, seq_len, **kwargs)
+    def generate(self, sequence_in: torch.tensor, sequence_length: int, **kwargs):
+        return self.decoder.generate(start_tokens = sequence_in, sequence_length = sequence_length, **kwargs)
 
-    def forward(self, sequence, mask=None, **kwargs):
-        return self.decoder(sequence, mask=mask, **kwargs)
+    # forward pass
+    def forward(self, sequence: torch.tensor, mask: torch.tensor = None, **kwargs):
+        return self.decoder(sequence, mask = mask, **kwargs)
+
+##################################################
 
 
-# MAIN FUNCTION
+# CONSTANTS
+##################################################
+
+ENCODING_FILEPATH = "/data2/pnlong/musescore/encoding.json"
+
+##################################################
+
+
+# ARGUMENTS
+##################################################
+def parse_args(args = None, namespace = None):
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-e", "--encoding", default = ENCODING_FILEPATH, type = str, help = ".json file with encoding information.")
+    return parser.parse_args(args = args, namespace = namespace)
+##################################################
+
+
+# MAIN METHOD
 ##################################################
 
 if __name__ == "__main__":
@@ -533,53 +473,37 @@ if __name__ == "__main__":
     # parse the command-line arguments
     args = parse_args()
 
-    # set default arguments
-    if args.dataset is not None:
-        if args.in_dir is None:
-            args.in_dir = pathlib.Path(f"data/{args.dataset}/processed/notes")
-
     # set up the logger
-    logging.basicConfig(
-        stream=sys.stdout,
-        level=logging.ERROR if args.quiet else logging.INFO,
-        format="%(levelname)-8s %(message)s",
-    )
-
-    # log arguments
-    logging.info(f"Using arguments:\n{pprint.pformat(vars(args))}")
+    logging.basicConfig(level = logging.INFO, format = "%(message)s", stream = sys.stdout)
 
     # load the encoding
-    encoding = representation.load_encoding(args.in_dir / "encoding.json")
+    encoding = representation.load_encoding(filename = args.encoding) if exists(args.encoding) else representation.get_encoding()
 
     # create the model
     model = MusicXTransformer(
-        dim=128,
-        encoding=encoding,
-        depth=3,
-        heads=4,
-        max_seq_len=1024,
-        max_beat=256,
-        rel_pos_bias=True,  # relative positional bias
-        rotary_pos_emb=True,  # rotary positional encoding
-        emb_dropout=0.1,
-        attn_dropout=0.1,
-        ff_dropout=0.1,
+        dim = 128,
+        encoding = encoding,
+        depth = 3,
+        heads = 4,
+        max_sequence_length = 1024,
+        max_beat = 256,
+        rel_pos_bias = True,  # relative positional bias
+        rotary_pos_emb = True,  # rotary positional encoding
+        embedding_dropout = 0.1,
+        attention_dropout = 0.1,
+        ff_dropout = 0.1,
     )
 
     # summarize the model
-    n_parameters = sum(p.numel() for p in model.parameters())
-    n_trainables = sum(
-        p.numel() for p in model.parameters() if p.requires_grad
-    )
-    print(f"Number of parameters: {n_parameters}")
-    print(f"Number of trainable parameters: {n_trainables}")
+    logging.info(f"Number of parameters: {sum(p.numel() for p in model.parameters())}")
+    logging.info(f"Number of trainable parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
 
     # create test data
-    sequence = torch.randint(0, 4, (1, 1024, 6))
-    mask = torch.ones((1, 1024)).bool()
+    sequence = torch.randint(low = 0, high = 4, size = (1, 1024, 6))
+    mask = torch.ones(size = (1, 1024)).bool()
 
     # pass test data through the model
-    loss = model(sequence, mask=mask)
+    loss = model(sequence, mask = mask)
     loss.backward()
 
 ##################################################
