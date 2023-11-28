@@ -23,8 +23,9 @@ import argparse
 import logging
 import pprint
 import sys
-import os
 from os.path import exists
+from os import makedirs, mkdir
+from typing import Union
 from collections import defaultdict
 
 import muspy
@@ -77,24 +78,17 @@ def parse_args(args = None, namespace = None):
 # EVALUATE FUNCTION
 ##################################################
 
-def evaluate(data: np.array, encoding: dict, stem: str, eval_dir: str):
+def evaluate(data: Union[np.array, torch.tensor], encoding: dict, stem: str, eval_dir: str) -> dict:
     """Evaluate the results."""
 
-    # save as a numpy array
-    np.save(file = f"{eval_dir}/npy/{stem}.npy", arr = data)
+    # save results
+    np.save(file = f"{eval_dir}/npy/{stem}.npy", arr = data) # save as a numpy array
+    representation.save_csv_codes(filepath = f"{eval_dir}/csv/{stem}.csv", data = data) # save as a .csv file
+    music = representation.decode(codes = data, encoding = encoding) # convert to a BetterMusic object
+    music.trim(end = music.resolution * 64) # trim the music
+    music.save(path = f"{eval_dir}/json/{stem}.json") # save as a BetterMusic .json file
 
-    # save as a CSV file
-    representation.save_csv_codes(filepath = f"{eval_dir}/csv/{stem}.csv", data = data)
-
-    # convert to a BetterMusic object
-    music = representation.decode(codes = data, encoding = encoding)
-
-    # trim the music
-    music.trim(end = music.resolution * 64)
-
-    # save as a BetterMusic JSON file
-    music.save(path = f"{eval_dir}/json/{stem}.json")
-
+    # return a dictionary
     if len(music.tracks) == 0:
         return {
             "pitch_class_entropy": np.nan,
@@ -148,15 +142,15 @@ if __name__ == "__main__":
 
     # make sure the output directory exists
     EVAL_DIR = f"{args.output_dir}/eval"
-    if not exists(args.output_dir): os.makedirs(args.output_dir)
-    if not exists(EVAL_DIR): os.mkdir(EVAL_DIR)
+    if not exists(args.output_dir): makedirs(args.output_dir) # create output_dir if necessary
+    if not exists(EVAL_DIR): mkdir(EVAL_DIR) # create eval_dir if necessary
     for key in ("truth", "unconditioned"):
-        key_basedir = f"{EVAL_DIR}/{key}"
-        if not exists(key_basedir): os.mkdir(key_basedir)
-        if not exists(key_basedir_npy := f"{key_basedir}/npy"): os.mkdir(key_basedir_npy)
-        if not exists(key_basedir_csv := f"{key_basedir}/csv"): os.mkdir(key_basedir_csv)
-        if not exists(key_basedir_json := f"{key_basedir}/json"): os.mkdir(key_basedir_json)
-    del key_basedir, key_basedir_npy, key_basedir_csv, key_basedir_json # clear up memory
+        key_base_dir = f"{EVAL_DIR}/{key}"
+        if not exists(key_base_dir): mkdir(key_base_dir) # create base_dir if necessary
+        for subdir in ("npy", "csv", "json"):
+            if not exists(key_base_dir_subdir := f"{key_base_dir}/{subdir}"): mkdir(key_base_dir_subdir) # create base_dir with subdir if necessary
+        del subdir, key_base_dir_subdir
+    del key, key_base_dir # clear up memory
 
     # get the specified device
     device = torch.device(f"cuda:{args.gpu}" if args.gpu is not None else "cpu")
@@ -214,6 +208,7 @@ if __name__ == "__main__":
     with torch.no_grad():
         for i in tqdm(iterable = range(len(test_data_loader) if args.n_samples is None else args.n_samples), desc = "Evaluating"):
 
+            # get new batch
             batch = next(test_iter)
 
             # GROUND TRUTH

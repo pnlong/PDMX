@@ -21,21 +21,35 @@
 
 import argparse
 import logging
-import pathlib
 import pprint
 import subprocess
+from typing import Union, Tuple
+from os.path import exists
+from os import makedirs, mkdir
 import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.utils.data
-import tqdm
+from tqdm import tqdm
 
+from read_mscz.music import BetterMusic
 import dataset
 import music_x_transformers
 import representation
 import utils
+
+##################################################
+
+
+# CONSTANTS
+##################################################
+
+DATA_DIR = "/data2/pnlong/musescore/data"
+PATHS = f"{DATA_DIR}/test.txt"
+ENCODING_FILEPATH = "/data2/pnlong/musescore/encoding.json"
+OUTPUT_DIR = "/data2/pnlong/musescore/data"
 
 ##################################################
 
@@ -45,18 +59,18 @@ import utils
 def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("-n", "--names", type = pathlib.Path, help = "input names")
-    parser.add_argument("-i", "--in_dir", type = pathlib.Path, help = "input data directory")
-    parser.add_argument("-o", "--out_dir", type = pathlib.Path, help = "output directory")
-    parser.add_argument("-ns", "--n_samples", default = 50, type = int, help = "number of samples to generate")
+    parser.add_argument("-p", "--paths", default = PATHS, type = str, help = ".txt file with absolute filepaths to testing dataset.")
+    parser.add_argument("-e", "--encoding", default = ENCODING_FILEPATH, type = str, help = ".json file with encoding information.")
+    parser.add_argument("-o", "--output_dir", default = OUTPUT_DIR, type = str, help = "Output directory")
+    parser.add_argument("-ns", "--n_samples", type = int, help = "Number of samples to evaluate")
     # model
-    parser.add_argument("-s", "--shuffle", action = "store_true", help = "whether to shuffle the test data")
-    parser.add_argument("--model_steps", type = int, help = "step of the trained model to load (default to the best model)")
+    parser.add_argument("-s", "--shuffle", action = "store_true", help = "Whether to shuffle the test data")
+    parser.add_argument("--model_steps", type = int, help = "Step of the trained model to load (default to the best model)")
     # sampling
-    parser.add_argument("--seq_len", default = 1024, type = int, help = "sequence length to generate")
-    parser.add_argument("--temperature", nargs = "+", default = 1.0, type = float, help = "sampling temperature (default: 1.0)")
-    parser.add_argument("--filter", nargs = "+", default = "top_k", type = str, help = "sampling filter (default: 'top_k')")
-    parser.add_argument("--filter_threshold", nargs = "+", default = 0.9, type = float, help = "sampling filter threshold (default: 0.9)")
+    parser.add_argument("--sequence_length", default = 1024, type = int, help = "Sequence length to generate")
+    parser.add_argument("--temperature", nargs = "+", default = 1.0, type = float, help = "Sampling temperature (default: 1.0)")
+    parser.add_argument("--filter", nargs = "+", default = "top_k", type = str, help = "Sampling filter (default: 'top_k')")
+    parser.add_argument("--filter_threshold", nargs = "+", default = 0.9, type = float, help = "Sampling filter threshold (default: 0.9)")
     # others
     parser.add_argument("-g", "--gpu", type = int, help = "GPU number")
     parser.add_argument("-j", "--jobs", default = 1, type = int, help = "Number of jobs")
@@ -64,10 +78,11 @@ def parse_args(args = None, namespace = None):
 ##################################################
 
 
-# SAVE PIANO ROLL
+# SAVE THE RESULT
 ##################################################
 
-def save_pianoroll(filepath, music, size = None, **kwargs):
+# helper function to save piano roll
+def save_pianoroll(filepath: str, music: BetterMusic, size: Tuple[int] = None, **kwargs):
     """Save the piano roll to file."""
     music.show_pianoroll(track_label = "program", **kwargs)
     if size is not None:
@@ -75,74 +90,27 @@ def save_pianoroll(filepath, music, size = None, **kwargs):
     plt.savefig(filepath)
     plt.close()
 
-##################################################
 
-
-# SAVE THE RESULT
-##################################################
-
-def save_result(filepath, data, sample_dir, encoding):
+# save the result
+def save_result(stem: str, data: Union[np.array, torch.tensor], sample_dir: str, encoding: dict):
     """Save the results in multiple formats."""
-    # Save as a numpy array
-    np.save(sample_dir / "npy" / f"{filepath}.npy", data)
 
-    # Save as a CSV file
-    representation.save_csv_codes(sample_dir / "csv" / f"{filepath}.csv", data)
+    # save results
+    np.save(file = f"{sample_dir}/npy/{stem}.npy", arr = data) # save as a numpy array
+    representation.save_csv_codes(filepath = f"{sample_dir}/csv/{stem}.csv", data = data) # save as a .csv file
+    representation.save_txt(filepath = f"{sample_dir}/txt/{stem}.txt", data = data, encoding = encoding) # save as a .txt file
+    music = representation.decode(codes = data, encoding = encoding) # convert to a BetterMusic object
+    music.save(path = f"{sample_dir}/json/{stem}.json") # save as a BetterMusic .json file
+    save_pianoroll(filepath = f"{sample_dir}/png/{stem}.png", music = music, size = (20, 5), preset = "frame") # save as a piano roll
+    music.write(path = f"{sample_dir}/mid/{stem}.mid") # save as a .mid file
+    music.write(path = f"{sample_dir}/wav/{stem}.wav", options = "-o synth.polyphony = 4096") # save as a .wav file
+    subprocess.check_output(args = ["ffmpeg", "-loglevel", "error", "-y", "-i", f"{sample_dir}/wav/{stem}.wav", "-b:a", "192k", f"{sample_dir}/mp3/{stem}.mp3"]) # save also as a .mp3 file
 
-    # Save as a TXT file
-    representation.save_txt(
-        sample_dir / "txt" / f"{filepath}.txt", data, encoding
-    )
-
-    # Convert to a MusPy Music object
-    music = representation.decode(data, encoding)
-
-    # Save as a MusPy JSON file
-    music.save(sample_dir / "json" / f"{filepath}.json")
-
-    # Save as a piano roll
-    save_pianoroll(
-        sample_dir / "png" / f"{filepath}.png", music, (20, 5), preset = "frame"
-    )
-
-    # Save as a MIDI file
-    music.write(sample_dir / "mid" / f"{filepath}.mid")
-
-    # Save as a WAV file
-    music.write(
-        sample_dir / "wav" / f"{filepath}.wav",
-        options = "-o synth.polyphony = 4096",
-    )
-
-    # Save also as a MP3 file
-    subprocess.check_output(
-        ["ffmpeg", "-loglevel", "error", "-y", "-i"]
-        + [str(sample_dir / "wav" / f"{filepath}.wav")]
-        + ["-b:a", "192k"]
-        + [str(sample_dir / "mp3" / f"{filepath}.mp3")]
-    )
-
-    # Trim the music
-    music.trim(music.resolution * 64)
-
-    # Save the trimmed version as a piano roll
-    save_pianoroll(
-        sample_dir / "png-trimmed" / f"{filepath}.png", music, (10, 5)
-    )
-
-    # Save as a WAV file
-    music.write(
-        sample_dir / "wav-trimmed" / f"{filepath}.wav",
-        options = "-o synth.polyphony = 4096",
-    )
-
-    # Save also as a MP3 file
-    subprocess.check_output(
-        ["ffmpeg", "-loglevel", "error", "-y", "-i"]
-        + [str(sample_dir / "wav-trimmed" / f"{filepath}.wav")]
-        + ["-b:a", "192k"]
-        + [str(sample_dir / "mp3-trimmed" / f"{filepath}.mp3")]
-    )
+    # trim and save
+    music.trim(end = music.resolution * 64) # trim the music
+    save_pianoroll(filepath = f"{sample_dir}/png-trimmed/{stem}.png", music = music, size = (10, 5)) # save the trimmed version as a piano roll
+    music.write(path = f"{sample_dir}/wav-trimmed/{stem}.wav", options = "-o synth.polyphony = 4096") # save as a .wav file
+    subprocess.check_output(args = ["ffmpeg", "-loglevel", "error", "-y", "-i", f"{sample_dir}/wav-trimmed/{stem}.wav", "-b:a", "192k", f"{sample_dir}/mp3-trimmed/{stem}.mp3"]) # save also as a .mp3 file
 
 ##################################################
 
@@ -155,39 +123,19 @@ if __name__ == "__main__":
     # CONSTANTS
     ##################################################
 
-    # Parse the command-line arguments
+    # parse the command-line arguments
     args = parse_args()
 
-    # Set default arguments
-    if args.dataset is not None:
-        if args.names is None:
-            args.names = pathlib.Path(
-                f"{DATA_DIRECTORY}data/{args.dataset}/processed/test-names.txt"
-            )
-        if args.in_dir is None:
-            args.in_dir = pathlib.Path(f"{DATA_DIRECTORY}data/{args.dataset}/processed/notes/")
-        if args.out_dir is None:
-            args.out_dir = pathlib.Path(f"exp/test_{args.dataset}")
+    # set up the logger
+    logging.basicConfig(level = logging.INFO, format = "%(message)s", handlers = [logging.FileHandler(f"{args.output_dir}/generate.log", "w"), logging.StreamHandler(sys.stdout)])
 
-    # Set up the logger
-    logging.basicConfig(
-        level = logging.ERROR if args.quiet else logging.INFO,
-        format = "%(message)s",
-        handlers = [
-            logging.FileHandler(args.out_dir / "generate.log", "w"),
-            logging.StreamHandler(sys.stdout),
-        ],
-    )
-
-    # Log command called
+    # log command called and arguments, save arguments
     logging.info(f"Running command: python {' '.join(sys.argv)}")
-
-    # Log arguments
     logging.info(f"Using arguments:\n{pprint.pformat(vars(args))}")
-
-    # Save command-line arguments
-    logging.info(f"Saved arguments to {args.out_dir / 'generate-args.json'}")
-    utils.save_args(args.out_dir / "generate-args.json", args)
+    args_output_filepath = f"{args.output_dir}/generate-args.json"
+    logging.info(f"Saved arguments to {args_output_filepath}")
+    utils.save_args(filepath = args_output_filepath, args = args)
+    del args_output_filepath
 
     ##################################################
 
@@ -195,62 +143,40 @@ if __name__ == "__main__":
     # LOAD IN STUFF
     ##################################################
 
-    # Load training configurations
-    logging.info(
-        f"Loading training arguments from: {args.out_dir / 'train-args.json'}"
-    )
-    train_args = utils.load_json(args.out_dir / "train-args.json")
+    # load training configurations
+    train_args_filepath = f"{args.output_dir}/train-args.json"
+    logging.info(f"Loading training arguments from: {train_args_filepath}")
+    train_args = utils.load_json(filepath = train_args_filepath)
     logging.info(f"Using loaded arguments:\n{pprint.pformat(train_args)}")
+    del train_args_filepath
 
-    # Make sure the sample directory exists
-    sample_dir = args.out_dir / "samples"
-    sample_dir.mkdir(exist_ok = True)
-    (sample_dir / "npy").mkdir(exist_ok = True)
-    (sample_dir / "csv").mkdir(exist_ok = True)
-    (sample_dir / "txt").mkdir(exist_ok = True)
-    (sample_dir / "json").mkdir(exist_ok = True)
-    (sample_dir / "png").mkdir(exist_ok = True)
-    (sample_dir / "mid").mkdir(exist_ok = True)
-    (sample_dir / "wav").mkdir(exist_ok = True)
-    (sample_dir / "mp3").mkdir(exist_ok = True)
-    (sample_dir / "png-trimmed").mkdir(exist_ok = True)
-    (sample_dir / "wav-trimmed").mkdir(exist_ok = True)
-    (sample_dir / "mp3-trimmed").mkdir(exist_ok = True)
+    # make sure the sample directory exists
+    SAMPLE_DIR = f"{args.output_dir}/samples"
+    if not exists(args.output_dir): makedirs(args.output_dir) # create output_dir if necessary
+    if not exists(SAMPLE_DIR): mkdir(SAMPLE_DIR) # create sample_dir if necessary
+    for subdir in (f"{SAMPLE_DIR}/{subdir}" for subdir in ("npy", "csv", "txt", "json", "png", "mid", "wav", "mp3", "png-trimmed", "wav-trimmed", "mp3-trimmed")):
+        if not exists(subdir): mkdir(subdir) # create subdir if necessary
 
-    # Get the specified device
-    device = torch.device(
-        f"cuda:{args.gpu}" if args.gpu is not None else "cpu"
-    )
+    # get the specified device
+    device = torch.device(f"cuda:{args.gpu}" if args.gpu is not None else "cpu")
     logging.info(f"Using device: {device}")
 
-    # Load the encoding
-    encoding = representation.load_encoding(args.in_dir / "encoding.json")
+    # load the encoding
+    encoding = representation.load_encoding(filepath = args.encoding) if exists(args.encoding) else representation.get_encoding()
 
-    # Create the dataset and data loader
+    # create the dataset and data loader
     logging.info(f"Creating the data loader...")
-    test_dataset = dataset.MusicDataset(
-        args.names,
-        args.in_dir,
-        encoding,
-        max_seq_len = train_args["max_seq_len"],
-        max_beat = train_args["max_beat"],
-        use_csv = args.use_csv,
-    )
-    test_loader = torch.utils.data.DataLoader(
-        test_dataset,
-        shuffle = args.shuffle,
-        num_workers = args.jobs,
-        collate_fn = dataset.MusicDataset.collate,
-    )
+    dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_sequence_length = train_args["max_sequence_length"], max_beat = train_args["max_beat"])
+    data_loader = torch.utils.data.DataLoader(dataset = dataset, shuffle = args.shuffle, num_workers = args.jobs, collate_fn = dataset.MusicDataset.collate)
 
-    # Create the model
+    # create the model
     logging.info(f"Creating the model...")
     model = music_x_transformers.MusicXTransformer(
         dim = train_args["dim"],
         encoding = encoding,
         depth = train_args["layers"],
         heads = train_args["heads"],
-        max_seq_len = train_args["max_seq_len"],
+        max_sequence_length = train_args["max_sequence_length"],
         max_beat = train_args["max_beat"],
         rotary_pos_emb = train_args["rel_pos_emb"],
         use_abs_pos_emb = train_args["abs_pos_emb"],
@@ -259,17 +185,17 @@ if __name__ == "__main__":
         ff_dropout = train_args["dropout"],
     ).to(device)
 
-    # Load the checkpoint
-    checkpoint_dir = args.out_dir / "checkpoints"
+    # load the checkpoint
+    CHECKPOINT_DIR = f"{args.output_dir}/checkpoints"
     if args.model_steps is None:
-        checkpoint_filepath = checkpoint_dir / "best_model.pt"
+        checkpoint_filepath = f"{CHECKPOINT_DIR}/best_model.pth"
     else:
-        checkpoint_filepath = checkpoint_dir / f"model_{args.model_steps}.pt"
-    model.load_state_dict(torch.load(checkpoint_filepath, map_location = device))
+        checkpoint_filepath = f"{CHECKPOINT_DIR}/model_{args.model_steps}.pth"
+    model.load_state_dict(state_dict = torch.load(f = checkpoint_filepath, map_location = device))
     logging.info(f"Loaded the model weights from: {checkpoint_filepath}")
     model.eval()
 
-    # Get special tokens
+    # get special tokens
     sos = encoding["type_code_map"]["start-of-song"]
     eos = encoding["type_code_map"]["end-of-song"]
     beat_0 = encoding["beat_code_map"][0]
@@ -282,126 +208,121 @@ if __name__ == "__main__":
     # GENERATE
     ##################################################
 
-    # Iterate over the dataset
+    # iterate over the dataset
     with torch.no_grad():
-        data_iter = iter(test_loader)
-        for i in tqdm.tqdm(range(args.n_samples), ncols = 80):
+
+        # instantiate iterable
+        data_iter = iter(data_loader)
+        for i in tqdm(iterable = range(args.n_samples), desc = "Generating"):
+
+            # get new batch
             batch = next(data_iter)
 
-            # ------------
-            # Ground truth
-            # ------------
-            truth_np = batch["seq"][0].numpy()
-            save_result(f"{i}_truth", truth_np, sample_dir, encoding)
+            # GROUND TRUTH
+            ##################################################
 
-            # ------------------------
-            # Unconditioned generation
-            # ------------------------
+            # get ground truth
+            truth_np = batch["sequence"][0].numpy()
 
-            # Get output start tokens
-            tgt_start = torch.zeros((1, 1, 6), dtype = torch.long, device = device)
-            tgt_start[:, 0, 0] = sos
+            # save the results
+            save_result(stem = f"{i}_truth", data = truth_np, sample_dir = SAMPLE_DIR, encoding = encoding)
 
-            # Generate new samples
+            ##################################################
+
+            # UNCONDITIONED GENERATION
+            ##################################################
+
+            # get output start tokens
+            tgt_start = torch.tensor(data = [sos] + ([0] * (len(encoding["dimensions"]) - 1)), dtype = torch.long, device = device).reshape(1, 1, len(encoding["dimensions"]))
+
+            # generate new samples
             generated = model.generate(
-                tgt_start,
-                args.seq_len,
+                sequence_in = tgt_start,
+                sequence_length = args.sequence_length,
                 eos_token = eos,
                 temperature = args.temperature,
                 filter_logits_fn = args.filter,
                 filter_thres = args.filter_threshold,
-                monotonicity_dim = ("type", "beat"),
+                monotonicity_dim = ("type", "beat")
             )
-            generated_np = torch.cat((tgt_start, generated), 1).cpu().numpy()
+            generated_sequence = torch.cat(tensors = (tgt_start, generated), dim = 1).cpu().numpy()
 
-            # Save the results
-            save_result(
-                f"{i}_unconditioned", generated_np[0], sample_dir, encoding
-            )
+            # save the results
+            save_result(stem = f"{i}_unconditioned", data = generated_sequence[0], sample_dir = SAMPLE_DIR, encoding = encoding)
 
-            # ------------------------------
-            # Instrument-informed generation
-            # ------------------------------
+            ##################################################
 
-            # Get output start tokens
-            prefix_len = int(np.argmax(batch["seq"][0, :, 1] >= beat_0))
-            tgt_start = batch["seq"][:1, :prefix_len].to(device)
+            # INSTRUMENT-INFORMED GENERATION
+            ##################################################
 
-            # Generate new samples
+            # get output start tokens
+            prefix_length = int(np.argmax(a = batch["sequence"][0, :, 1] >= beat_0))
+            tgt_start = batch["sequence"][:1, :prefix_length].to(device)
+
+            # generate new samples
             generated = model.generate(
-                tgt_start,
-                args.seq_len,
+                sequence_in = tgt_start,
+                sequence_length = args.sequence_length,
                 eos_token = eos,
                 temperature = args.temperature,
                 filter_logits_fn = args.filter,
                 filter_thres = args.filter_threshold,
-                monotonicity_dim = ("type", "beat"),
+                monotonicity_dim = ("type", "beat")
             )
-            generated_np = torch.cat((tgt_start, generated), 1).cpu().numpy()
+            generated_sequence = torch.cat(tensors = (tgt_start, generated), dim = 1).cpu().numpy()
 
-            # Save the results
-            save_result(
-                f"{i}_instrument-informed",
-                generated_np[0],
-                sample_dir,
-                encoding,
-            )
+            # save the results
+            save_result(stem = f"{i}_instrument-informed", data = generated_sequence[0], sample_dir = SAMPLE_DIR, encoding = encoding)
 
-            # -------------------
+            ##################################################
+
             # 4-beat continuation
-            # -------------------
+            ##################################################
 
-            # Get output start tokens
-            cond_len = int(np.argmax(batch["seq"][0, :, 1] >= beat_4))
-            tgt_start = batch["seq"][:1, :cond_len].to(device)
+            # get output start tokens
+            cond_length = int(np.argmax(a = batch["sequence"][0, :, 1] >= beat_4))
+            tgt_start = batch["sequence"][:1, :cond_length].to(device)
 
-            # Generate new samples
+            # generate new samples
             generated = model.generate(
-                tgt_start,
-                args.seq_len,
+                sequence_in = tgt_start,
+                sequence_length = args.sequence_length,
                 eos_token = eos,
                 temperature = args.temperature,
                 filter_logits_fn = args.filter,
                 filter_thres = args.filter_threshold,
-                monotonicity_dim = ("type", "beat"),
+                monotonicity_dim = ("type", "beat")
             )
-            generated_np = torch.cat((tgt_start, generated), 1).cpu().numpy()
+            generated_sequence = torch.cat(tensors = (tgt_start, generated), dim = 1).cpu().numpy()
 
-            # Save the results
-            save_result(
-                f"{i}_4-beat-continuation",
-                generated_np[0],
-                sample_dir,
-                encoding,
-            )
+            # save the results
+            save_result(stem = f"{i}_4-beat-continuation", data = generated_sequence[0], sample_dir = SAMPLE_DIR, encoding = encoding)
 
-            # --------------------
-            # 16-beat continuation
-            # --------------------
+            ##################################################
 
-            # Get output start tokens
-            cond_len = int(np.argmax(batch["seq"][0, :, 1] >= beat_16))
-            tgt_start = batch["seq"][:1, :cond_len].to(device)
+            # 16-BEAT CONTINUATION
+            ##################################################
 
-            # Generate new samples
+            # get output start tokens
+            cond_length = int(np.argmax(a = batch["sequence"][0, :, 1] >= beat_16))
+            tgt_start = batch["sequence"][:1, :cond_length].to(device)
+
+            # generate new samples
             generated = model.generate(
-                tgt_start,
-                args.seq_len,
+                sequence_in = tgt_start,
+                sequence_length = args.sequence_length,
                 eos_token = eos,
                 temperature = args.temperature,
                 filter_logits_fn = args.filter,
                 filter_thres = args.filter_threshold,
-                monotonicity_dim = ("type", "beat"),
+                monotonicity_dim = ("type", "beat")
             )
-            generated_np = torch.cat((tgt_start, generated), 1).cpu().numpy()
+            generated_sequence = torch.cat(tensors = (tgt_start, generated), dim = 1).cpu().numpy()
 
-            # Save results
-            save_result(
-                f"{i}_16-beat-continuation",
-                generated_np[0],
-                sample_dir,
-                encoding,
-            )
+            # save the results
+            save_result(stem = f"{i}_16-beat-continuation", data = generated_sequence[0], sample_dir = SAMPLE_DIR, encoding = encoding)
+
+            ##################################################
     
     ##################################################
 
