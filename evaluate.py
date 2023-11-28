@@ -1,3 +1,11 @@
+# README
+# Phillip Long
+# November 27, 2023
+
+# Evaluate a neural network.
+
+# python /home/pnlong/model_musescore/evaluate.py
+
 # Absolute positional embedding (APE):
 # python /home/pnlong/mmt/evaluate.py -d sod -o /data2/pnlong/mmt/exp/sod/ape -ns 100 -g 0
 
@@ -7,214 +15,169 @@
 # No positional embedding (NPE):
 # python /home/pnlong/mmt/evaluate.py -d sod -o /data2/pnlong/mmt/exp/sod/npe -ns 100 -g 0
 
+
+# IMPORTS
+##################################################
+
 import argparse
 import logging
-import pathlib
 import pprint
 import sys
+import os
+from os.path import exists
 from collections import defaultdict
 
 import muspy
 import numpy as np
 import torch
 import torch.utils.data
-import tqdm
+from tqdm import tqdm
 
 import dataset
 import music_x_transformers
 import representation
 import utils
-from utils import DATA_DIRECTORY
+
+##################################################
 
 
-@utils.resolve_paths
+# CONSTANTS
+##################################################
+
+DATA_DIR = "/data2/pnlong/musescore/data"
+PATHS = f"{DATA_DIR}/test.txt"
+ENCODING_FILEPATH = "/data2/pnlong/musescore/encoding.json"
+OUTPUT_DIR = "/data2/pnlong/musescore/data"
+
+##################################################
+
+
+# ARGUMENTS
+##################################################
 def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-d",
-        "--dataset",
-        choices = ("sod", "lmd", "lmd_full", "snd"),
-        required = True,
-        help = "dataset key",
-    )
-    parser.add_argument("-n", "--names", type = pathlib.Path, help = "input names")
-    parser.add_argument(
-        "-i", "--in_dir", type = pathlib.Path, help = "input data directory"
-    )
-    parser.add_argument(
-        "-o", "--out_dir", type = pathlib.Path, help = "output directory"
-    )
-    parser.add_argument(
-        "-ns",
-        "--n_samples",
-        type = int,
-        help = "number of samples to evaluate",
-    )
-    # Data
-    parser.add_argument(
-        "--use_csv",
-        action = "store_true",
-        help = "whether to save outputs in CSV format (default to NPY format)",
-    )
-    # Model
-    parser.add_argument(
-        "--model_steps",
-        type = int,
-        help = "step of the trained model to load (default to the best model)",
-    )
-    parser.add_argument(
-        "--seq_len", default = 1024, type = int, help = "sequence length to generate"
-    )
-    parser.add_argument(
-        "--temperature",
-        nargs = "+",
-        default = 1.0,
-        type = float,
-        help = "sampling temperature (default: 1.0)",
-    )
-    parser.add_argument(
-        "--filter",
-        nargs = "+",
-        default = "top_k",
-        type = str,
-        help = "sampling filter (default: 'top_k')",
-    )
-    parser.add_argument(
-        "--filter_threshold",
-        nargs = "+",
-        default = 0.9,
-        type = float,
-        help = "sampling filter threshold (default: 0.9)",
-    )
-    # Others
-    parser.add_argument("-g", "--gpu", type = int, help = "gpu number")
-    parser.add_argument(
-        "-j", "--jobs", default = 0, type = int, help = "number of jobs"
-    )
-    parser.add_argument(
-        "-q", "--quiet", action = "store_true", help = "show warnings only"
-    )
+    parser.add_argument("-p", "--paths", default = PATHS, type = str, help = ".txt file with absolute filepaths to testing dataset.")
+    parser.add_argument("-e", "--encoding", default = ENCODING_FILEPATH, type = str, help = ".json file with encoding information.")
+    parser.add_argument("-o", "--output_dir", default = OUTPUT_DIR, type = str, help = "Output directory")
+    parser.add_argument("-ns", "--n_samples", type = int, help = "Number of samples to evaluate")
+    # model
+    parser.add_argument("--model_steps", type = int, help = "Step of the trained model to load (default to the best model)")
+    parser.add_argument("--sequence_length", default = 1024, type = int, help = "Sequence length to generate")
+    parser.add_argument("--temperature", nargs = "+", default = 1.0, type = float, help = "Sampling temperature (default: 1.0)")
+    parser.add_argument("--filter", nargs = "+", default = "top_k", type = str, help = "Sampling filter (default: 'top_k')")
+    parser.add_argument("--filter_threshold", nargs = "+", default = 0.9, type = float, help = "Sampling filter threshold (default: 0.9)")
+    # others
+    parser.add_argument("-g", "--gpu", type = int, help = "GPU number")
+    parser.add_argument("-j", "--jobs", default = 0, type = int, help = "Number of jobs")
     return parser.parse_args(args = args, namespace = namespace)
+##################################################
 
 
-def evaluate(data, encoding, filename, eval_dir):
+# EVALUATE FUNCTION
+##################################################
+
+def evaluate(data: np.array, encoding: dict, stem: str, eval_dir: str):
     """Evaluate the results."""
-    # Save as a numpy array
-    np.save(eval_dir / "npy" / f"{filename}.npy", data)
 
-    # Save as a CSV file
-    representation.save_csv_codes(eval_dir / "csv" / f"{filename}.csv", data)
+    # save as a numpy array
+    np.save(file = f"{eval_dir}/npy/{stem}.npy", arr = data)
 
-    # Convert to a MusPy Music object
-    music = representation.decode(data, encoding)
+    # save as a CSV file
+    representation.save_csv_codes(filepath = f"{eval_dir}/csv/{stem}.csv", data = data)
 
-    # Trim the music
-    music.trim(music.resolution * 64)
+    # convert to a BetterMusic object
+    music = representation.decode(codes = data, encoding = encoding)
 
-    # Save as a MusPy JSON file
-    music.save(eval_dir / "json" / f"{filename}.json")
+    # trim the music
+    music.trim(end = music.resolution * 64)
 
-    if not music.tracks:
+    # save as a BetterMusic JSON file
+    music.save(path = f"{eval_dir}/json/{stem}.json")
+
+    if len(music.tracks) == 0:
         return {
             "pitch_class_entropy": np.nan,
             "scale_consistency": np.nan,
-            "groove_consistency": np.nan,
+            "groove_consistency": np.nan
+        }
+    else:
+        return {
+            "pitch_class_entropy": muspy.pitch_class_entropy(music = music),
+            "scale_consistency": muspy.scale_consistency(music = music),
+            "groove_consistency": muspy.groove_consistency(music = music, measure_resolution = 4 * music.resolution)
         }
 
-    return {
-        "pitch_class_entropy": muspy.pitch_class_entropy(music),
-        "scale_consistency": muspy.scale_consistency(music),
-        "groove_consistency": muspy.groove_consistency(
-            music, 4 * music.resolution
-        ),
-    }
+##################################################
 
 
-def main():
-    """Main function."""
-    # Parse the command-line arguments
+# MAIN METHOD
+##################################################
+
+if __name__ == "__main__":
+
+    # CONSTANTS
+    ##################################################
+
+    # parse the command-line arguments
     args = parse_args()
 
-    # Set default arguments
-    if args.dataset is not None:
-        if args.names is None:
-            args.names = pathlib.Path(
-                f"{DATA_DIRECTORY}data/{args.dataset}/processed/test-names.txt"
-            )
-        if args.in_dir is None:
-            args.in_dir = pathlib.Path(f"{DATA_DIRECTORY}data/{args.dataset}/processed/notes/")
-        if args.out_dir is None:
-            args.out_dir = pathlib.Path(f"exp/test_{args.dataset}")
+    # set up the logger
+    logging.basicConfig(level = logging.INFO, format = "%(message)s", handlers = [logging.FileHandler(f"{args.output_dir}/evaluate.log", "w"), logging.StreamHandler(sys.stdout)])
 
-    # Set up the logger
-    logging.basicConfig(
-        level = logging.ERROR if args.quiet else logging.INFO,
-        format = "%(message)s",
-        handlers = [
-            logging.FileHandler(args.out_dir / "evaluate.log", "w"),
-            logging.StreamHandler(sys.stdout),
-        ],
-    )
-
-    # Log command called
+    # log command called and arguments, save arguments
     logging.info(f"Running command: python {' '.join(sys.argv)}")
-
-    # Log arguments
     logging.info(f"Using arguments:\n{pprint.pformat(vars(args))}")
+    args_output_filepath = f"{args.output_dir}/evaluate-args.json"
+    logging.info(f"Saved arguments to {args_output_filepath}")
+    utils.save_args(filepath = args_output_filepath, args = args)
+    del args_output_filepath
 
-    # Save command-line arguments
-    logging.info(f"Saved arguments to {args.out_dir / 'evaluate-args.json'}")
-    utils.save_args(args.out_dir / "evaluate-args.json", args)
+    ##################################################
 
-    # Load training configurations
-    logging.info(
-        f"Loading training arguments from: {args.out_dir / 'train-args.json'}"
-    )
-    train_args = utils.load_json(args.out_dir / "train-args.json")
+
+    # LOAD IN STUFF
+    ##################################################
+
+    # load training configurations
+    train_args_filepath = f"{args.output_dir}/train-args.json"
+    logging.info(f"Loading training arguments from: {train_args_filepath}")
+    train_args = utils.load_json(filepath = train_args_filepath)
     logging.info(f"Using loaded arguments:\n{pprint.pformat(train_args)}")
+    del train_args_filepath
 
-    # Make sure the output directory exists
-    eval_dir = args.out_dir / "eval"
-    eval_dir.mkdir(exist_ok = True)
+    # make sure the output directory exists
+    EVAL_DIR = f"{args.output_dir}/eval"
+    if not exists(args.output_dir): os.makedirs(args.output_dir)
+    if not exists(EVAL_DIR): os.mkdir(EVAL_DIR)
     for key in ("truth", "unconditioned"):
-        (eval_dir / key).mkdir(exist_ok = True)
-        (eval_dir / key / "npy").mkdir(exist_ok = True)
-        (eval_dir / key / "csv").mkdir(exist_ok = True)
-        (eval_dir / key / "json").mkdir(exist_ok = True)
+        key_basedir = f"{EVAL_DIR}/{key}"
+        if not exists(key_basedir): os.mkdir(key_basedir)
+        if not exists(key_basedir_npy := f"{key_basedir}/npy"): os.mkdir(key_basedir_npy)
+        if not exists(key_basedir_csv := f"{key_basedir}/csv"): os.mkdir(key_basedir_csv)
+        if not exists(key_basedir_json := f"{key_basedir}/json"): os.mkdir(key_basedir_json)
+    del key_basedir, key_basedir_npy, key_basedir_csv, key_basedir_json # clear up memory
 
-    # Get the specified device
-    device = torch.device(
-        f"cuda:{args.gpu}" if args.gpu is not None else "cpu"
-    )
+    # get the specified device
+    device = torch.device(f"cuda:{args.gpu}" if args.gpu is not None else "cpu")
     logging.info(f"Using device: {device}")
 
-    # Load the encoding
-    encoding = representation.load_encoding(args.in_dir / "encoding.json")
+    # load the encoding
+    encoding = representation.load_encoding(filepath = args.encoding) if exists(args.encoding) else representation.get_encoding()
 
-    # Create the dataset and data loader
+    # create the dataset and data loader
     logging.info(f"Creating the data loader...")
-    test_dataset = dataset.MusicDataset(
-        args.names,
-        args.in_dir,
-        encoding,
-        max_seq_len = train_args["max_seq_len"],
-        use_csv = args.use_csv,
-    )
-    test_loader = torch.utils.data.DataLoader(
-        test_dataset,
-        num_workers = args.jobs,
-        collate_fn = dataset.MusicDataset.collate,
-    )
+    test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_sequence_length = train_args["max_sequence_length"])
+    test_data_loader = torch.utils.data.DataLoader(dataset = test_dataset, num_workers = args.jobs, collate_fn = dataset.MusicDataset.collate)
 
-    # Create the model
+    # create the model
     logging.info(f"Creating the model...")
     model = music_x_transformers.MusicXTransformer(
         dim = train_args["dim"],
         encoding = encoding,
         depth = train_args["layers"],
         heads = train_args["heads"],
-        max_seq_len = train_args["max_seq_len"],
+        max_sequence_length = train_args["max_sequence_length"],
         max_beat = train_args["max_beat"],
         rotary_pos_emb = train_args["rel_pos_emb"],
         use_abs_pos_emb = train_args["abs_pos_emb"],
@@ -223,78 +186,78 @@ def main():
         ff_dropout = train_args["dropout"],
     ).to(device)
 
-    # Load the checkpoint
-    checkpoint_dir = args.out_dir / "checkpoints"
+    # load the checkpoint
+    CHECKPOINT_DIR = f"{args.output_dir}/checkpoints"
     if args.model_steps is None:
-        checkpoint_filename = checkpoint_dir / "best_model.pt"
+        checkpoint_filepath = f"{CHECKPOINT_DIR}/best_model.pth"
     else:
-        checkpoint_filename = checkpoint_dir / f"model_{args.model_steps}.pt"
-    model.load_state_dict(torch.load(checkpoint_filename, map_location = device))
-    logging.info(f"Loaded the model weights from: {checkpoint_filename}")
+        checkpoint_filepath = f"{CHECKPOINT_DIR}/model_{args.model_steps}.pth"
+    model.load_state_dict(state_dict = torch.load(f = checkpoint_filepath, map_location = device))
+    logging.info(f"Loaded the model weights from: {checkpoint_filepath}")
     model.eval()
 
-    # Get special tokens
+    # get special tokens
     sos = encoding["type_code_map"]["start-of-song"]
     eos = encoding["type_code_map"]["end-of-song"]
 
+    ##################################################
+
+
+    # EVALUATE
+    ##################################################
+
+    # instantiate results and iterables
     results = defaultdict(list)
+    test_iter = iter(test_data_loader)
 
-    n_samples = len(test_loader) if args.n_samples is None else args.n_samples
-    test_iter = iter(test_loader)
-
-    # Iterate over the dataset
+    # iterate over the dataset
     with torch.no_grad():
-        for idx in enumerate(tqdm.tqdm(range(n_samples), ncols = 120)):
+        for i in tqdm(iterable = range(len(test_data_loader) if args.n_samples is None else args.n_samples), desc = "Evaluating"):
 
             batch = next(test_iter)
 
-            # ------------
-            # Ground truth
-            # ------------
+            # GROUND TRUTH
+            ##################################################
 
-            truth_np = batch["seq"].numpy()
-            result = evaluate(
-                truth_np[0], encoding, f"{idx}_0", eval_dir / "truth"
-            )
+            # get ground truth
+            truth_np = batch["sequence"].numpy()
+
+            # add to results
+            result = evaluate(data = truth_np[0], encoding = encoding, stem = f"{i}_0", eval_dir = EVAL_DIR / "truth")
             results["truth"].append(result)
 
-            # ------------------------
-            # Unconditioned generation
-            # ------------------------
+            ##################################################
 
-            # Get output start tokens
-            tgt_start = torch.zeros((1, 1, 6), dtype = torch.long, device = device)
-            tgt_start[:, 0, 0] = sos
+            # UNCONDITIONED GENERATION
+            ##################################################
 
-            # Generate new samples
+            # get output start tokens
+            tgt_start = torch.tensor(data = [sos] + ([0] * (len(encoding["dimensions"]) - 1)), dtype = torch.long, device = device).reshape(1, 1, len(encoding["dimensions"]))
+
+            # generate new samples
             generated = model.generate(
-                tgt_start,
-                args.seq_len,
+                sequence_in = tgt_start,
+                sequence_length = args.sequence_length,
                 eos_token = eos,
                 temperature = args.temperature,
                 filter_logits_fn = args.filter,
                 filter_thres = args.filter_threshold,
-                monotonicity_dim = ("type", "beat"),
+                monotonicity_dim = ("type", "beat")
             )
-            generated_np = torch.cat((tgt_start, generated), 1).cpu().numpy()
+            generated_sequence = torch.cat(tensors = (tgt_start, generated), dim = 1).cpu().numpy()
 
-            # Evaluate the results
-            result = evaluate(
-                generated_np[0],
-                encoding,
-                f"{idx}_0",
-                eval_dir / "unconditioned",
-            )
+            # add to results
+            result = evaluate(data = generated_sequence[0], encoding = encoding, stem = f"{i}_0", eval_dir = EVAL_DIR / "unconditioned")
             results["unconditioned"].append(result)
 
+            ##################################################
+
+    # output statistics
     for exp, result in results.items():
-        logging.info(exp)
+        logging.info(f"{exp.upper()}:")
         for key in result[0]:
-            logging.info(
-                f"{key}: mean = {np.nanmean([r[key] for r in result]):.4f}, "
-                f"steddev = {np.nanstd([r[key]for r in result]):.4f}"
-            )
+            logging.info(f"  - {key}: mean = {np.nanmean(a = [r[key] for r in result]):.4f}, std = {np.nanstd(a = [r[key]for r in result]):.4f}")
 
+    ##################################################
 
-if __name__ == "__main__":
-    main()
+##################################################

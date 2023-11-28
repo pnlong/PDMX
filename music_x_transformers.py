@@ -12,7 +12,7 @@
 
 import argparse
 import logging
-from os.path import exists
+from os.path import exists as file_exists
 import sys
 from typing import Union, List
 
@@ -20,7 +20,7 @@ import torch
 import torch.nn.functional as F
 from einops import repeat
 from torch import nn
-from x_transformers.autoregressive_wrapper import (ENTMAX_ALPHA, entmax, exists, top_a, top_k, top_p)
+from x_transformers.autoregressive_wrapper import (exists, top_a, top_k, top_p)
 from x_transformers.x_transformers import (AbsolutePositionalEmbedding, AttentionLayers, Decoder, TokenEmbedding, always, default, exists)
 
 import representation
@@ -188,8 +188,8 @@ def sample(logits: torch.tensor, kind: str, threshold: float, temperature: float
         probs = F.softmax(top_p(logits = logits, thres = threshold) / temperature, dim = -1)
     elif kind == "top_a":
         probs = F.softmax(top_a(logits = logits, min_p_pow = min_p_pow, min_p_ratio = min_p_ratio) / temperature, dim = -1)
-    elif kind == "entmax":
-        probs = entmax(logits / temperature, alpha = ENTMAX_ALPHA, dim = -1)
+    # elif kind == "entmax":
+    #     probs = entmax(logits / temperature, alpha = ENTMAX_ALPHA, dim = -1)
     else:
         raise ValueError(f"Unknown sampling strategy: {kind}")
 
@@ -477,7 +477,7 @@ if __name__ == "__main__":
     logging.basicConfig(level = logging.INFO, format = "%(message)s", stream = sys.stdout)
 
     # load the encoding
-    encoding = representation.load_encoding(filename = args.encoding) if exists(args.encoding) else representation.get_encoding()
+    encoding = representation.load_encoding(filepath = args.encoding) if file_exists(args.encoding) else representation.get_encoding()
 
     # create the model
     model = MusicXTransformer(
@@ -487,8 +487,8 @@ if __name__ == "__main__":
         heads = 4,
         max_sequence_length = 1024,
         max_beat = 256,
-        rel_pos_bias = True,  # relative positional bias
-        rotary_pos_emb = True,  # rotary positional encoding
+        rel_pos_bias = True, # relative positional bias
+        rotary_pos_emb = True, # rotary positional encoding
         embedding_dropout = 0.1,
         attention_dropout = 0.1,
         ff_dropout = 0.1,

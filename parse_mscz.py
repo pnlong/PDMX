@@ -9,6 +9,7 @@
 
 # IMPORTS
 ##################################################
+
 import glob
 from os.path import isfile, exists, basename
 import random
@@ -24,6 +25,7 @@ import pickle
 from read_mscz.read_mscz import read_musescore, get_musescore_version
 from read_mscz.classes import *
 from utils import rep, write_to_file
+
 ##################################################
 
 

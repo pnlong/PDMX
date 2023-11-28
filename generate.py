@@ -1,3 +1,11 @@
+# README
+# Phillip Long
+# November 27, 2023
+
+# Generate music from a neural network.
+
+# python /home/pnlong/model_musescore/generate.py
+
 # Absolute positional embedding (APE):
 # python /home/pnlong/mmt/generate.py -d sod -o /data2/pnlong/mmt/exp/sod/ape -g 0
 
@@ -6,6 +14,10 @@
 
 # No positional embedding (NPE):
 # python /home/pnlong/mmt/generate.py -d sod -o /data2/pnlong/mmt/exp/sod/npe -g 0
+
+
+# IMPORTS
+##################################################
 
 import argparse
 import logging
@@ -24,135 +36,90 @@ import dataset
 import music_x_transformers
 import representation
 import utils
-from utils import DATA_DIRECTORY
+
+##################################################
 
 
-@utils.resolve_paths
+# ARGUMENTS
+##################################################
 def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-d",
-        "--dataset",
-        choices = ("sod", "lmd", "lmd_full", "snd"),
-        required = True,
-        help = "dataset key",
-    )
     parser.add_argument("-n", "--names", type = pathlib.Path, help = "input names")
-    parser.add_argument(
-        "-i", "--in_dir", type = pathlib.Path, help = "input data directory"
-    )
-    parser.add_argument(
-        "-o", "--out_dir", type = pathlib.Path, help = "output directory"
-    )
-    parser.add_argument(
-        "-ns",
-        "--n_samples",
-        default = 50,
-        type = int,
-        help = "number of samples to generate",
-    )
-    # Model
-    parser.add_argument(
-        "-s",
-        "--shuffle",
-        action = "store_true",
-        help = "whether to shuffle the test data",
-    )
-    parser.add_argument(
-        "--use_csv",
-        action = "store_true",
-        help = "whether to save outputs in CSV format (default to NPY format)",
-    )
-    parser.add_argument(
-        "--model_steps",
-        type = int,
-        help = "step of the trained model to load (default to the best model)",
-    )
-    # Sampling
-    parser.add_argument(
-        "--seq_len", default = 1024, type = int, help = "sequence length to generate"
-    )
-    parser.add_argument(
-        "--temperature",
-        nargs = "+",
-        default = 1.0,
-        type = float,
-        help = "sampling temperature (default: 1.0)",
-    )
-    parser.add_argument(
-        "--filter",
-        nargs = "+",
-        default = "top_k",
-        type = str,
-        help = "sampling filter (default: 'top_k')",
-    )
-    parser.add_argument(
-        "--filter_threshold",
-        nargs = "+",
-        default = 0.9,
-        type = float,
-        help = "sampling filter threshold (default: 0.9)",
-    )
-    # Others
-    parser.add_argument("-g", "--gpu", type = int, help = "gpu number")
-    parser.add_argument(
-        "-j", "--jobs", default = 1, type = int, help = "number of jobs"
-    )
-    parser.add_argument(
-        "-q", "--quiet", action = "store_true", help = "show warnings only"
-    )
+    parser.add_argument("-i", "--in_dir", type = pathlib.Path, help = "input data directory")
+    parser.add_argument("-o", "--out_dir", type = pathlib.Path, help = "output directory")
+    parser.add_argument("-ns", "--n_samples", default = 50, type = int, help = "number of samples to generate")
+    # model
+    parser.add_argument("-s", "--shuffle", action = "store_true", help = "whether to shuffle the test data")
+    parser.add_argument("--model_steps", type = int, help = "step of the trained model to load (default to the best model)")
+    # sampling
+    parser.add_argument("--seq_len", default = 1024, type = int, help = "sequence length to generate")
+    parser.add_argument("--temperature", nargs = "+", default = 1.0, type = float, help = "sampling temperature (default: 1.0)")
+    parser.add_argument("--filter", nargs = "+", default = "top_k", type = str, help = "sampling filter (default: 'top_k')")
+    parser.add_argument("--filter_threshold", nargs = "+", default = 0.9, type = float, help = "sampling filter threshold (default: 0.9)")
+    # others
+    parser.add_argument("-g", "--gpu", type = int, help = "GPU number")
+    parser.add_argument("-j", "--jobs", default = 1, type = int, help = "Number of jobs")
     return parser.parse_args(args = args, namespace = namespace)
+##################################################
 
 
-def save_pianoroll(filename, music, size = None, **kwargs):
+# SAVE PIANO ROLL
+##################################################
+
+def save_pianoroll(filepath, music, size = None, **kwargs):
     """Save the piano roll to file."""
     music.show_pianoroll(track_label = "program", **kwargs)
     if size is not None:
         plt.gcf().set_size_inches(size)
-    plt.savefig(filename)
+    plt.savefig(filepath)
     plt.close()
 
+##################################################
 
-def save_result(filename, data, sample_dir, encoding):
+
+# SAVE THE RESULT
+##################################################
+
+def save_result(filepath, data, sample_dir, encoding):
     """Save the results in multiple formats."""
     # Save as a numpy array
-    np.save(sample_dir / "npy" / f"{filename}.npy", data)
+    np.save(sample_dir / "npy" / f"{filepath}.npy", data)
 
     # Save as a CSV file
-    representation.save_csv_codes(sample_dir / "csv" / f"{filename}.csv", data)
+    representation.save_csv_codes(sample_dir / "csv" / f"{filepath}.csv", data)
 
     # Save as a TXT file
     representation.save_txt(
-        sample_dir / "txt" / f"{filename}.txt", data, encoding
+        sample_dir / "txt" / f"{filepath}.txt", data, encoding
     )
 
     # Convert to a MusPy Music object
     music = representation.decode(data, encoding)
 
     # Save as a MusPy JSON file
-    music.save(sample_dir / "json" / f"{filename}.json")
+    music.save(sample_dir / "json" / f"{filepath}.json")
 
     # Save as a piano roll
     save_pianoroll(
-        sample_dir / "png" / f"{filename}.png", music, (20, 5), preset = "frame"
+        sample_dir / "png" / f"{filepath}.png", music, (20, 5), preset = "frame"
     )
 
     # Save as a MIDI file
-    music.write(sample_dir / "mid" / f"{filename}.mid")
+    music.write(sample_dir / "mid" / f"{filepath}.mid")
 
     # Save as a WAV file
     music.write(
-        sample_dir / "wav" / f"{filename}.wav",
+        sample_dir / "wav" / f"{filepath}.wav",
         options = "-o synth.polyphony = 4096",
     )
 
     # Save also as a MP3 file
     subprocess.check_output(
         ["ffmpeg", "-loglevel", "error", "-y", "-i"]
-        + [str(sample_dir / "wav" / f"{filename}.wav")]
+        + [str(sample_dir / "wav" / f"{filepath}.wav")]
         + ["-b:a", "192k"]
-        + [str(sample_dir / "mp3" / f"{filename}.mp3")]
+        + [str(sample_dir / "mp3" / f"{filepath}.mp3")]
     )
 
     # Trim the music
@@ -160,26 +127,34 @@ def save_result(filename, data, sample_dir, encoding):
 
     # Save the trimmed version as a piano roll
     save_pianoroll(
-        sample_dir / "png-trimmed" / f"{filename}.png", music, (10, 5)
+        sample_dir / "png-trimmed" / f"{filepath}.png", music, (10, 5)
     )
 
     # Save as a WAV file
     music.write(
-        sample_dir / "wav-trimmed" / f"{filename}.wav",
+        sample_dir / "wav-trimmed" / f"{filepath}.wav",
         options = "-o synth.polyphony = 4096",
     )
 
     # Save also as a MP3 file
     subprocess.check_output(
         ["ffmpeg", "-loglevel", "error", "-y", "-i"]
-        + [str(sample_dir / "wav-trimmed" / f"{filename}.wav")]
+        + [str(sample_dir / "wav-trimmed" / f"{filepath}.wav")]
         + ["-b:a", "192k"]
-        + [str(sample_dir / "mp3-trimmed" / f"{filename}.mp3")]
+        + [str(sample_dir / "mp3-trimmed" / f"{filepath}.mp3")]
     )
 
+##################################################
 
-def main():
-    """Main function."""
+
+# MAIN METHOD
+##################################################
+
+if __name__ == "__main__":
+
+    # CONSTANTS
+    ##################################################
+
     # Parse the command-line arguments
     args = parse_args()
 
@@ -213,6 +188,12 @@ def main():
     # Save command-line arguments
     logging.info(f"Saved arguments to {args.out_dir / 'generate-args.json'}")
     utils.save_args(args.out_dir / "generate-args.json", args)
+
+    ##################################################
+
+
+    # LOAD IN STUFF
+    ##################################################
 
     # Load training configurations
     logging.info(
@@ -281,11 +262,11 @@ def main():
     # Load the checkpoint
     checkpoint_dir = args.out_dir / "checkpoints"
     if args.model_steps is None:
-        checkpoint_filename = checkpoint_dir / "best_model.pt"
+        checkpoint_filepath = checkpoint_dir / "best_model.pt"
     else:
-        checkpoint_filename = checkpoint_dir / f"model_{args.model_steps}.pt"
-    model.load_state_dict(torch.load(checkpoint_filename, map_location = device))
-    logging.info(f"Loaded the model weights from: {checkpoint_filename}")
+        checkpoint_filepath = checkpoint_dir / f"model_{args.model_steps}.pt"
+    model.load_state_dict(torch.load(checkpoint_filepath, map_location = device))
+    logging.info(f"Loaded the model weights from: {checkpoint_filepath}")
     model.eval()
 
     # Get special tokens
@@ -294,6 +275,12 @@ def main():
     beat_0 = encoding["beat_code_map"][0]
     beat_4 = encoding["beat_code_map"][4]
     beat_16 = encoding["beat_code_map"][16]
+
+    ##################################################
+
+
+    # GENERATE
+    ##################################################
 
     # Iterate over the dataset
     with torch.no_grad():
@@ -415,7 +402,7 @@ def main():
                 sample_dir,
                 encoding,
             )
+    
+    ##################################################
 
-
-if __name__ == "__main__":
-    main()
+##################################################

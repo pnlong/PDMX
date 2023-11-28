@@ -954,9 +954,9 @@ def get_encoding() -> dict:
     }
 
 
-def load_encoding(filename: str) -> dict:
+def load_encoding(filepath: str) -> dict:
     """Load encoding configurations from a JSON file."""
-    encoding = utils.load_json(filename = filename)
+    encoding = utils.load_json(filepath = filepath)
     for key in (
         "code_type_map",
         "code_beat_map",
@@ -1383,22 +1383,22 @@ def dump(data: np.array, encoding: dict = get_encoding()) -> str:
 # SAVE DATA
 ##################################################
 
-def save_txt(filename: str, data: np.array, encoding: dict = get_encoding()):
+def save_txt(filepath: str, data: np.array, encoding: dict = get_encoding()):
     """Dump the codes into a TXT file."""
-    with open(filename, "w") as f:
+    with open(filepath, "w") as f:
         f.write(dump(data = data, encoding = encoding))
 
 
-def save_csv_data(filename: str, data: np.array):
+def save_csv_data(filepath: str, data: np.array):
     """Save the representation as a CSV file."""
     assert data.shape[1] == 5
-    np.savetxt(fname = filename, X = data, fmt = "%d", delimiter = ",", header = "beat,position,value,duration,program", comments = "")
+    np.savetxt(fname = filepath, X = data, fmt = "%d", delimiter = ",", header = "beat,position,value,duration,program", comments = "")
 
 
-def save_csv_codes(filename: str, data: np.array):
+def save_csv_codes(filepath: str, data: np.array):
     """Save the representation as a CSV file."""
     assert data.shape[1] == 6
-    np.savetxt(fname = filename, X = data, fmt = "%d", delimiter = ",", header = "type,beat,position,value,duration,instrument", comments = "")
+    np.savetxt(fname = filepath, X = data, fmt = "%d", delimiter = ",", header = "type,beat,position,value,duration,instrument", comments = "")
 
 ##################################################
 
@@ -1437,10 +1437,10 @@ if __name__ == "__main__":
     encoding = get_encoding()
 
     # save the encoding
-    utils.save_json(filename = args.encoding_filepath, data = encoding)
+    utils.save_json(filepath = args.encoding_filepath, data = encoding)
 
     # load encoding
-    encoding = load_encoding(filename = args.encoding_filepath)
+    encoding = load_encoding(filepath = args.encoding_filepath)
 
     # print the maps
     print(f"{' Maps ':=^40}")

@@ -21,8 +21,8 @@
 
 import argparse
 import logging
-from os.path import exists
 from os import makedirs, mkdir
+from os.path import exists
 import pprint
 import shutil
 import sys
@@ -144,16 +144,13 @@ if __name__ == "__main__":
     # set up the logger
     logging.basicConfig(level = logging.INFO, format = "%(message)s", handlers = [logging.FileHandler(f"{args.output_dir}/train.log", "w"), logging.StreamHandler(sys.stdout)])
 
-    # log command called
+    # log command called and arguments, save arguments
     logging.info(f"Running command: python {' '.join(sys.argv)}")
-
-    # log arguments
     logging.info(f"Using arguments:\n{pprint.pformat(vars(args))}")
-
-    # save command-line arguments
     args_output_filepath = f"{args.output_dir}/train-args.json"
     logging.info(f"Saved arguments to {args_output_filepath}")
-    utils.save_args(filename = args_output_filepath, args = args)
+    utils.save_args(filepath = args_output_filepath, args = args)
+    del args_output_filepath # clear up memory
 
     ##################################################
 
@@ -166,7 +163,7 @@ if __name__ == "__main__":
     logging.info(f"Using device: {device}")
 
     # load the encoding
-    encoding = representation.load_encoding(filename = args.encoding) if exists(args.encoding) else representation.get_encoding()
+    encoding = representation.load_encoding(filepath = args.encoding) if exists(args.encoding) else representation.get_encoding()
 
     # create the dataset and data loader
     logging.info(f"Creating the data loader...")
@@ -234,7 +231,7 @@ if __name__ == "__main__":
 
         model.train()
         recent_losses = []
-        for batch in (progress_bar := tqdm(iterable = range(args.valid_steps), desc = "Training", ncols = 80)):
+        for batch in (progress_bar := tqdm(iterable = range(args.valid_steps), desc = "Training")):
 
             # get next batch
             try:

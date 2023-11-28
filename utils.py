@@ -74,7 +74,7 @@ def split_camel_case(string: str, sep: str = "-"):
 # SAVING AND LOADING FILES
 ##################################################
 
-def save_args(filename: str, args):
+def save_args(filepath: str, args):
     """Save the command-line arguments."""
     args_dict = {}
     for key, value in vars(args).items():
@@ -82,42 +82,42 @@ def save_args(filename: str, args):
             args_dict[key] = str(value)
         else:
             args_dict[key] = value
-    save_json(filename = filename, data = args_dict)
+    save_json(filepath = filepath, data = args_dict)
 
 
-def save_txt(filename: str, data: list):
+def save_txt(filepath: str, data: list):
     """Save a list to a TXT file."""
-    with open(filename, "w", encoding = "utf8") as f:
+    with open(filepath, "w", encoding = "utf8") as f:
         for item in data:
             f.write(f"{item}\n")
 
 
-def load_txt(filename: str):
+def load_txt(filepath: str):
     """Load a TXT file as a list."""
-    with open(filename, encoding = "utf8") as f:
+    with open(filepath, encoding = "utf8") as f:
         return [line.strip() for line in f]
 
 
-def save_json(filename: str, data: dict):
+def save_json(filepath: str, data: dict):
     """Save data as a JSON file."""
-    with open(filename, "w", encoding = "utf8") as f:
+    with open(filepath, "w", encoding = "utf8") as f:
         json.dump(obj = data, fp = f)
 
 
-def load_json(filename: str):
+def load_json(filepath: str):
     """Load data from a JSON file."""
-    with open(filename, encoding = "utf8") as f:
+    with open(filepath, encoding = "utf8") as f:
         return json.load(fp = f)
 
 
-def save_csv(filename: str, data, header: str = ""):
+def save_csv(filepath: str, data, header: str = ""):
     """Save data as a CSV file."""
-    np.savetxt(fname = filename, X = data, fmt = "%d", delimiter = ",", header = header, comments = "")
+    np.savetxt(fname = filepath, X = data, fmt = "%d", delimiter = ",", header = header, comments = "")
 
 
-def load_csv(filename: str, skiprows: int = 1):
+def load_csv(filepath: str, skiprows: int = 1):
     """Load data from a CSV file."""
-    return np.loadtxt(fname = filename, dtype = int, delimiter = ",", skiprows = skiprows)
+    return np.loadtxt(fname = filepath, dtype = int, delimiter = ",", skiprows = skiprows)
 
 
 # create a csv row

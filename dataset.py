@@ -204,7 +204,7 @@ if __name__ == "__main__":
     
     # load encoding
     if args.encoding is not None:
-        encoding = representation.load_encoding(filename = args.encoding)
+        encoding = representation.load_encoding(filepath = args.encoding)
     else:
         encoding = representation.get_encoding()
 
