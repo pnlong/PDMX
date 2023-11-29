@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import pretty_midi
 import warnings
+from unidecode import unidecode
 from typing import List
 from re import sub
 import utils
@@ -305,6 +306,7 @@ EXPRESSIVE_FEATURE_TYPE_MAP = {expressive_feature_subtype : expressive_feature_t
 VALUE_CODE_MAP = [None,] + list(range(128)) + sum(list(EXPRESSIVE_FEATURES.values()), [])
 VALUE_CODE_MAP = {VALUE_CODE_MAP[i]: i for i in range(len(VALUE_CODE_MAP))}
 CODE_VALUE_MAP = utils.inverse_dict(VALUE_CODE_MAP)
+DEFAULT_VALUE_CODE = -1
 
 ##################################################
 
@@ -1109,11 +1111,12 @@ def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_COND
         try:
             code = value_code_map[None if value == "" else value]
         except KeyError:
-            value = sub(pattern = "", repl = "", string = value) # try wrangling value a bit to get a key
+            value = sub(pattern = "-", repl = "", string = value) # try wrangling value a bit to get a key
+            value = unidecode(string = value) # get rid of accented characters (normalize)
             try:
                 code = value_code_map[None if value == "" else value]
             except KeyError:
-                code = -1
+                code = DEFAULT_VALUE_CODE
         return code
     def program_instrument_mapper(program) -> int:
         instrument = instrument_code_map[program_instrument_map[int(program)]]
@@ -1332,7 +1335,8 @@ def decode(codes: np.array, encoding: dict = get_encoding()) -> BetterMusic:
 
 def dump(data: np.array, encoding: dict = get_encoding()) -> str:
     """Decode the codes and dump as a string."""
-    # Get maps
+
+    # get maps
     code_type_map = encoding["code_type_map"]
     code_beat_map = encoding["code_beat_map"]
     code_position_map = encoding["code_position_map"]
@@ -1340,17 +1344,17 @@ def dump(data: np.array, encoding: dict = get_encoding()) -> str:
     code_duration_map = encoding["code_duration_map"]
     code_instrument_map = encoding["code_instrument_map"]
 
-    # Get the dimension indices
+    # get the dimension indices
     beat_dim = encoding["dimensions"].index("beat")
     position_dim = encoding["dimensions"].index("position")
     value_dim = encoding["dimensions"].index("value")
     duration_dim = encoding["dimensions"].index("duration")
     instrument_dim = encoding["dimensions"].index("instrument")
 
-    # Iterate over the rows
+    # iterate over the rows
     lines = []
     for row in data:
-        event_type = code_type_map[int(row[0])]
+        event_type = code_type_map[int(row[0])] # get the event type
         if event_type == "start-of-song":
             lines.append("Start of song")
         elif event_type == "end-of-song":
@@ -1360,45 +1364,25 @@ def dump(data: np.array, encoding: dict = get_encoding()) -> str:
             lines.append(f"Instrument: {instrument}")
         elif event_type == "start-of-notes":
             lines.append("Start of notes")
-        elif event_type == "note":
+        elif event_type in ("note", "grace-note", EXPRESSIVE_FEATURE_TYPE_STRING):
             beat = code_beat_map[int(row[beat_dim])]
             position = code_position_map[int(row[position_dim])]
-            value = pretty_midi.note_number_to_name(
-                code_value_map[int(row[value_dim])]
-            )
+            if value == DEFAULT_VALUE_CODE:
+                value = "TEXT"
+            elif value == 0:
+                value = "null"
+            elif value <= 128:
+                value = pretty_midi.note_number_to_name(note_number = code_value_map[int(row[value_dim])])
+            else:
+                value = str(code_value_map[int(row[value_dim])])
             duration = code_duration_map[int(row[duration_dim])]
             instrument = code_instrument_map[int(row[instrument_dim])]
-            lines.append(
-                f"Note: beat={beat}, position={position}, value={value}, "
-                f"duration={duration}, instrument={instrument}"
-            )
+            lines.append(f"{''.join(' '.join(event_type.split('-')).title().split())}: beat={beat}, position={position}, value={value}, duration={duration}, instrument={instrument}")
         else:
             raise ValueError(f"Unknown event type: {event_type}")
 
+    # return big string
     return "\n".join(lines)
-
-##################################################
-
-
-# SAVE DATA
-##################################################
-
-def save_txt(filepath: str, data: np.array, encoding: dict = get_encoding()):
-    """Dump the codes into a TXT file."""
-    with open(filepath, "w") as f:
-        f.write(dump(data = data, encoding = encoding))
-
-
-def save_csv_data(filepath: str, data: np.array):
-    """Save the representation as a CSV file."""
-    assert data.shape[1] == 5
-    np.savetxt(fname = filepath, X = data, fmt = "%d", delimiter = ",", header = "beat,position,value,duration,program", comments = "")
-
-
-def save_csv_codes(filepath: str, data: np.array):
-    """Save the representation as a CSV file."""
-    assert data.shape[1] == 6
-    np.savetxt(fname = filepath, X = data, fmt = "%d", delimiter = ",", header = "type,beat,position,value,duration,instrument", comments = "")
 
 ##################################################
 
@@ -1421,6 +1405,22 @@ def save_csv_codes(filepath: str, data: np.array):
 ##################################################
 
 
+# SAVE DATA
+##################################################
+
+def save_txt(filepath: str, data: np.array, encoding: dict = get_encoding()):
+    """Dump the codes into a TXT file."""
+    with open(filepath, "w") as f:
+        f.write(dump(data = data, encoding = encoding))
+
+def save_csv_codes(filepath: str, data: np.array):
+    """Save the representation as a CSV file."""
+    assert data.shape[1] == len(get_encoding()["dimensions"])
+    np.savetxt(fname = filepath, X = data, fmt = "%d", delimiter = ",", header = "type,beat,position,value,duration,instrument", comments = "")
+
+##################################################
+
+
 # MAIN METHOD
 ##################################################
 
@@ -1430,17 +1430,17 @@ if __name__ == "__main__":
 
     # get arguments
     parser = argparse.ArgumentParser(prog = "Representation", description = "Test Encoding/Decoding mechanisms for MuseScore data.")
-    parser.add_argument("-e", "--encoding_filepath", type = str, default = ENCODING_FILEPATH, help = "Absolute filepath to encoding file")
+    parser.add_argument("-e", "--encoding", type = str, default = ENCODING_FILEPATH, help = "Absolute filepath to encoding file")
     args = parser.parse_args()
 
     # get the encoding
     encoding = get_encoding()
 
     # save the encoding
-    utils.save_json(filepath = args.encoding_filepath, data = encoding)
+    utils.save_json(filepath = args.encoding, data = encoding)
 
     # load encoding
-    encoding = load_encoding(filepath = args.encoding_filepath)
+    encoding = load_encoding(filepath = args.encoding)
 
     # print the maps
     print(f"{' Maps ':=^40}")

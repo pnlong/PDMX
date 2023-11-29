@@ -286,7 +286,7 @@ class Chord(muspy.classes.Chord):
     _attributes = OrderedDict([("time", int), ("measure", int), ("pitches", int), ("duration", int), ("velocity", int), ("pitches_str", str)])
     _optional_attributes = ["velocity", "pitches_str", "measure"]
 
-    def __init__(self, time: int, pitches: List[int], duration: int, velocity: int = None, pitches_str: List[int] = None, measure: int = None):
+    def __init__(self, time: int, pitches: List[int], duration: int, velocity: int = None, pitches_str: List[str] = None, measure: int = None):
         super().__init__(time = time, pitches = pitches, duration = duration, velocity = velocity, pitches_str = pitches_str)
         self.measure = measure
 
@@ -628,7 +628,7 @@ class Bend(muspy.base.Base):
     
     Attributes
     ----------
-    points : List[point]
+    points : List[Point]
         List of points that make up bend
 
     """
@@ -644,7 +644,7 @@ class TremoloBar(Bend):
     
     Attributes
     ----------
-    points : List[point]
+    points : List[Point]
         List of points that make up tremolo bar
 
     """

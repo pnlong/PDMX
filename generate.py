@@ -100,7 +100,7 @@ def save_result(stem: str, data: Union[np.array, torch.tensor], sample_dir: str,
     representation.save_csv_codes(filepath = f"{sample_dir}/csv/{stem}.csv", data = data) # save as a .csv file
     representation.save_txt(filepath = f"{sample_dir}/txt/{stem}.txt", data = data, encoding = encoding) # save as a .txt file
     music = representation.decode(codes = data, encoding = encoding) # convert to a BetterMusic object
-    music.save(path = f"{sample_dir}/json/{stem}.json") # save as a BetterMusic .json file
+    music.save_json(path = f"{sample_dir}/json/{stem}.json") # save as a BetterMusic .json file
     save_pianoroll(filepath = f"{sample_dir}/png/{stem}.png", music = music, size = (20, 5), preset = "frame") # save as a piano roll
     music.write(path = f"{sample_dir}/mid/{stem}.mid") # save as a .mid file
     music.write(path = f"{sample_dir}/wav/{stem}.wav", options = "-o synth.polyphony = 4096") # save as a .wav file

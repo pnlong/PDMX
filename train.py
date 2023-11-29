@@ -7,13 +7,13 @@
 # python /home/pnlong/model_musescore/train.py
 
 # Absolute positional embedding (APE):
-# python /home/pnlong/model_musescore/train.py -o /data2/pnlong/mmt/exp/sod/ape
+# python /home/pnlong/model_musescore/train.py
 
 # Relative positional embedding (RPE):
-# python /home/pnlong/model_musescore/train.py -o /data2/pnlong/mmt/exp/sod/rpe --no-abs_pos_emb --rel_pos_emb
+# python /home/pnlong/model_musescore/train.py --no-abs_pos_emb --rel_pos_emb
 
 # No positional embedding (NPE):
-# python /home/pnlong/model_musescore/train.py -o /data2/pnlong/mmt/exp/sod/npe --no-abs_pos_emb --no-rel_pos_emb
+# python /home/pnlong/model_musescore/train.py --no-abs_pos_emb --no-rel_pos_emb
 
 
 # IMPORTS
@@ -46,7 +46,7 @@ import utils
 DATA_DIR = "/data2/pnlong/musescore/data"
 PATHS_TRAIN = f"{DATA_DIR}/train.txt"
 PATHS_VALID = f"{DATA_DIR}/valid.txt"
-OUTPUT_DIR = "/data2/pnlong/musescore/data"
+OUTPUT_DIR = "/data2/pnlong/musescore/data/train"
 ENCODING_FILEPATH = "/data2/pnlong/musescore/encoding.json"
 
 ##################################################
