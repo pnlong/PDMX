@@ -107,9 +107,10 @@ class MusicDataset(Dataset):
 
             # shift all the pitches for k semitones (k~Uniform(-5, 6))
             pitch_shift = np.random.randint(low = -5, high = 7)
-            value_column = representation.DIMENSIONS.index("value")
-            data[:, value_column] = [np.clip(a = data[i, value_column] + (pitch_shift if (data[i, representation.DIMENSIONS.index("type")] in ("note", "grace-note")) else 0), a_min = 0, a_max = 127) for i in range(data.shape[0])] # apply pitch shift to pitches only
-            del value_column, pitch_shift
+            value_column, type_column = representation.DIMENSIONS.index("value"), representation.DIMENSIONS.index("type")
+            pitches = np.any(a = (data[:, type_column] == "note", data[:, type_column] == "grace-note"), axis = 0) # get rows of pitches (notes and grace notes)
+            data[pitches, value_column] = np.clip(a = data[pitches, value_column].astype(representation.ENCODING_ARRAY_TYPE) + pitch_shift, a_min = 0, a_max = 127) # clip values
+            del value_column, type_column, pitch_shift
 
             # randomly select a starting beat
             if n_beats > self.max_beat: # make sure sequence isn't too long
@@ -117,21 +118,24 @@ class MusicDataset(Dataset):
                 while trial < 10: # avoid section with too few notes
                     start_beat = np.random.randint(n_beats - self.max_beat) # randomly generate a start beat
                     end_beat = start_beat + self.max_beat # get end beat from start_beat
-                    data_slice = data[(data[:, beat_column] >= start_beat) & (data[:, beat_column] < end_beat)]
+                    data_slice = data[(data[:, beat_column].astype(representation.ENCODING_ARRAY_TYPE) >= start_beat) & (data[:, beat_column].astype(representation.ENCODING_ARRAY_TYPE) < end_beat)]
                     if len(data_slice) > 10: # get a sufficiently large slice of values
                         break
                     trial += 1 # iterate trial
-                data_slice[:, beat_column] = data_slice[:, beat_column] - start_beat # make sure slice beats start at 0
+                data_slice[:, beat_column] = data_slice[:, beat_column].astype(representation.ENCODING_ARRAY_TYPE) - start_beat # make sure slice beats start at 0
                 data = data_slice
                 del data_slice
 
         # trim sequence to max_beat
         elif self.max_beat is not None:
             if n_beats > self.max_beat:
-                data = data[data[:, beat_column] < self.max_beat]
+                data = data[data[:, beat_column].astype(representation.ENCODING_ARRAY_TYPE) < self.max_beat]
         
         # encode the data
         sequence = representation.encode_data(data = data, encoding = self.encoding, conditioning = self.conditioning, sigma = self.sigma)
+
+        # FOR NOW, TRIM OFF UNKNOWN TEXT (-1)
+        sequence = sequence[sequence[:, representation.DIMENSIONS.index("value")] != representation.DEFAULT_VALUE_CODE]
 
         # trim sequence to max_sequence_length
         if self.max_sequence_length is not None and len(sequence) > self.max_sequence_length:

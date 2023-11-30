@@ -56,7 +56,7 @@ def to_dict(obj) -> dict:
 
     # deal with objects
     else:
-        return {key: to_dict(obj = value) for key, value in (("name", obj.__class__.__name__) + list(vars(obj).items()))}
+        return {key: to_dict(obj = value) for key, value in ([("name", obj.__class__.__name__)] + list(vars(obj).items()))}
 
 
 def load_annotation(annotation: dict):
@@ -76,11 +76,11 @@ def load_annotation(annotation: dict):
         case "Fermata":
             return Fermata(is_fermata_above = bool(annotation["is_fermata_above"]))
         case "Arpeggio":
-            return Arpeggio(subtype = int(annotation["subtype"]))
+            return Arpeggio(subtype = Arpeggio.SUBTYPES.index(annotation["subtype"]))
         case "Tremolo":
             return Tremolo(subtype = str(annotation["subtype"]))
         case "ChordLine":
-            return ChordLine(subtype = int(annotation["subtype"]), is_straight = bool(annotation["is_straight"]))
+            return ChordLine(subtype = ChordLine.SUBTYPES.index(annotation["subtype"]), is_straight = bool(annotation["is_straight"]))
         case "Ornament":
             return Ornament(subtype = str(annotation["subtype"]))
         case "Articulation":
@@ -251,15 +251,14 @@ class BetterMusic(muspy.music.Music):
             The time_steps value to convert
         """
 
-        # create list of temporal features (tempo and timesig)
+        # create list of temporal features (tempo and time_signature)
         temporal_features = sorted(self.time_signatures + self.tempos, key = lambda obj: obj.time)
-        temporal_features.insert(0, TimeSignature(time = 0, measure = 1, numerator = 4, denominator = 4)) # add default starting timesig
+        temporal_features.insert(0, TimeSignature(time = 0, measure = 1, numerator = 4, denominator = 4)) # add default starting time_signature
         temporal_features.insert(1, Tempo(time = 0, measure = 1, qpm = 60)) # add default starting tempo
-        largest_possible_timestep = self.get_song_length()
-        temporal_features.append(TimeSignature(time = largest_possible_timestep, measure = 1, numerator = 4, denominator = 4)) # add default ending timesig
+        temporal_features.append(TimeSignature(time = self.song_length, measure = 1, numerator = 4, denominator = 4)) # add default ending time_signature
 
         # initialize some variables
-        time_signature_idx = 0 # keep track of most recent timesig
+        time_signature_idx = 0 # keep track of most recent time_signature
         tempo_idx = 1 # keep track of most recent tempo
         most_recent_time_step = 0 # keep track of most recent time step
         reached_time_steps = False # check if we ever reached time_steps, if we didnt, raise an error
@@ -299,7 +298,7 @@ class BetterMusic(muspy.music.Music):
     
         # if still haven't reached time steps by the time we've parsed through the whole song
         # if not reached_time_steps: # go on with pace at the end
-        #     period_length = time_steps - largest_possible_timestep
+        #     period_length = time_steps - self.song_length
         #     time += (period_length / self.resolution) * (60 / temporal_features[tempo_idx].qpm) * (4 / temporal_features[time_signature_idx].denominator)
         #     return time
 
@@ -309,16 +308,25 @@ class BetterMusic(muspy.music.Music):
     # GET THE LENGTH OF THE SONG IN TIME STEPS
     ##################################################
 
+    def _get_max_time_obj_helper(obj) -> int:
+        end_time = obj.time
+        if hasattr(obj, "duration"): # look for duration at top-level
+            end_time += obj.duration
+        elif hasattr(obj, "annotation"): # look for duration
+            if hasattr(obj.annotation, "duration"): # within an annotation
+                end_time += obj.annotation.duration
+        return end_time
     def get_song_length(self) -> int:
         """Return the length of the song in time steps."""
         all_objs = self.tempos + self.key_signatures + self.time_signatures + self.beats + self.barlines + self.lyrics + self.annotations + sum([track.notes + track.annotations + track.lyrics for track in self.tracks], [])
         if len(all_objs) > 0:
-            max_time_obj = max(all_objs, key = lambda obj: obj.time)
-            max_time = max_time_obj.time + (max_time_obj.duration if hasattr(max_time_obj, "duration") else 0) + self.resolution # add a quarter note at the end for buffer
+            max_time_obj = max(all_objs, key = self._get_max_time_obj_helper)
+            max_time = max_time_obj.time + (max_time_obj.duration if hasattr(max_time_obj, "duration") else 0) # + self.resolution # add a quarter note at the end for buffer
         else:
             max_time = 0
-        final_beat = self.beats[-1].time if len(self.beats) >= 1 else 0 # (2 * self.beats[-1].time) - self.beats[-2].time
-        return int(max(max_time, final_beat))
+        # final_beat = self.beats[-1].time if len(self.beats) >= 1 else 0 # (2 * self.beats[-1].time) - self.beats[-2].time
+        # return int(max(max_time, final_beat))
+        return max_time
 
     ##################################################
 
@@ -380,6 +388,115 @@ class BetterMusic(muspy.music.Music):
         # return the path to which it was saved
         return path
 
+    # wraps the main load_json() function into an instance method
+    def load_json(self, path: str):
+        """Load a Music object from a JSON file.
+
+        Parameters
+        ----------
+        path : str
+            Path to the JSON data.
+        """
+
+        # load .json file
+        music = load_json(path = path)
+
+        # set equal to self
+        self.metadata = music.metadata
+        self.resolution = music.resolution
+        self.tempos = music.tempos
+        self.key_signatures = music.key_signatures
+        self.time_signatures = music.time_signatures
+        self.beats = music.beats
+        self.barlines = music.barlines
+        self.lyrics = music.lyrics
+        self.annotations = music.annotations
+        self.tracks = music.tracks
+        self.song_length = music.song_length
+
+    ##################################################
+
+
+    # TRIM
+    ##################################################
+
+    def trim(self, start: int = 0, end: int = -1):
+        """Trim the BetterMusic object.
+
+        Parameters
+        ----------
+        start : int, default: 0
+            Time step at which to trim. Anything before this timestep will be removed.
+        end : int, default: song_length
+            Time step at which to trim. Anything after this timestep will be removed.
+        """
+
+        # deal with start and end arguments
+        if end < start:
+            end = self.song_length
+
+        # tempos, key_signatures, time_signatures, beats, barlines, and lyrics, all of which lack duration
+        self.tempos = [tempo for tempo in self.tempos if (start <= tempo.time and tempo.time < end)] # trim tempos
+        self.key_signatures = [key_signature for key_signature in self.key_signatures if (start <= key_signature.time and key_signature.time < end)] # trim key_signatures
+        self.time_signatures = [time_signature for time_signature in self.time_signatures if (start <= time_signature.time and time_signature.time < end)] # trim time_signatures
+        self.beats = [beat for beat in self.beats if (start <= beat.time and beat.time < end)] # trim beats
+        self.barlines = [barline for barline in self.barlines if (start <= barline.time and barline.time < end)] # trim barlines
+        self.lyrics = [lyric for lyric in self.lyrics if (start <= lyric.time and lyric.time < end)] # trim lyrics
+
+        # system annotations
+        self.annotations = [annotation for annotation in self.annotations if (start <= annotation.time and annotation.time < end)] # trim system annotations
+        for i, annotation in enumerate(self.annotations): # loop through system annotations
+            if hasattr(annotation.annotation, "duration"): # check for duration
+                if (annotation.time + annotation.annotation.duration) > end: # if end of annotation is past the end
+                    self.annotations[i].annotation.duration = end - annotation.time # cut duration off duration at end
+
+        # tracks (lyrics, notes, chords, staff_annotations)
+        for i in range(len(self.tracks)): # loop through tracks
+
+            # lyrics (no duration)
+            self.tracks[i].lyrics = [lyric for lyric in self.tracks[i].lyrics if (start <= lyric.time and lyric.time < end)]
+
+            # notes
+            self.tracks[i].notes = [note for note in self.tracks[i].notes if (start <= note.time and note.time < end)] # trim notes
+            for j, note in enumerate(self.tracks[i].notes): # loop through notes
+                if (note.time + note.duration) > end: # if end of note is past the end
+                    self.tracks[i].notes[j].duration = end - note.time # cut duration off at end
+
+            # chords
+            self.tracks[i].chords = [chord for chord in self.tracks[i].chords if (start <= chord.time and chord.time < end)] # trim chords
+            for j, chord in enumerate(self.tracks[i].chords): # loop through chords
+                if (chord.time + chord.duration) > end: # if end of chord is past the end
+                    self.tracks[i].chords[j].duration = end - chord.time # cut duration off at end
+
+            # staff annotations
+            self.tracks[i].annotations = [annotation for annotation in self.tracks[i].annotations if (start <= annotation.time and annotation.time < end)]
+            for j, annotation in enumerate(self.tracks[i].annotations): # loop through system annotations
+                if hasattr(annotation.annotation, "duration"): # check for duration
+                    if (annotation.time + annotation.annotation.duration) > end: # if end of annotation is past the end
+                        self.tracks[i].annotations[j].annotation.duration = end - annotation.time # cut duration off duration at end
+        
+        # update song_length
+        self.song_length = self.get_song_length()
+
+    ##################################################
+
+
+    # WRITE
+    ##################################################
+
+    def write(path: str, kind: str = None):
+        """Write a BetterMusic object in various file formats.
+
+        Parameters
+        ----------
+        path : str
+            Path to write to. File format can be inferred.
+        kind : str, default: None
+            File format of output. If not provided, the file format is inferred from `path`.
+        """
+
+        return None
+
     ##################################################
 
 ##################################################
@@ -406,22 +523,89 @@ def load_json(path: str) -> BetterMusic:
             data = json.load(fp = file)
 
     # extract info from nested dictionaries
-    metadata = Metadata(**data["metadata"])
-    tempos = [Tempo(time = int(tempo["time"]), qpm = float(tempo["qpm"]), text = str(tempo["text"]), measure = int(tempo["measure"])) for tempo in data["tempos"]]
-    key_signatures = [KeySignature(time = int(keysig["time"]), root = int(keysig["root"]), mode = str(keysig["mode"]), fifths = int(keysig["fifths"]), root_str = str(keysig["root_str"]), measure = int(keysig["measure"])) for keysig in data["key_signatures"]]
-    time_signatures = [TimeSignature(time = int(timesig["time"]), numerator = int(timesig["numerator"]), denominator = int(timesig["denominator"]), measure = int(timesig["measure"])) for timesig in data["time_signatures"]]
-    beats = [Beat(time = int(beat["time"]), is_downbeat = bool(beat["is_downbeat"]), measure = int(beat["measure"])) for beat in data["beats"]]
-    barlines = [Barline(time = int(barline["time"]), subtype = str(barline["subtype"]), measure = int(barline["measure"])) for barline in data["barlines"]]
-    lyrics = [Lyric(time = int(lyric["time"]), lyric = str(lyric["lyric"]), measure = int(lyric["measure"])) for lyric in data["lyrics"]]
-    annotations = [Annotation(time = int(annotation["time"]), annotation = load_annotation(annotation = annotation), measure = int(annotation["measure"]), group = str(annotation["group"])) for annotation in data["annotations"]]
+    metadata = Metadata(
+        schema_version = str(data["metadata"]["schema_version"]) if data["metadata"]["schema_version"] is not None else None,
+        title = str(data["metadata"]["title"]) if data["metadata"]["title"] is not None else None,
+        subtitle = str(data["metadata"]["subtitle"]) if data["metadata"]["subtitle"] is not None else None,
+        creators = data["metadata"]["creators"] if data["metadata"]["creators"] is not None else None,
+        copyright = str(data["metadata"]["copyright"]) if data["metadata"]["copyright"] is not None else None,
+        collection = str(data["metadata"]["collection"]) if data["metadata"]["collection"] is not None else None,
+        source_filename = str(data["metadata"]["source_filename"]) if data["metadata"]["source_filename"] is not None else None,
+        source_format = str(data["metadata"]["source_format"]) if data["metadata"]["source_format"] is not None else None
+    )
+    tempos = [Tempo(
+        time = int(tempo["time"]),
+        qpm = float(tempo["qpm"]) if tempo["qpm"] is not None else None,
+        text = str(tempo["text"]) if tempo["text"] is not None else None,
+        measure = int(tempo["measure"]) if tempo["measure"] is not None else None
+    ) for tempo in data["tempos"]]
+    key_signatures = [KeySignature(
+        time = int(key_signature["time"]),
+        root = int(key_signature["root"]) if key_signature["root"] is not None else None,
+        mode = str(key_signature["mode"]) if key_signature["mode"] is not None else None,
+        fifths = int(key_signature["fifths"]) if key_signature["fifths"] is not None else None,
+        root_str = str(key_signature["root_str"]) if key_signature["root_str"] is not None else None,
+        measure = int(key_signature["measure"]) if key_signature["measure"] is not None else None
+    ) for key_signature in data["key_signatures"]]
+    time_signatures = [TimeSignature(
+        time = int(time_signature["time"]),
+        numerator = int(time_signature["numerator"]) if time_signature["numerator"] is not None else None,
+        denominator = int(time_signature["denominator"]) if time_signature["denominator"] is not None else None,
+        measure = int(time_signature["measure"]) if time_signature["measure"] is not None else None
+    ) for time_signature in data["time_signatures"]]
+    beats = [Beat(
+        time = int(beat["time"]),
+        is_downbeat = bool(beat["is_downbeat"]) if beat["is_downbeat"] is not None else None,
+        measure = int(beat["measure"]) if beat["measure"] is not None else None
+    ) for beat in data["beats"]]
+    barlines = [Barline(
+        time = int(barline["time"]),
+        subtype = str(barline["subtype"]) if barline["subtype"] is not None else None,
+        measure = int(barline["measure"]) if barline["measure"] is not None else None
+    ) for barline in data["barlines"]]
+    lyrics = [Lyric(
+        time = int(lyric["time"]),
+        lyric = str(lyric["lyric"]) if lyric["lyric"] is not None else None,
+        measure = int(lyric["measure"]) if lyric["measure"] is not None else None
+    ) for lyric in data["lyrics"]]
+    annotations = [Annotation(
+        time = int(annotation["time"]),
+        annotation = load_annotation(annotation = annotation["annotation"]) if annotation["annotation"] is not None else None,
+        measure = int(annotation["measure"]) if annotation["measure"] is not None else None,
+        group = str(annotation["group"]) if annotation["group"] is not None else None
+    ) for annotation in data["annotations"]]
     tracks = [Track(
-        program = int(track["program"]),
-        is_drum = bool(track["is_drum"]),
-        name = str(track["name"]),
-        notes = [Note(time = int(note["time"]), pitch = int(note["pitch"]), duration = int(note["duration"]), velocity = int(note["velocity"]), pitch_str = str(note["pitch_str"]), is_grace = bool(note["is_grace"]), measure = int(note["measure"])) for note in track["notes"]],
-        chords = [Chord(time = int(chord["time"]), pitches = [int(pitch) for pitch in chord["pitches"]], duration = int(chord["duration"]), pitches_str = [str(pitch_str) for pitch_str in chord["pitches_str"]], measure = int(chord["measure"])) for chord in track["chords"]],
-        lyrics = [Lyric(time = int(lyric["time"]), lyric = str(lyric["lyric"]), measure = int(lyric["measure"])) for lyric in track["lyrics"]],
-        annotations = [Annotation(time = int(annotation["time"]), annotation = load_annotation(annotation = annotation), measure = int(annotation["measure"]), group = str(annotation["group"])) for annotation in track["annotations"]]
+        program = int(track["program"]) if track["program"] is not None else None,
+        is_drum = bool(track["is_drum"]) if track["is_drum"] is not None else None,
+        name = str(track["name"]) if track["name"] is not None else None,
+        notes = [Note(
+            time = int(note["time"]),
+            pitch = int(note["pitch"]) if note["pitch"] is not None else None,
+            duration = int(note["duration"]) if note["duration"] is not None else None,
+            velocity = int(note["velocity"]) if note["velocity"] is not None else None,
+            pitch_str = str(note["pitch_str"]) if note["pitch_str"] is not None else None,
+            is_grace = bool(note["is_grace"]) if note["is_grace"] is not None else None,
+            measure = int(note["measure"]) if note["measure"] is not None else None
+            ) for note in track["notes"]],
+        chords = [Chord(
+            time = int(chord["time"]),
+            pitches = [int(pitch) for pitch in chord["pitches"]] if chord["pitches"] is not None else None,
+            duration = int(chord["duration"]) if chord["duration"] is not None else None,
+            velocity = int(chord["velocity"]) if chord["velocity"] is not None else None,
+            pitches_str = [str(pitch_str) for pitch_str in chord["pitches_str"]] if chord["pitches_str"] is not None else None,
+            measure = int(chord["measure"]) if chord["measure"] is not None else None
+            ) for chord in track["chords"]],
+        lyrics = [Lyric(
+            time = int(lyric["time"]),
+            lyric = str(lyric["lyric"]) if lyric["lyric"] is not None else None,
+            measure = int(lyric["measure"]) if lyric["measure"] is not None else None
+            ) for lyric in track["lyrics"]],
+        annotations = [Annotation(
+            time = int(annotation["time"]),
+            annotation = load_annotation(annotation = annotation["annotation"]) if annotation["annotation"] is not None else None,
+            measure = int(annotation["measure"]) if annotation["measure"] is not None else None,
+            group = str(annotation["group"]) if annotation["group"] is not None else None
+            ) for annotation in track["annotations"]]
     ) for track in data["tracks"]]
 
     # return a BetterMusic object

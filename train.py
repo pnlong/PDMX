@@ -26,11 +26,11 @@ from os.path import exists
 import pprint
 import shutil
 import sys
-
 import numpy as np
 import torch
 import torch.utils.data
 from tqdm import tqdm
+import wandb
 
 import dataset
 import music_x_transformers
@@ -152,6 +152,10 @@ if __name__ == "__main__":
     utils.save_args(filepath = args_output_filepath, args = args)
     del args_output_filepath # clear up memory
 
+    # start a new wandb run to track the script
+    wandb.init(project = "ExpressionNet") # set project title
+    wandb.config(**vars(args)) # configure with hyperparameters
+
     ##################################################
 
 
@@ -159,7 +163,8 @@ if __name__ == "__main__":
     ##################################################
 
     # get the specified device
-    device = torch.device(f"cuda:{args.gpu}" if args.gpu is not None else "cpu")
+    args.gpu = abs(args.gpu)
+    device = torch.device(f"cuda:{args.gpu}" if (torch.cuda.is_available() and args.gpu >= 0) else "cpu")
     logging.info(f"Using device: {device}")
 
     # load the encoding
@@ -189,8 +194,11 @@ if __name__ == "__main__":
     ).to(device)
 
     # summarize the model
-    logging.info(f"Number of parameters: {sum(p.numel() for p in model.parameters())}")
-    logging.info(f"Number of trainable parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
+    n_parameters = sum(p.numel() for p in model.parameters())
+    n_parameters_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    logging.info(f"Number of parameters: {n_parameters}")
+    logging.info(f"Number of trainable parameters: {n_parameters_trainable}")
+    wandb.log({"n_parameters": n_parameters, "n_parameters_trainable": n_parameters_trainable})
 
     # create the optimizer
     optimizer = torch.optim.Adam(params = model.parameters(), lr = args.learning_rate)
@@ -201,12 +209,12 @@ if __name__ == "__main__":
             warmup_steps = args.lr_warmup_steps,
             decay_end_steps = args.lr_decay_steps,
             decay_end_multiplier = args.lr_decay_multiplier
-            )
         )
+    )
 
     # create a file to record losses
     loss_csv = open(f"{args.output_dir}/loss.csv", "w")
-    loss_csv.write("step,train_loss,valid_loss,type_loss,beat_loss,position_loss,pitch_loss,duration_loss,instrument_loss\n")
+    loss_csv.write("step,train_loss,valid_loss,type_loss,beat_loss,position_loss,value_loss,duration_loss,instrument_loss\n")
 
     ##################################################
 
@@ -259,6 +267,9 @@ if __name__ == "__main__":
             train_loss = np.mean(a = recent_losses, axis = 0)
             progress_bar.set_postfix(loss = f"{train_loss:8.4f}")
 
+            # log training loss for wandb
+            wandb.log({"step": step, "train_loss": train_loss})
+
             # increment step
             step += 1
 
@@ -296,11 +307,23 @@ if __name__ == "__main__":
         
         # get loss
         val_loss = total_loss / count
-        individual_losses = [loss / count for loss in total_losses]
+        individual_losses = {dimension: (loss / count) for dimension, loss in zip(encoding["dimensions"], total_losses)}
 
         # output statistics
         logging.info(f"Validation loss: {val_loss:.4f}")
-        logging.info(f"Individual losses: type = {individual_losses[0]:.4f}, beat: {individual_losses[1]:.4f}, position: {individual_losses[2]:.4f}, pitch: {individual_losses[3]:.4f}, duration: {individual_losses[4]:.4f}, instrument: {individual_losses[5]:.4f}")
+        logging.info(f"Individual losses: type = {individual_losses['type']:.4f}, beat: {individual_losses['beat']:.4f}, position: {individual_losses['position']:.4f}, value: {individual_losses['value']:.4f}, duration: {individual_losses['duration']:.4f}, instrument: {individual_losses['instrument']:.4f}")
+
+        # log validation info for wandb
+        wandb.log({
+            "step": step,
+            "valid_loss": val_loss,
+            "valid_loss.type": individual_losses["type"],
+            "valid_loss.beat": individual_losses["beat"],
+            "valid_loss.position": individual_losses["position"],
+            "valid_loss.value": individual_losses["value"],
+            "valid_loss.duration": individual_losses["duration"],
+            "valid_loss.instrument": individual_losses["instrument"]
+        })
 
         # release GPU memory right away
         del sequence, mask
@@ -341,6 +364,7 @@ if __name__ == "__main__":
 
     # log minimum validation loss
     logging.info(f"Minimum validation loss achieved: {min_val_loss}")
+    wandb.log({"min_val_loss": min_val_loss})
 
     # save the optimizer states
     optimizer_filepath = f"{CHECKPOINTS_DIR}/optimizer_{step}.pth"
@@ -354,6 +378,9 @@ if __name__ == "__main__":
 
     # close the file
     loss_csv.close()
+
+    # finish the wandb run
+    wandb.finish()
 
     ##################################################
 

@@ -30,6 +30,7 @@ from read_mscz.classes import *
 RESOLUTION = 12
 MAX_BEAT = 1024
 MAX_DURATION = 768  # remember to modify known durations as well!
+DEFAULT_VALUE_CODE = -1
 
 # encoding
 CONDITIONINGS = ("sort", "prefix", "anticipation") # there are three options for conditioning 
@@ -73,15 +74,7 @@ assert DIMENSIONS[0] == "type"
 ##################################################
 
 EXPRESSIVE_FEATURE_TYPE_STRING = "expressive-feature"
-TYPE_CODE_MAP = {
-    "start-of-song": 0,
-    "instrument": 1,
-    "start-of-notes": 2,
-    "note": 3,
-    "end-of-song": 4,
-    EXPRESSIVE_FEATURE_TYPE_STRING: 5,
-    "grace-note": 6,
-}
+TYPE_CODE_MAP = {key: val for val, key in enumerate(("start-of-song", "instrument", "start-of-notes", EXPRESSIVE_FEATURE_TYPE_STRING, "grace-note", "note", "end-of-song"))}
 CODE_TYPE_MAP = utils.inverse_dict(TYPE_CODE_MAP)
 
 ##################################################
@@ -306,7 +299,6 @@ EXPRESSIVE_FEATURE_TYPE_MAP = {expressive_feature_subtype : expressive_feature_t
 VALUE_CODE_MAP = [None,] + list(range(128)) + sum(list(EXPRESSIVE_FEATURES.values()), [])
 VALUE_CODE_MAP = {VALUE_CODE_MAP[i]: i for i in range(len(VALUE_CODE_MAP))}
 CODE_VALUE_MAP = utils.inverse_dict(VALUE_CODE_MAP)
-DEFAULT_VALUE_CODE = -1
 
 ##################################################
 
@@ -1041,7 +1033,7 @@ def extract_data(music: BetterMusic, use_implied_duration: bool = True) -> np.ar
         output = np.concatenate((output, data), axis = 0, dtype = np.object_)
 
     # sort by time
-    output = output[output[:, time_dim].argsort()]
+    output = output[np.lexsort(keys = ([TYPE_CODE_MAP[type_] for type_ in output[:, 0]], output[:, time_dim]), axis = 0)] # sort order
     if len(output) > 0: # set start beat to 0
         output[:, time_dim] = output[:, time_dim] - output[0, time_dim]
         output[:, time_dim + 1] = output[:, time_dim + 1] - output[0, time_dim + 1]
@@ -1130,7 +1122,7 @@ def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_COND
     core_codes[:, beat_dim] = list(map(lambda beat: beat_code_map[int(beat)], data[:, beat_dim])) # encode beat
     core_codes[:, position_dim] = list(map(lambda position: position_code_map[int(position)], data[:, position_dim])) # encode position
     core_codes[:, value_dim] = list(map(value_code_mapper, data[:, value_dim])) # encode value column
-    core_codes[:, duration_dim] = list(map(lambda duration: duration_code_map[min(int(duration), int(max_duration))], data[:, duration_dim])) # encode duration
+    core_codes[:, duration_dim] = list(map(lambda duration: duration_code_map[min(abs(int(duration)), int(max_duration))], data[:, duration_dim])) # encode duration
     core_codes[:, instrument_dim] = list(map(program_instrument_mapper, data[:, instrument_dim])) # encode instrument column
     core_codes = core_codes[core_codes[:, beat_dim] <= max_beat] # remove data if beat greater than max beat
     core_codes = core_codes[core_codes[:, instrument_dim] >= 0] # skip unknown instruments
@@ -1139,7 +1131,7 @@ def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_COND
     if conditioning == CONDITIONINGS[0]: # sort-order
         core_codes_with_time_steps = np.concatenate((core_codes, data[:, data.shape[1] - 2].reshape(data.shape[0], 1)), axis = 1) # add time steps column
         time_steps_column = core_codes_with_time_steps.shape[1] - 1
-        core_codes_with_time_steps = core_codes_with_time_steps[core_codes_with_time_steps[:, time_steps_column].argsort()] # sort by time (time steps)
+        core_codes_with_time_steps = core_codes_with_time_steps[np.lexsort(keys = (core_codes_with_time_steps[:, 0], core_codes_with_time_steps[:, time_steps_column]), axis = 0)] # sort by time (time steps)
         core_codes = np.delete(arr = core_codes_with_time_steps, obj = time_steps_column, axis = 1).astype(ENCODING_ARRAY_TYPE) # remove time steps column
         del core_codes_with_time_steps, time_steps_column
     elif conditioning == CONDITIONINGS[1]: # prefix
@@ -1147,10 +1139,10 @@ def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_COND
         time_steps_column = core_codes_with_time_steps.shape[1] - 1
         expressive_feature_indicies = sorted(np.where(core_codes[:, 0] == type_code_map[EXPRESSIVE_FEATURE_TYPE_STRING])[0]) # get indicies of expressive features
         expressive_features = core_codes_with_time_steps[expressive_feature_indicies] # extract expressive features
-        expressive_features = expressive_features[expressive_features[:, time_steps_column].argsort()] # sort by time
+        expressive_features = expressive_features[expressive_features[:, time_steps_column].argsort()] # sort by time, just argsort because the only type is expressive-feature
         expressive_features = np.delete(arr = expressive_features, obj = time_steps_column, axis = 1).astype(ENCODING_ARRAY_TYPE) # delete time steps column
         notes = np.delete(arr = core_codes_with_time_steps, obj = expressive_feature_indicies, axis = 0) # delete expressive features from core
-        notes = notes[notes[:, time_steps_column].argsort()] # sort by time
+        notes = notes[np.lexsort(keys = (notes[:, 0], notes[:, time_steps_column]), axis = 0)] # sort by time
         notes = np.delete(arr = notes, obj = time_steps_column, axis = 1).astype(ENCODING_ARRAY_TYPE) # delete time steps column
         core_codes = np.concatenate((expressive_features, codes[len(codes) - 1].reshape(1, codes.shape[1]), notes), axis = 0, dtype = ENCODING_ARRAY_TYPE) # sandwich: expressive features, start of notes row, 
         codes = np.delete(arr = codes, obj = len(codes) - 1, axis = 0) # remove start of notes row from codes
@@ -1164,7 +1156,7 @@ def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_COND
         for i in range(core_codes_with_seconds.shape[0]): # iterate through core_codes_with_seconds
             if core_codes_with_seconds[i, 0] == type_code_map[EXPRESSIVE_FEATURE_TYPE_STRING]: # if the type is expressive feature
                 core_codes_with_seconds[i, seconds_column] -= sigma # add anticipation
-        core_codes_with_seconds = core_codes_with_seconds[core_codes_with_seconds[:, seconds_column].argsort()] # sort by time (seconds)
+        core_codes_with_seconds = core_codes_with_seconds[np.lexsort(keys = (core_codes_with_seconds[:, 0], core_codes_with_seconds[:, seconds_column]), axis = 0)] # sort by time (seconds)
         core_codes = np.delete(arr = core_codes_with_seconds, obj = seconds_column, axis = 1).astype(ENCODING_ARRAY_TYPE) # remove seconds column
         del core_codes_with_seconds, seconds_column
 

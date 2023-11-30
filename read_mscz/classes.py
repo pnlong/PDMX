@@ -521,7 +521,7 @@ class ChordLine(Subtype):
     
     """
 
-    _attributes = OrderedDict([("subtype", int), ("is_straight", bool)])
+    _attributes = OrderedDict([("subtype", str), ("is_straight", bool)])
     _optional_attributes = ["subtype", "is_straight"]
     SUBTYPES = ["fall", "doit", "plop", "scoop", "slide out down", "slide out up", "slide in above", "slide in below"]
 
