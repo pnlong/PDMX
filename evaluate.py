@@ -64,7 +64,7 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("-ns", "--n_samples", type = int, help = "Number of samples to evaluate")
     # model
     parser.add_argument("--model_steps", type = int, help = "Step of the trained model to load (default to the best model)")
-    parser.add_argument("--sequence_length", default = 1024, type = int, help = "Sequence length to generate")
+    parser.add_argument("--seq_len", default = 1024, type = int, help = "Sequence length to generate")
     parser.add_argument("--temperature", nargs = "+", default = 1.0, type = float, help = "Sampling temperature (default: 1.0)")
     parser.add_argument("--filter", nargs = "+", default = "top_k", type = str, help = "Sampling filter (default: 'top_k')")
     parser.add_argument("--filter_threshold", nargs = "+", default = 0.9, type = float, help = "Sampling filter threshold (default: 0.9)")
@@ -161,7 +161,7 @@ if __name__ == "__main__":
 
     # create the dataset and data loader
     logging.info(f"Creating the data loader...")
-    test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_sequence_length = train_args["max_sequence_length"])
+    test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = train_args["max_seq_len"])
     test_data_loader = torch.utils.data.DataLoader(dataset = test_dataset, num_workers = args.jobs, collate_fn = dataset.MusicDataset.collate)
 
     # create the model
@@ -171,7 +171,7 @@ if __name__ == "__main__":
         encoding = encoding,
         depth = train_args["layers"],
         heads = train_args["heads"],
-        max_sequence_length = train_args["max_sequence_length"],
+        max_seq_len = train_args["max_seq_len"],
         max_beat = train_args["max_beat"],
         rotary_pos_emb = train_args["rel_pos_emb"],
         use_abs_pos_emb = train_args["abs_pos_emb"],
@@ -215,7 +215,7 @@ if __name__ == "__main__":
             ##################################################
 
             # get ground truth
-            truth_np = batch["sequence"].numpy()
+            truth_np = batch["seq"].numpy()
 
             # add to results
             result = evaluate(data = truth_np[0], encoding = encoding, stem = f"{i}_0", eval_dir = EVAL_DIR / "truth")
@@ -231,18 +231,18 @@ if __name__ == "__main__":
 
             # generate new samples
             generated = model.generate(
-                sequence_in = tgt_start,
-                sequence_length = args.sequence_length,
+                seq_in = tgt_start,
+                seq_len = args.seq_len,
                 eos_token = eos,
                 temperature = args.temperature,
                 filter_logits_fn = args.filter,
                 filter_thres = args.filter_threshold,
                 monotonicity_dim = ("type", "beat")
             )
-            generated_sequence = torch.cat(tensors = (tgt_start, generated), dim = 1).cpu().numpy()
+            generated_seq = torch.cat(tensors = (tgt_start, generated), dim = 1).cpu().numpy()
 
             # add to results
-            result = evaluate(data = generated_sequence[0], encoding = encoding, stem = f"{i}_0", eval_dir = EVAL_DIR / "unconditioned")
+            result = evaluate(data = generated_seq[0], encoding = encoding, stem = f"{i}_0", eval_dir = EVAL_DIR / "unconditioned")
             results["unconditioned"].append(result)
 
             ##################################################

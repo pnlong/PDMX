@@ -20,7 +20,7 @@ import pandas as pd
 import argparse
 import logging
 from re import sub
-from data import clean_up_text as data_text_clean
+from representation import clean_up_text as data_text_clean
 from utils import rep
 
 ##################################################

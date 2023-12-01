@@ -40,7 +40,7 @@ class MusicTransformerWrapper(nn.Module):
             self,
             *,
             encoding: dict,
-            max_sequence_length: int,
+            max_seq_len: int,
             attention_layers: AttentionLayers,
             embedding_dim: int = None,
             max_beat: int = None,
@@ -62,7 +62,7 @@ class MusicTransformerWrapper(nn.Module):
         embedding_dim = default(embedding_dim, dim)
 
         # set some lengths
-        self.max_sequence_length = max_sequence_length
+        self.max_seq_len = max_seq_len
         self.max_memory_length = max_memory_length
         self.shift_memory_down = shift_memory_down
 
@@ -75,7 +75,7 @@ class MusicTransformerWrapper(nn.Module):
         # deal with embedding
         self.l2norm_embedding = l2norm_embedding
         self.token_embedding = nn.ModuleList([TokenEmbedding(dim = embedding_dim, num_tokens = n, l2norm_embed = l2norm_embedding) for n in n_tokens])
-        self.positional_embedding = AbsolutePositionalEmbedding(dim = embedding_dim, max_seq_len = max_sequence_length, l2norm_embed = l2norm_embedding) if (use_abs_pos_emb and not attention_layers.has_pos_emb) else always(0)
+        self.positional_embedding = AbsolutePositionalEmbedding(dim = embedding_dim, max_seq_len = max_seq_len, l2norm_embed = l2norm_embedding) if (use_abs_pos_emb and not attention_layers.has_pos_emb) else always(0)
 
         # dropout
         self.embedding_dropout = nn.Dropout(p = embedding_dropout)
@@ -213,7 +213,7 @@ class MusicAutoregressiveWrapper(nn.Module):
         self.pad_value = pad_value
         self.ignore_index = ignore_index
         self.net = net
-        self.max_sequence_length = net.max_sequence_length
+        self.max_seq_len = net.max_seq_len
 
         # get the type codes
         self.sos_type_code = encoding["type_code_map"]["start-of-song"]
@@ -236,7 +236,7 @@ class MusicAutoregressiveWrapper(nn.Module):
     def generate(
         self,
         start_tokens: torch.tensor, # shape : (b, n, d)
-        sequence_length: int,
+        seq_len: int,
         eos_token: str = None,
         temperature: Union[float, List[float]] = 1.0, # int or list of int
         filter_logits_fn: Union[str, List[str]] = "top_k", # str or list of str
@@ -294,14 +294,14 @@ class MusicAutoregressiveWrapper(nn.Module):
         # deal with current values
         current_values = {d: torch.max(input = start_tokens[:, :, d], dim = 1)[0] for d in monotonicity_dim} if monotonicity_dim is not None else None
 
-        # loop through sequence
+        # loop through seq
         instrument_dim = self.dimensions["instrument"] # get index of instrument
         type_dim = self.dimensions["type"] # get index of type
-        for _ in range(sequence_length):
+        for _ in range(seq_len):
 
             # get current x and mask
-            x = output[:, -self.max_sequence_length :]
-            mask = mask[:, -self.max_sequence_length :]
+            x = output[:, -self.max_seq_len :]
+            mask = mask[:, -self.max_seq_len :]
 
             # get logits (and perhaps attention)
             if return_attention:
@@ -396,7 +396,7 @@ class MusicAutoregressiveWrapper(nn.Module):
         xi = x[:, :-1]
         xo = x[:, 1:]
 
-        # help auto-solve a frequent area of confusion around input masks in auto-regressive, if user supplies a mask that is only off by one from the source sequence, resolve it for them
+        # help auto-solve a frequent area of confusion around input masks in auto-regressive, if user supplies a mask that is only off by one from the source seq, resolve it for them
         mask = kwargs.get("mask", None)
         if mask is not None and mask.shape[1] == x.shape[1]:
             mask = mask[:, :-1]
@@ -427,7 +427,7 @@ class MusicXTransformer(nn.Module):
         super().__init__()
         assert "dim" not in kwargs, "dimension must be set with `dim` keyword"
         transformer_kwargs = {
-            "max_sequence_length": kwargs.pop("max_sequence_length"),
+            "max_seq_len": kwargs.pop("max_seq_len"),
             "max_beat": kwargs.pop("max_beat"),
             "embedding_dropout": kwargs.pop("embedding_dropout", 0),
             "use_abs_pos_emb": kwargs.pop("use_abs_pos_emb", True),
@@ -437,12 +437,12 @@ class MusicXTransformer(nn.Module):
 
     # generate
     @torch.no_grad()
-    def generate(self, sequence_in: torch.tensor, sequence_length: int, **kwargs):
-        return self.decoder.generate(start_tokens = sequence_in, sequence_length = sequence_length, **kwargs)
+    def generate(self, seq_in: torch.tensor, seq_len: int, **kwargs):
+        return self.decoder.generate(start_tokens = seq_in, seq_len = seq_len, **kwargs)
 
     # forward pass
-    def forward(self, sequence: torch.tensor, mask: torch.tensor = None, **kwargs):
-        return self.decoder(sequence, mask = mask, **kwargs)
+    def forward(self, seq: torch.tensor, mask: torch.tensor = None, **kwargs):
+        return self.decoder(seq, mask = mask, **kwargs)
 
 ##################################################
 
@@ -485,7 +485,7 @@ if __name__ == "__main__":
         encoding = encoding,
         depth = 3,
         heads = 4,
-        max_sequence_length = 1024,
+        max_seq_len = 1024,
         max_beat = 256,
         rel_pos_bias = True, # relative positional bias
         rotary_pos_emb = True, # rotary positional encoding
@@ -499,11 +499,11 @@ if __name__ == "__main__":
     logging.info(f"Number of trainable parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
 
     # create test data
-    sequence = torch.randint(low = 0, high = 4, size = (1, 1024, 6))
+    seq = torch.randint(low = 0, high = 4, size = (1, 1024, 6))
     mask = torch.ones(size = (1, 1024)).bool()
 
     # pass test data through the model
-    loss = model(sequence, mask = mask)
+    loss = model(seq, mask = mask)
     loss.backward()
 
 ##################################################

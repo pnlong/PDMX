@@ -31,16 +31,16 @@ def pad(data: np.array, max_length: int = None) -> np.array:
 
     # deal with maxlen argument
     if max_length is None:
-        max_length = max(len(sequence) for sequence in data)
+        max_length = max(len(seq) for seq in data)
     else:
-        for sequence in data:
-            assert len(sequence) <= max_length
+        for seq in data:
+            assert len(seq) <= max_length
     
     # check dimensionality of data
     if data[0].ndim == 1:
-        padded = [np.pad(array = sequence, pad_width = (0, max_length - len(sequence))) for sequence in data]
+        padded = [np.pad(array = seq, pad_width = (0, max_length - len(seq))) for seq in data]
     elif data[0].ndim == 2:
-        padded = [np.pad(array = sequence, pad_width = ((0, max_length - len(sequence)), (0, 0))) for sequence in data]
+        padded = [np.pad(array = seq, pad_width = ((0, max_length - len(seq)), (0, 0))) for seq in data]
     else:
         raise ValueError("Received data in higher than two dimensions.")
     
@@ -49,10 +49,10 @@ def pad(data: np.array, max_length: int = None) -> np.array:
 
 # masking function
 def get_mask(data: List[np.array]) -> np.array:
-    max_sequence_length = max(len(sequence) for sequence in data) # get the maximum sequence length
-    mask = torch.zeros(size = (len(data), max_sequence_length), dtype = torch.bool) # instantiate mask
-    for i, sequence in enumerate(data):
-        mask[i, :len(sequence)] = 1 # mask values
+    max_seq_len = max(len(seq) for seq in data) # get the maximum seq length
+    mask = torch.zeros(size = (len(data), max_seq_len), dtype = torch.bool) # instantiate mask
+    for i, seq in enumerate(data):
+        mask[i, :len(seq)] = 1 # mask values
     return mask # return the mask
 
 ##################################################
@@ -66,14 +66,14 @@ class MusicDataset(Dataset):
     # CONSTRUCTOR
     ##################################################
 
-    def __init__(self, paths: str, encoding: dict, conditioning: str = representation.DEFAULT_CONDITIONING, sigma: float = representation.SIGMA, max_sequence_length: int = None, max_beat: int = None, use_augmentation: bool = False):
+    def __init__(self, paths: str, encoding: dict, conditioning: str = representation.DEFAULT_CONDITIONING, sigma: float = representation.SIGMA, max_seq_len: int = None, max_beat: int = None, use_augmentation: bool = False):
         super().__init__()
         with open(paths) as file:
             self.paths = [line.strip() for line in file if line]
         self.encoding = encoding
         self.conditioning = conditioning
         self.sigma = sigma
-        self.max_sequence_length = max_sequence_length
+        self.max_seq_len = max_seq_len
         self.max_beat = max_beat
         self.use_augmentation = use_augmentation
 
@@ -113,7 +113,7 @@ class MusicDataset(Dataset):
             del value_column, type_column, pitch_shift
 
             # randomly select a starting beat
-            if n_beats > self.max_beat: # make sure sequence isn't too long
+            if n_beats > self.max_beat: # make sure seq isn't too long
                 trial = 0
                 while trial < 10: # avoid section with too few notes
                     start_beat = np.random.randint(n_beats - self.max_beat) # randomly generate a start beat
@@ -126,22 +126,22 @@ class MusicDataset(Dataset):
                 data = data_slice
                 del data_slice
 
-        # trim sequence to max_beat
+        # trim seq to max_beat
         elif self.max_beat is not None:
             if n_beats > self.max_beat:
                 data = data[data[:, beat_column].astype(representation.ENCODING_ARRAY_TYPE) < self.max_beat]
         
         # encode the data
-        sequence = representation.encode_data(data = data, encoding = self.encoding, conditioning = self.conditioning, sigma = self.sigma)
+        seq = representation.encode_data(data = data, encoding = self.encoding, conditioning = self.conditioning, sigma = self.sigma)
 
         # FOR NOW, TRIM OFF UNKNOWN TEXT (-1)
-        sequence = sequence[sequence[:, representation.DIMENSIONS.index("value")] != representation.DEFAULT_VALUE_CODE]
+        seq = seq[seq[:, representation.DIMENSIONS.index("value")] != representation.DEFAULT_VALUE_CODE]
 
-        # trim sequence to max_sequence_length
-        if self.max_sequence_length is not None and len(sequence) > self.max_sequence_length:
-            sequence = np.delete(arr = sequence, obj = range(self.max_sequence_length - 1, sequence.shape[0] - 1), axis = 0)
+        # trim seq to max_seq_len
+        if self.max_seq_len is not None and len(seq) > self.max_seq_len:
+            seq = np.delete(arr = seq, obj = range(self.max_seq_len - 1, seq.shape[0] - 1), axis = 0)
 
-        return {"path": path, "sequence": sequence}
+        return {"path": path, "seq": seq}
 
     ##################################################
 
@@ -150,12 +150,12 @@ class MusicDataset(Dataset):
 
     @classmethod
     def collate(cls, data: List[dict]):
-        sequence = [sample["sequence"] for sample in data]
+        seq = [sample["seq"] for sample in data]
         return {
             "path": [sample["path"] for sample in data],
-            "sequence": torch.tensor(pad(data = sequence), dtype = torch.long),
-            "sequence_length": torch.tensor([len(s) for s in sequence], dtype = torch.long),
-            "mask": get_mask(data = sequence),
+            "seq": torch.tensor(pad(data = seq), dtype = torch.long),
+            "seq_len": torch.tensor([len(s) for s in seq], dtype = torch.long),
+            "mask": get_mask(data = seq),
         }
 
     ##################################################
@@ -213,7 +213,7 @@ if __name__ == "__main__":
         encoding = representation.get_encoding()
 
     # create the dataset and data loader
-    dataset = MusicDataset(paths = args.paths, encoding = encoding, conditioning = "sort", max_sequence_length = None, max_beat = encoding["max_beat"], use_augmentation = False)
+    dataset = MusicDataset(paths = args.paths, encoding = encoding, conditioning = "sort", max_seq_len = None, max_beat = encoding["max_beat"], use_augmentation = False)
     data_loader = DataLoader(dataset = dataset, batch_size = args.batch_size, shuffle = True, collate_fn = MusicDataset.collate)
 
     ##################################################
@@ -224,7 +224,7 @@ if __name__ == "__main__":
 
     # instantiate
     n_batches, n_samples = 0, 0
-    sequence_lengths = []
+    seq_lens = []
 
     # loop through data loader
     example = "" # store example as a string
@@ -233,7 +233,7 @@ if __name__ == "__main__":
         # update counters
         n_batches += 1
         n_samples += len(batch["path"])
-        sequence_lengths.extend(int(l) for l in batch["sequence_length"])
+        seq_lens.extend(int(l) for l in batch["seq_len"])
 
         # show example on first iteration
         if i == 0:
@@ -253,9 +253,9 @@ if __name__ == "__main__":
     # STATISTICS
     ##################################################
 
-    logging.info(f"Average sequence length: {np.mean(sequence_lengths):2f}")
-    logging.info(f"Minimum sequence length: {min(sequence_lengths)}")
-    logging.info(f"Maximum sequence length: {max(sequence_lengths)}")
+    logging.info(f"Average sequence length: {np.mean(seq_lens):2f}")
+    logging.info(f"Minimum sequence length: {min(seq_lens)}")
+    logging.info(f"Maximum sequence length: {max(seq_lens)}")
 
     ##################################################
 

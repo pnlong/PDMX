@@ -67,7 +67,7 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("-s", "--shuffle", action = "store_true", help = "Whether to shuffle the test data")
     parser.add_argument("--model_steps", type = int, help = "Step of the trained model to load (default to the best model)")
     # sampling
-    parser.add_argument("--sequence_length", default = 1024, type = int, help = "Sequence length to generate")
+    parser.add_argument("--seq_len", default = 1024, type = int, help = "Sequence length to generate")
     parser.add_argument("--temperature", nargs = "+", default = 1.0, type = float, help = "Sampling temperature (default: 1.0)")
     parser.add_argument("--filter", nargs = "+", default = "top_k", type = str, help = "Sampling filter (default: 'top_k')")
     parser.add_argument("--filter_threshold", nargs = "+", default = 0.9, type = float, help = "Sampling filter threshold (default: 0.9)")
@@ -166,7 +166,7 @@ if __name__ == "__main__":
 
     # create the dataset and data loader
     logging.info(f"Creating the data loader...")
-    dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_sequence_length = train_args["max_sequence_length"], max_beat = train_args["max_beat"])
+    dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = train_args["max_seq_len"], max_beat = train_args["max_beat"])
     data_loader = torch.utils.data.DataLoader(dataset = dataset, shuffle = args.shuffle, num_workers = args.jobs, collate_fn = dataset.MusicDataset.collate)
 
     # create the model
@@ -176,7 +176,7 @@ if __name__ == "__main__":
         encoding = encoding,
         depth = train_args["layers"],
         heads = train_args["heads"],
-        max_sequence_length = train_args["max_sequence_length"],
+        max_seq_len = train_args["max_seq_len"],
         max_beat = train_args["max_beat"],
         rotary_pos_emb = train_args["rel_pos_emb"],
         use_abs_pos_emb = train_args["abs_pos_emb"],
@@ -222,7 +222,7 @@ if __name__ == "__main__":
             ##################################################
 
             # get ground truth
-            truth_np = batch["sequence"][0].numpy()
+            truth_np = batch["seq"][0].numpy()
 
             # save the results
             save_result(stem = f"{i}_truth", data = truth_np, sample_dir = SAMPLE_DIR, encoding = encoding)
@@ -237,18 +237,18 @@ if __name__ == "__main__":
 
             # generate new samples
             generated = model.generate(
-                sequence_in = tgt_start,
-                sequence_length = args.sequence_length,
+                seq_in = tgt_start,
+                seq_len = args.seq_len,
                 eos_token = eos,
                 temperature = args.temperature,
                 filter_logits_fn = args.filter,
                 filter_thres = args.filter_threshold,
                 monotonicity_dim = ("type", "beat")
             )
-            generated_sequence = torch.cat(tensors = (tgt_start, generated), dim = 1).cpu().numpy()
+            generated_seq = torch.cat(tensors = (tgt_start, generated), dim = 1).cpu().numpy()
 
             # save the results
-            save_result(stem = f"{i}_unconditioned", data = generated_sequence[0], sample_dir = SAMPLE_DIR, encoding = encoding)
+            save_result(stem = f"{i}_unconditioned", data = generated_seq[0], sample_dir = SAMPLE_DIR, encoding = encoding)
 
             ##################################################
 
@@ -256,23 +256,23 @@ if __name__ == "__main__":
             ##################################################
 
             # get output start tokens
-            prefix_length = int(np.argmax(a = batch["sequence"][0, :, 1] >= beat_0))
-            tgt_start = batch["sequence"][:1, :prefix_length].to(device)
+            prefix_length = int(np.argmax(a = batch["seq"][0, :, 1] >= beat_0))
+            tgt_start = batch["seq"][:1, :prefix_length].to(device)
 
             # generate new samples
             generated = model.generate(
-                sequence_in = tgt_start,
-                sequence_length = args.sequence_length,
+                seq_in = tgt_start,
+                seq_len = args.seq_len,
                 eos_token = eos,
                 temperature = args.temperature,
                 filter_logits_fn = args.filter,
                 filter_thres = args.filter_threshold,
                 monotonicity_dim = ("type", "beat")
             )
-            generated_sequence = torch.cat(tensors = (tgt_start, generated), dim = 1).cpu().numpy()
+            generated_seq = torch.cat(tensors = (tgt_start, generated), dim = 1).cpu().numpy()
 
             # save the results
-            save_result(stem = f"{i}_instrument-informed", data = generated_sequence[0], sample_dir = SAMPLE_DIR, encoding = encoding)
+            save_result(stem = f"{i}_instrument-informed", data = generated_seq[0], sample_dir = SAMPLE_DIR, encoding = encoding)
 
             ##################################################
 
@@ -280,23 +280,23 @@ if __name__ == "__main__":
             ##################################################
 
             # get output start tokens
-            cond_length = int(np.argmax(a = batch["sequence"][0, :, 1] >= beat_4))
-            tgt_start = batch["sequence"][:1, :cond_length].to(device)
+            cond_length = int(np.argmax(a = batch["seq"][0, :, 1] >= beat_4))
+            tgt_start = batch["seq"][:1, :cond_length].to(device)
 
             # generate new samples
             generated = model.generate(
-                sequence_in = tgt_start,
-                sequence_length = args.sequence_length,
+                seq_in = tgt_start,
+                seq_len = args.seq_len,
                 eos_token = eos,
                 temperature = args.temperature,
                 filter_logits_fn = args.filter,
                 filter_thres = args.filter_threshold,
                 monotonicity_dim = ("type", "beat")
             )
-            generated_sequence = torch.cat(tensors = (tgt_start, generated), dim = 1).cpu().numpy()
+            generated_seq = torch.cat(tensors = (tgt_start, generated), dim = 1).cpu().numpy()
 
             # save the results
-            save_result(stem = f"{i}_4-beat-continuation", data = generated_sequence[0], sample_dir = SAMPLE_DIR, encoding = encoding)
+            save_result(stem = f"{i}_4-beat-continuation", data = generated_seq[0], sample_dir = SAMPLE_DIR, encoding = encoding)
 
             ##################################################
 
@@ -304,23 +304,23 @@ if __name__ == "__main__":
             ##################################################
 
             # get output start tokens
-            cond_length = int(np.argmax(a = batch["sequence"][0, :, 1] >= beat_16))
-            tgt_start = batch["sequence"][:1, :cond_length].to(device)
+            cond_length = int(np.argmax(a = batch["seq"][0, :, 1] >= beat_16))
+            tgt_start = batch["seq"][:1, :cond_length].to(device)
 
             # generate new samples
             generated = model.generate(
-                sequence_in = tgt_start,
-                sequence_length = args.sequence_length,
+                seq_in = tgt_start,
+                seq_len = args.seq_len,
                 eos_token = eos,
                 temperature = args.temperature,
                 filter_logits_fn = args.filter,
                 filter_thres = args.filter_threshold,
                 monotonicity_dim = ("type", "beat")
             )
-            generated_sequence = torch.cat(tensors = (tgt_start, generated), dim = 1).cpu().numpy()
+            generated_seq = torch.cat(tensors = (tgt_start, generated), dim = 1).cpu().numpy()
 
             # save the results
-            save_result(stem = f"{i}_16-beat-continuation", data = generated_sequence[0], sample_dir = SAMPLE_DIR, encoding = encoding)
+            save_result(stem = f"{i}_16-beat-continuation", data = generated_seq[0], sample_dir = SAMPLE_DIR, encoding = encoding)
 
             ##################################################
     

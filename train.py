@@ -70,9 +70,9 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("-c", "--conditioning", default = representation.DEFAULT_CONDITIONING, choices = representation.CONDITIONINGS, type = str, help = "Conditioning type")
     parser.add_argument("-s", "--sigma", default = representation.SIGMA, type = float, help = "Sigma anticipation value (for anticipation conditioning)")
     # model
-    parser.add_argument("--max_sequence_length", default = 1024, type = int, help = "Maximum sequence length")
+    parser.add_argument("--max_seq_len", default = 1024, type = int, help = "Maximum sequence length")
     parser.add_argument("--max_beat", default = 256, type = int, help = "Maximum number of beats")
-    parser.add_argument("--dimension", default = 512, type = int, help = "Model dimension")
+    parser.add_argument("--dim", default = 512, type = int, help = "Model dimension")
     parser.add_argument("-l", "--layers", default = 6, type = int, help = "Number of layers")
     parser.add_argument("--heads", default = 8, type = int, help = "Number of attention heads")
     parser.add_argument("--dropout", default = 0.2, type = float, help = "Dropout rate")
@@ -153,8 +153,8 @@ if __name__ == "__main__":
     del args_output_filepath # clear up memory
 
     # start a new wandb run to track the script
-    wandb.init(project = "ExpressionNet") # set project title
-    wandb.config(**vars(args)) # configure with hyperparameters
+    run = wandb.init(project = "ExpressionNet-Train", config = vars(args)) # set project title, configure with hyperparameters
+    run.name = f"{args.learning_rate}-{args.layers}-{args.heads}-{args.dim}-" + run.name.split("-")[-1] # set run name
 
     ##################################################
 
@@ -172,19 +172,19 @@ if __name__ == "__main__":
 
     # create the dataset and data loader
     logging.info(f"Creating the data loader...")
-    dataset_train = dataset.MusicDataset(paths = args.paths_train, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, max_sequence_length = args.max_sequence_length, max_beat = args.max_beat, use_augmentation = args.aug)
+    dataset_train = dataset.MusicDataset(paths = args.paths_train, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, max_seq_len = args.max_seq_len, max_beat = args.max_beat, use_augmentation = args.aug)
     data_loader_train = torch.utils.data.DataLoader(dataset = dataset_train, batch_size = args.batch_size, shuffle = True, num_workers = args.jobs, collate_fn = dataset.MusicDataset.collate)
-    dataset_valid = dataset.MusicDataset(paths = args.paths_valid, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, max_sequence_length = args.max_sequence_length, max_beat = args.max_beat, use_augmentation = args.aug)
+    dataset_valid = dataset.MusicDataset(paths = args.paths_valid, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, max_seq_len = args.max_seq_len, max_beat = args.max_beat, use_augmentation = args.aug)
     data_loader_valid = torch.utils.data.DataLoader(dataset = dataset_valid, batch_size = args.batch_size, shuffle = True, num_workers = args.jobs, collate_fn = dataset.MusicDataset.collate)
 
     # create the model
     logging.info(f"Creating model...")
     model = music_x_transformers.MusicXTransformer(
-        dim = args.dimension,
+        dim = args.dim,
         encoding = encoding,
         depth = args.layers,
         heads = args.heads,
-        max_sequence_length = args.max_sequence_length,
+        max_seq_len = args.max_seq_len,
         max_beat = args.max_beat,
         rotary_pos_emb = args.rel_pos_emb,
         use_abs_pos_emb = args.abs_pos_emb,
@@ -249,12 +249,12 @@ if __name__ == "__main__":
                 batch = next(train_iterator)
 
             # get input and output pair
-            sequence = batch["sequence"].to(device)
+            seq = batch["seq"].to(device)
             mask = batch["mask"].to(device)
 
             # update the model parameters
             optimizer.zero_grad()
-            loss = model(sequence, mask = mask)
+            loss = model(seq, mask = mask)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(parameters = model.parameters(), max_norm = args.grad_norm_clip)
             optimizer.step()
@@ -268,13 +268,13 @@ if __name__ == "__main__":
             progress_bar.set_postfix(loss = f"{train_loss:8.4f}")
 
             # log training loss for wandb
-            wandb.log({"step": step, "train_loss": train_loss})
+            wandb.log({"step": step, "train/loss": train_loss})
 
             # increment step
             step += 1
 
         # release GPU memory right away
-        del sequence, mask
+        del seq, mask
 
         ##################################################
 
@@ -293,11 +293,11 @@ if __name__ == "__main__":
             for batch in data_loader_valid:
 
                 # get input and output pair
-                sequence = batch["sequence"].to(device)
+                seq = batch["seq"].to(device)
                 mask = batch["mask"].to(device)
 
                 # pass through the model
-                loss, losses = model(sequence, return_list = True, mask = mask)
+                loss, losses = model(seq, return_list = True, mask = mask)
 
                 # accumulate validation loss
                 count += len(batch)
@@ -314,19 +314,12 @@ if __name__ == "__main__":
         logging.info(f"Individual losses: type = {individual_losses['type']:.4f}, beat: {individual_losses['beat']:.4f}, position: {individual_losses['position']:.4f}, value: {individual_losses['value']:.4f}, duration: {individual_losses['duration']:.4f}, instrument: {individual_losses['instrument']:.4f}")
 
         # log validation info for wandb
-        wandb.log({
-            "step": step,
-            "valid_loss": val_loss,
-            "valid_loss.type": individual_losses["type"],
-            "valid_loss.beat": individual_losses["beat"],
-            "valid_loss.position": individual_losses["position"],
-            "valid_loss.value": individual_losses["value"],
-            "valid_loss.duration": individual_losses["duration"],
-            "valid_loss.instrument": individual_losses["instrument"]
-        })
+        wandb.log({"step": step, "valid/loss": val_loss})
+        for dimension, loss_val in individual_losses.items():
+            wandb.log({"step": step, f"valid/loss_{dimension}": loss_val})
 
         # release GPU memory right away
-        del sequence, mask
+        del seq, mask
 
         ##################################################
 

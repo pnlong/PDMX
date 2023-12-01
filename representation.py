@@ -103,6 +103,7 @@ CODE_POSITION_MAP = utils.inverse_dict(POSITION_CODE_MAP)
 # VALUE
 ##################################################
 
+# tempo
 TEMPO_QPM_MAP = { # each value is the maximum BPM before we go up a tempo, found at https://en.wikipedia.org/wiki/Tempo
     "larghissimo": 24,
     "grave": 40, # also Adagissimo
@@ -120,13 +121,26 @@ TEMPO_QPM_MAP = { # each value is the maximum BPM before we go up a tempo, found
 }
 QPM_TEMPO_MAP = utils.inverse_dict(TEMPO_QPM_MAP)
 DEFAULT_QPM = 112
-def QPM_TEMPO_MAPPER(qpm: float):
+def QPM_TEMPO_MAPPER(qpm: float) -> str:
     if qpm is None: # default if qpm argument is none
         qpm = DEFAULT_QPM # default bpm
     for bpm in QPM_TEMPO_MAP.keys():
         if qpm <= bpm:
             return QPM_TEMPO_MAP[bpm]
 
+# time signature changes
+TIME_SIGNATURE_CHANGE_RATIO_STEP = 0.2
+TIME_SIGNATURE_CHANGE_RATIOS = np.arange(start = 0, stop = 4 + TIME_SIGNATURE_CHANGE_RATIO_STEP, step = TIME_SIGNATURE_CHANGE_RATIO_STEP).tolist() # ratios between different time signatures
+TIME_SIGNATURE_CHANGE_RATIO_DEFAULT = "other" # default if a ratio doesn't fall in the discretized list
+def TIME_SIGNATURE_CHANGE_MAPPER(time_signature_change_ratio: float) -> str:
+    discrete_time_signature_change_ratio_differences = [abs(time_signature_change_ratio - discrete_time_signature_change_ratio) for discrete_time_signature_change_ratio in TIME_SIGNATURE_CHANGE_RATIOS] # calculate difference with each time signature change ratio
+    minimum_difference_index = min(range(len(discrete_time_signature_change_ratio_differences)), key = discrete_time_signature_change_ratio_differences.__getitem__) # get the index of the ratio that is closest
+    if discrete_time_signature_change_ratio_differences[minimum_difference_index] < (TIME_SIGNATURE_CHANGE_RATIO_STEP / 2): # if the minimum difference between the input ratio and one of the discrete ratios is small enough
+        return str(TIME_SIGNATURE_CHANGE_RATIOS[minimum_difference_index]) # return the ratio
+    else: # if not sufficiently close
+        return TIME_SIGNATURE_CHANGE_RATIO_DEFAULT # return the default
+
+# expressive features
 EXPRESSIVE_FEATURES = {
     # Barlines
     "Barline": [
@@ -134,13 +148,9 @@ EXPRESSIVE_FEATURES = {
         "barline", # default value
         ],
     # Key Signatures
-    "KeySignature": [
-        "keysig-change",
-        ],
+    "KeySignature": [f"key-signature-change-{distance}" for distance in range(7)],
     # Time Signatures
-    "TimeSignature": [
-        "timesig-change",
-        ],
+    "TimeSignature": [f"time-signature-change-{time_signature_change_ratio}" for time_signature_change_ratio in (TIME_SIGNATURE_CHANGE_RATIOS + [TIME_SIGNATURE_CHANGE_RATIO_DEFAULT])],
     # Fermata
     "Fermata": [
         "fermata",
@@ -764,30 +774,30 @@ def scrape_barlines(barlines: List[Barline], song_length: int, use_implied_durat
     return pd.DataFrame(data = barlines_encoded, columns = DIMENSIONS) # create dataframe from scraped values
 
 
-def scrape_timesigs(timesigs: List[TimeSignature], song_length: int, use_implied_duration: bool = True) -> pd.DataFrame:
-    """Scrape timesigs. song_length is the length of the song (in time steps). use_implied_duration is whether or not to calculate an 'implied duration' value for features without duration."""
-    timesigs = timesigs[1:] # get rid of first timesig, since we are tracking changes in timesig
-    timesigs_encoded = {key: utils.rep(x = None, times = len(timesigs)) for key in DIMENSIONS} # create dictionary of lists
-    timesigs.append(TimeSignature(time = song_length, measure = 0, numerator = 4, denominator = 4)) # for duration
-    for i, timesig in enumerate(timesigs[:-1]):
-        timesigs_encoded["type"][i] = EXPRESSIVE_FEATURE_TYPE_STRING
-        timesigs_encoded["value"][i] = check_text(text = f"timesig-change") # check_text(text = f"{timesig.numerator}/{timesig.denominator}")
-        timesigs_encoded["duration"][i] = timesigs[i + 1].time - timesig.time if use_implied_duration else 0
-        timesigs_encoded["time"][i] = timesig.time
-    return pd.DataFrame(data = timesigs_encoded, columns = DIMENSIONS) # create dataframe from scraped values
+def scrape_time_signatures(time_signatures: List[TimeSignature], song_length: int, use_implied_duration: bool = True) -> pd.DataFrame:
+    """Scrape time_signatures. song_length is the length of the song (in time steps). use_implied_duration is whether or not to calculate an 'implied duration' value for features without duration."""
+    time_signatures_encoded = {key: utils.rep(x = None, times = len(time_signatures)) for key in DIMENSIONS} # create dictionary of lists
+    time_signatures.append(TimeSignature(time = song_length, measure = 0, numerator = 4, denominator = 4)) # for duration
+    for i in range(1, len(time_signatures) - 1): # ignore first time_signature, since we are tracking changes in time_signature; also ignore last one, since it is used for duration
+        time_signatures_encoded["type"][i] = EXPRESSIVE_FEATURE_TYPE_STRING
+        time_signature_change_ratio = ((time_signatures[i].numerator / time_signatures[i].denominator) / (time_signatures[i - 1].numerator / time_signatures[i - 1].denominator)) if all((time_signature.numerator and time_signature.denominator for time_signature in time_signatures[i - 1:i + 1])) else -1e6 # ratio between time signatures
+        time_signatures_encoded["value"][i] = check_text(text = f"time-signature-change-{TIME_SIGNATURE_CHANGE_MAPPER(time_signature_change_ratio = time_signature_change_ratio)}") # check_text(text = f"{time_signatures[i].numerator}/{time_signatures[i].denominator}")
+        time_signatures_encoded["duration"][i] = time_signatures[i + 1].time - time_signatures[i].time if use_implied_duration else 0
+        time_signatures_encoded["time"][i] = time_signatures[i].time
+    return pd.DataFrame(data = time_signatures_encoded, columns = DIMENSIONS) # create dataframe from scraped values
 
 
-def scrape_keysigs(keysigs: List[KeySignature], song_length: int, use_implied_duration: bool = True) -> pd.DataFrame:
-    """Scrape keysigs. song_length is the length of the song (in time steps). use_implied_duration is whether or not to calculate an 'implied duration' value for features without duration."""
-    keysigs = keysigs[1:] # get rid of first keysig, since we are tracking changes in keysig
-    keysigs_encoded = {key: utils.rep(x = None, times = len(keysigs)) for key in DIMENSIONS} # create dictionary of lists
-    keysigs.append(KeySignature(time = song_length, measure = 0)) # for duration
-    for i, keysig in enumerate(keysigs[:-1]):
-        keysigs_encoded["type"][i] = EXPRESSIVE_FEATURE_TYPE_STRING
-        keysigs_encoded["value"][i] = check_text(text = f"keysig-change") # check_text(text = f"{keysig.root_str} {keysig.mode}") # or keysig.root or keysig.fifths
-        keysigs_encoded["duration"][i] = keysigs[i + 1].time - keysig.time if use_implied_duration else 0
-        keysigs_encoded["time"][i] = keysig.time
-    return pd.DataFrame(data = keysigs_encoded, columns = DIMENSIONS) # create dataframe from scraped values
+def scrape_key_signatures(key_signatures: List[KeySignature], song_length: int, use_implied_duration: bool = True) -> pd.DataFrame:
+    """Scrape key_signatures. song_length is the length of the song (in time steps). use_implied_duration is whether or not to calculate an 'implied duration' value for features without duration."""
+    key_signatures_encoded = {key: utils.rep(x = None, times = len(key_signatures)) for key in DIMENSIONS} # create dictionary of lists
+    key_signatures.append(KeySignature(time = song_length, measure = 0)) # for duration
+    for i in range(1, len(key_signatures) - 1): # ignore first key_signature, since we are tracking changes in key_signature; also ignore last one, since it is used for duration
+        key_signatures_encoded["type"][i] = EXPRESSIVE_FEATURE_TYPE_STRING
+        distance = abs(key_signatures[i].fifths - key_signatures[i - 1].fifths) if all((fifths != None for fifths in key_signatures[i - 1:i + 1])) else 0 # calculate key change distance in circle of fifths
+        key_signatures_encoded["value"][i] = check_text(text = f"key-signature-change-{min(distance, 12 - distance)}") # check_text(text = f"{key_signatures[i].root_str} {key_signatures[i].mode}") # or key_signatures[i].root or key_signatures[i].fifths
+        key_signatures_encoded["duration"][i] = key_signatures[i + 1].time - key_signatures[i].time if use_implied_duration else 0
+        key_signatures_encoded["time"][i] = key_signatures[i].time
+    return pd.DataFrame(data = key_signatures_encoded, columns = DIMENSIONS) # create dataframe from scraped values
 
 
 def scrape_tempos(tempos: List[Tempo], song_length: int, use_implied_duration: bool = True) -> pd.DataFrame:
@@ -903,10 +913,10 @@ def get_system_level_expressive_features(music: BetterMusic, use_implied_duratio
     """Wrapper function to make code more readable. Extracts system-level expressive features."""
     system_annotations = scrape_annotations(annotations = music.annotations, song_length = music.song_length, use_implied_duration = use_implied_duration)
     system_barlines = scrape_barlines(barlines = music.barlines, song_length = music.song_length, use_implied_duration = use_implied_duration)
-    system_timesigs = scrape_timesigs(timesigs = music.time_signatures, song_length = music.song_length, use_implied_duration = use_implied_duration)
-    system_keysigs = scrape_keysigs(keysigs = music.key_signatures, song_length = music.song_length, use_implied_duration = use_implied_duration)
+    system_time_signatures = scrape_time_signatures(time_signatures = music.time_signatures, song_length = music.song_length, use_implied_duration = use_implied_duration)
+    system_key_signatures = scrape_key_signatures(key_signatures = music.key_signatures, song_length = music.song_length, use_implied_duration = use_implied_duration)
     system_tempos = scrape_tempos(tempos = music.tempos, song_length = music.song_length, use_implied_duration = use_implied_duration)
-    return pd.concat(objs = (system_annotations, system_barlines, system_timesigs, system_keysigs, system_tempos), axis = 0, ignore_index = True)
+    return pd.concat(objs = (system_annotations, system_barlines, system_time_signatures, system_key_signatures, system_tempos), axis = 0, ignore_index = True)
 
 def get_staff_level_expressive_features(track: Track, music: BetterMusic, use_implied_duration: bool = True) -> pd.DataFrame:
     """Wrapper function to make code more readable. Extracts staff-level expressive features."""
@@ -1007,9 +1017,9 @@ def extract_data(music: BetterMusic, use_implied_duration: bool = True) -> np.ar
         # get beats (accounting for time signature) # beats = sorted(list(set([beat.time for beat in music.beats] + [music.song_length,]))) # add song length to end of beats for calculating position
         # if len(music.time_signatures) > 0:
         #     beats = []
-        #     timesigs = music.time_signatures + [TimeSignature(time = music.song_length, measure = 0, numerator = 4, denominator = 4),]
-        #     for i in range(len(timesigs) - 1):
-        #         beats += list(range(timesigs[i].time, timesigs[i + 1].time, int(music.resolution * (4 / timesigs[i].denominator))))
+        #     time_signatures = music.time_signatures + [TimeSignature(time = music.song_length, measure = 0, numerator = 4, denominator = 4),]
+        #     for i in range(len(time_signatures) - 1):
+        #         beats += list(range(time_signatures[i].time, time_signatures[i + 1].time, int(music.resolution * (4 / time_signatures[i].denominator))))
         # else: # assume 4/4
         #     beats = list(range(0, music.song_length + music.resolution, music.resolution))        
         # beat_index = 0
