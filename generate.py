@@ -38,6 +38,8 @@ from read_mscz.music import BetterMusic
 import dataset
 import music_x_transformers
 import representation
+import encode
+import decode
 import utils
 
 ##################################################
@@ -97,9 +99,9 @@ def save_result(stem: str, data: Union[np.array, torch.tensor], sample_dir: str,
 
     # save results
     np.save(file = f"{sample_dir}/npy/{stem}.npy", arr = data) # save as a numpy array
-    representation.save_csv_codes(filepath = f"{sample_dir}/csv/{stem}.csv", data = data) # save as a .csv file
-    representation.save_txt(filepath = f"{sample_dir}/txt/{stem}.txt", data = data, encoding = encoding) # save as a .txt file
-    music = representation.decode(codes = data, encoding = encoding) # convert to a BetterMusic object
+    encode.save_csv_codes(filepath = f"{sample_dir}/csv/{stem}.csv", data = data) # save as a .csv file
+    decode.save_txt(filepath = f"{sample_dir}/txt/{stem}.txt", data = data, encoding = encoding) # save as a .txt file
+    music = decode.decode(codes = data, encoding = encoding) # convert to a BetterMusic object
     music.save_json(path = f"{sample_dir}/json/{stem}.json") # save as a BetterMusic .json file
     save_pianoroll(filepath = f"{sample_dir}/png/{stem}.png", music = music, size = (20, 5), preset = "frame") # save as a piano roll
     music.write(path = f"{sample_dir}/mid/{stem}.mid") # save as a .mid file
@@ -127,7 +129,7 @@ if __name__ == "__main__":
     args = parse_args()
 
     # set up the logger
-    logging.basicConfig(level = logging.INFO, format = "%(message)s", handlers = [logging.FileHandler(f"{args.output_dir}/generate.log", "w"), logging.StreamHandler(sys.stdout)])
+    logging.basicConfig(level = logging.INFO, format = "%(message)s", handlers = [logging.FileHandler(filename = f"{args.output_dir}/generate.log", mode = "a"), logging.StreamHandler(stream = sys.stdout)])
 
     # log command called and arguments, save arguments
     logging.info(f"Running command: python {' '.join(sys.argv)}")

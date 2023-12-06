@@ -16,12 +16,11 @@ from collections import OrderedDict
 from fractions import Fraction
 from functools import reduce
 from operator import attrgetter
-from pathlib import Path
+from os.path import dirname, join, basename
 from typing import Dict, List, Optional, Tuple, TypeVar, Union
 from xml.etree.ElementTree import Element
 from zipfile import ZipFile
 from re import sub
-from os.path import basename
 import numpy as np
 
 # muspy imports
@@ -157,18 +156,18 @@ def _get_raw_text(element: Element, path: str = "text") -> str:
 # FOR GETTING THE XML, BASIC INFO
 ##################################################
 
-def _get_root(path: Union[str, Path], compressed: bool = None):
+def _get_root(path: str, compressed: bool = None):
     """Return root of the element tree."""
     if compressed is None:
-        compressed = str(path).endswith(".mscz")
+        compressed = path.endswith(".mscz")
 
     if not compressed:
-        tree = ET.parse(str(path))
+        tree = ET.parse(path)
         return tree.getroot()
 
     # Find out the main MSCX file in the compressed ZIP archive
     try:
-        zip_file = ZipFile(file = str(path))
+        zip_file = ZipFile(file = path)
     except: # zipfile.BadZipFile: File is not a zip file
         raise MuseScoreError(f"{path} is not a zip file")
     if "META-INF/container.xml" not in zip_file.namelist():
@@ -548,12 +547,12 @@ def get_part_staff_info(elem: Element, musescore_version: int) -> Tuple[List[Ord
         return parts_info, staff_part_map
 
 
-def get_musescore_version(path: Union[str, Path], compressed: bool = None) -> str:
+def get_musescore_version(path: str, compressed: bool = None) -> str:
     """Determine the version of a MuseScore file.
 
     Parameters
     ----------
-    path : str or Path
+    path : str
         Path to the MuseScore file to read.
     compressed : bool, optional
         Whether it is a compressed MuseScore file. Defaults to infer from the filename.
@@ -563,10 +562,11 @@ def get_musescore_version(path: Union[str, Path], compressed: bool = None) -> st
     :str:
         Version of Musescore
     """
-    # Get element tree root
+
+    # get element tree root
     root = _get_root(path = path, compressed = compressed)
 
-    # Detect MuseScore version
+    # detect MuseScore version
     musescore_version = root.get("version")
 
     return musescore_version
@@ -1141,12 +1141,12 @@ def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], ti
 # MY BETTER READ MUSESCORE FUNCTION, EXTRACTS EXPRESSIVE FEATURES
 ##################################################
 
-def read_musescore(path: Union[str, Path], resolution: int = None, compressed: bool = None, timeout: int = None) -> BetterMusic:
+def read_musescore(path: str, resolution: int = None, compressed: bool = None, timeout: int = None) -> BetterMusic:
     """Read the a MuseScore file into a BetterMusic object, paying close attention to details such as articulation and expressive features.
 
     Parameters
     ----------
-    path : str or Path
+    path : str
         Path to the MuseScore file to read.
     resolution : int, optional
         Time steps per quarter note. Defaults to the least common
@@ -1162,23 +1162,23 @@ def read_musescore(path: Union[str, Path], resolution: int = None, compressed: b
 
     """
 
-    # Get element tree for MuseScore file
+    # get element tree for MuseScore file
     root = _get_root(path = path, compressed = compressed)
 
-    # Detect MuseScore version
+    # detect MuseScore version
     musescore_version = int(root.get("version")[0]) # the file format differs slightly between musescore 1 and the rest
 
-    # Get the score element
+    # get the score element
     if musescore_version >= 2:
         score = root.find(path = "Score")
     else: # MuseScore 1
         score = root # No "Score" tree
 
-    # Meta data
+    # metadata
     metadata = parse_metadata(root = root)
-    metadata.source_filename = Path(path).name
+    metadata.source_filename = basename(path)
 
-    # Find the resolution
+    # find the resolution
     if resolution is None:
         divisions = _get_divisions(root = score)
         resolution = max(divisions, key = divisions.count) # _lcm(*divisions) if divisions else 1
@@ -1192,27 +1192,27 @@ def read_musescore(path: Union[str, Path], resolution: int = None, compressed: b
     if len(staffs) == 0: # Return empty music object with metadata if no staff is found
         return BetterMusic(metadata = metadata, resolution = resolution)
 
-    # Parse measure ordering from the meta staff, expanding all repeats and jumps
+    # parse measure ordering from the meta staff, expanding all repeats and jumps
     measure_indicies = get_measure_ordering(elem = staffs[0], timeout = timeout) # feed in the first staff, since measure ordering are constant across all staffs
 
-    # Parse the  part element
+    # parse the  part element
     (tempos, key_signatures, time_signatures, barlines, beats, annotations) = parse_constant_features(staff = staffs[0], resolution = resolution, measure_indicies = measure_indicies, timeout = timeout) # feed in the first staff to extract features constant across all parts
 
-    # Initialize lists
+    # initialize lists
     tracks: List[Track] = []
 
-    # Record start time to check for timeout
+    # record start time to check for timeout
     start_time = time.time()
 
-    # Iterate over all staffs
+    # iterate over all staffs
     part_track_map: Dict[int, int] = {} # keeps track of parts we have already looked at
     for staff in staffs:
 
-        # Check for timeout
+        # check for timeout
         if timeout is not None and time.time() - start_time > timeout:
             raise TimeoutError(f"Abort the process as it runned over {timeout} seconds.")
 
-        # Get the staff ID
+        # get the staff ID
         staff_id = staff.get("id")
         if staff_id is None:
             if len(score.findall(path = "Staff")) > 1:
@@ -1221,10 +1221,10 @@ def read_musescore(path: Union[str, Path], resolution: int = None, compressed: b
         if staff_id not in staff_part_map:
             continue
 
-        # Parse the staff
+        # parse the staff
         notes, lyrics, annotations_staff = parse_staff(staff = staff, resolution = resolution, measure_indicies = measure_indicies, timeout = timeout)
 
-        # Extend lists
+        # extend lists
         part_id = staff_part_map[staff_id]
         if part_id in part_track_map:
             track_id = part_track_map[part_id]
@@ -1235,7 +1235,7 @@ def read_musescore(path: Union[str, Path], resolution: int = None, compressed: b
             part_track_map[part_id] = len(tracks)
             tracks.append(Track(program = parts_info[part_id]["program"], is_drum = parts_info[part_id]["is_drum"], name = parts_info[part_id]["name"], notes = notes, lyrics = lyrics, annotations = annotations_staff))
 
-    # Make sure everything is sorted
+    # make sure everything is sorted
     tempos.sort(key = attrgetter("time"))
     key_signatures.sort(key = attrgetter("time"))
     time_signatures.sort(key = attrgetter("time"))
@@ -1254,8 +1254,6 @@ def read_musescore(path: Union[str, Path], resolution: int = None, compressed: b
 ##################################################
 
 if __name__ == "__main__":
-
-    from os.path import dirname, join
 
     paths = ["/data2/pnlong/musescore/data/chopin/Chopin_Trois_Valses_Op64.mscz", "/data2/pnlong/musescore/data/goodman/in_the_mood.mscz", "/data2/pnlong/musescore/data/laufey/from_the_start.mscz", "/data2/pnlong/musescore/data/maroon/this_love.mscz", "/data2/pnlong/musescore/data/test1/QmbboPyM7KRorFpbmqnoCYDjbN2Up2mY969kggS3JLqRCF.mscz", "/data2/pnlong/musescore/data/test2/QmbbxbpgJHyNRzjkbyxdoV5saQ9HY38MauKMd5CijTPFiF.mscz", "/data2/pnlong/musescore/data/test3/QmbbjJJAMixkH5vqVeffBS1h2tJHQG1DXpTJHJonpxGmSN.mscz", "/data2/pnlong/musescore/data/toploader/dancing_in_the_moonlight.mscz"]
 

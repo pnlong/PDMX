@@ -22,11 +22,12 @@
 import argparse
 import logging
 from os import makedirs, mkdir
-from os.path import exists
+from os.path import exists, basename
 import pprint
 import shutil
 import sys
 import numpy as np
+import pandas as pd
 import torch
 import torch.utils.data
 from tqdm import tqdm
@@ -35,6 +36,7 @@ import wandb
 import dataset
 import music_x_transformers
 import representation
+import encode
 import utils
 
 ##################################################
@@ -67,8 +69,8 @@ def parse_args(args = None, namespace = None):
     # data
     parser.add_argument("-bs", "--batch_size", default = 8, type = int, help = "Batch size")
     parser.add_argument("--aug", action = argparse.BooleanOptionalAction, default = True, help = "Whether to use data augmentation")
-    parser.add_argument("-c", "--conditioning", default = representation.DEFAULT_CONDITIONING, choices = representation.CONDITIONINGS, type = str, help = "Conditioning type")
-    parser.add_argument("-s", "--sigma", default = representation.SIGMA, type = float, help = "Sigma anticipation value (for anticipation conditioning)")
+    parser.add_argument("-c", "--conditioning", default = encode.DEFAULT_CONDITIONING, choices = encode.CONDITIONINGS, type = str, help = "Conditioning type")
+    parser.add_argument("-s", "--sigma", default = encode.SIGMA, type = float, help = "Sigma anticipation value (for anticipation conditioning)")
     # model
     parser.add_argument("--max_seq_len", default = 1024, type = int, help = "Maximum sequence length")
     parser.add_argument("--max_beat", default = 256, type = int, help = "Maximum number of beats")
@@ -89,6 +91,7 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("--lr_decay_multiplier", default = 0.1, type = float, help = "Learning rate multiplier at the end")
     parser.add_argument("--grad_norm_clip", default = 1.0, type = float, help = "Gradient norm clipping")
     # others
+    parser.add_argument("-r", "--resume", action = "store_true", help = "Whether or not to resume training from most recently-trained step")
     parser.add_argument("-g", "--gpu", default = 0, type = int, help = "GPU number")
     parser.add_argument("-j", "--jobs", default = 4, type = int, help = "Number of workers for data loading")
     return parser.parse_args(args = args, namespace = namespace)
@@ -135,6 +138,7 @@ if __name__ == "__main__":
         raise ValueError("Invalid --paths_valid argument. File does not exist.")
     if not exists(args.data_dir):
         raise ValueError("Invalid --data_dir argument. Directory does not exist, so there is no data on which to train.")
+    args.output_dir = f"{args.output_dir}/{args.learning_rate}_{args.layers}_{args.heads}_{args.dim}"
     if not exists(args.output_dir):
         makedirs(args.output_dir)
     CHECKPOINTS_DIR = f"{args.output_dir}/checkpoints"
@@ -142,19 +146,24 @@ if __name__ == "__main__":
         mkdir(CHECKPOINTS_DIR)
 
     # set up the logger
-    logging.basicConfig(level = logging.INFO, format = "%(message)s", handlers = [logging.FileHandler(f"{args.output_dir}/train.log", "w"), logging.StreamHandler(sys.stdout)])
+    logging_output_filepath = f"{args.output_dir}/train.log"
+    log_hyperparameters = not (args.resume and exists(logging_output_filepath))
+    logging.basicConfig(level = logging.INFO, format = "%(message)s", handlers = [logging.FileHandler(filename = logging_output_filepath, mode = "a" if args.resume else "w"), logging.StreamHandler(stream = sys.stdout)])
 
     # log command called and arguments, save arguments
-    logging.info(f"Running command: python {' '.join(sys.argv)}")
-    logging.info(f"Using arguments:\n{pprint.pformat(vars(args))}")
-    args_output_filepath = f"{args.output_dir}/train-args.json"
-    logging.info(f"Saved arguments to {args_output_filepath}")
-    utils.save_args(filepath = args_output_filepath, args = args)
-    del args_output_filepath # clear up memory
+    if log_hyperparameters:
+        logging.info(f"Running command: python {' '.join(sys.argv)}")
+        logging.info(f"Using arguments:\n{pprint.pformat(vars(args))}")
+        args_output_filepath = f"{args.output_dir}/train_args.json"
+        logging.info(f"Saved arguments to {args_output_filepath}")
+        utils.save_args(filepath = args_output_filepath, args = args)
+        del args_output_filepath # clear up memory
+    else: # print previous loggings to stdout
+        with open(logging_output_filepath, "r") as logging_output:
+            print(logging_output.read())
 
     # start a new wandb run to track the script
-    run = wandb.init(project = "ExpressionNet-Train", config = vars(args)) # set project title, configure with hyperparameters
-    run.name = f"{args.learning_rate}-{args.layers}-{args.heads}-{args.dim}-" + run.name.split("-")[-1] # set run name
+    run = wandb.init(project = "ExpressionNet-Train", config = vars(args), name = basename(args.output_dir), resume = args.resume) # set project title, configure with hyperparameters
 
     ##################################################
 
@@ -192,16 +201,26 @@ if __name__ == "__main__":
         attention_dropout = args.dropout,
         ff_dropout = args.dropout,
     ).to(device)
+    best_model_filepath = f"{CHECKPOINTS_DIR}/best_model.pth"
+    model_previously_created = args.resume and exists(best_model_filepath)
+    if model_previously_created:
+        model.load_state_dict(torch.load(f = best_model_filepath))
 
     # summarize the model
-    n_parameters = sum(p.numel() for p in model.parameters())
-    n_parameters_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    logging.info(f"Number of parameters: {n_parameters}")
-    logging.info(f"Number of trainable parameters: {n_parameters_trainable}")
-    wandb.log({"n_parameters": n_parameters, "n_parameters_trainable": n_parameters_trainable})
-
+    if model_previously_created:
+        n_parameters = sum(p.numel() for p in model.parameters())
+        n_parameters_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        logging.info(f"Number of parameters: {n_parameters}")
+        logging.info(f"Number of trainable parameters: {n_parameters_trainable}")
+        wandb.log({"n_parameters": n_parameters, "n_parameters_trainable": n_parameters_trainable})
+    
     # create the optimizer
     optimizer = torch.optim.Adam(params = model.parameters(), lr = args.learning_rate)
+    best_optimizer_filepath = f"{CHECKPOINTS_DIR}/best_optimizer.pth"
+    if args.resume and exists(best_optimizer_filepath):
+        optimizer.load_state_dict(torch.load(f = best_optimizer_filepath))
+
+    # create the scheduler
     scheduler = torch.optim.lr_scheduler.LambdaLR(
         optimizer = optimizer,
         lr_lambda = lambda step: get_lr_multiplier(
@@ -211,10 +230,16 @@ if __name__ == "__main__":
             decay_end_multiplier = args.lr_decay_multiplier
         )
     )
+    best_scheduler_filepath = f"{CHECKPOINTS_DIR}/best_scheduler.pth"
+    if args.resume and exists(best_scheduler_filepath):
+        scheduler.load_state_dict(torch.load(f = best_scheduler_filepath))
 
     # create a file to record losses
-    loss_csv = open(f"{args.output_dir}/loss.csv", "w")
-    loss_csv.write("step,train_loss,valid_loss,type_loss,beat_loss,position_loss,value_loss,duration_loss,instrument_loss\n")
+    loss_output_filepath = f"{args.output_dir}/loss.csv"
+    loss_columns_must_be_written = not (exists(loss_output_filepath) and args.resume) # whether or not to write loss column names
+    loss_csv = open(loss_output_filepath, "a" if args.resume else "w") # open loss file
+    if loss_columns_must_be_written: # if column names need to be written
+        loss_csv.write("step,train_loss,valid_loss," + ",".join(map(lambda dimension: f"{dimension}_loss", encoding["dimensions"])) + "\n")
 
     ##################################################
 
@@ -224,7 +249,9 @@ if __name__ == "__main__":
 
     # initialize variables
     step = 0
-    min_val_loss = float("inf")
+    min_valid_loss = float("inf")
+    if not loss_columns_must_be_written:
+        min_valid_loss = float(pd.read_csv(filepath_or_buffer = loss_output_filepath, sep = ",", header = 0, index_col = False)["valid_loss"].min(axis = 0)) # get minimum loss by reading in loss values and extracting the minimum
     if args.early_stopping:
         count_early_stopping = 0
 
@@ -306,15 +333,15 @@ if __name__ == "__main__":
                     total_losses[index] += float(losses[index])
         
         # get loss
-        val_loss = total_loss / count
+        valid_loss = total_loss / count
         individual_losses = {dimension: (loss / count) for dimension, loss in zip(encoding["dimensions"], total_losses)}
 
         # output statistics
-        logging.info(f"Validation loss: {val_loss:.4f}")
+        logging.info(f"Validation loss: {valid_loss:.4f}")
         logging.info(f"Individual losses: type = {individual_losses['type']:.4f}, beat: {individual_losses['beat']:.4f}, position: {individual_losses['position']:.4f}, value: {individual_losses['value']:.4f}, duration: {individual_losses['duration']:.4f}, instrument: {individual_losses['instrument']:.4f}")
 
         # log validation info for wandb
-        wandb.log({"step": step, "valid/loss": val_loss})
+        wandb.log({"step": step, "valid/loss": valid_loss})
         for dimension, loss_val in individual_losses.items():
             wandb.log({"step": step, f"valid/loss_{dimension}": loss_val})
 
@@ -328,17 +355,29 @@ if __name__ == "__main__":
         ##################################################
 
         # write losses to file
-        loss_csv.write(f"{step},{train_loss},{val_loss}," + ",".join(map(str, individual_losses)) + "\n")
+        loss_csv.write(f"{step},{train_loss},{valid_loss}," + ",".join(map(str, individual_losses)) + "\n")
 
         # save the model
         checkpoint_filepath = f"{CHECKPOINTS_DIR}/model_{step}.pth"
         torch.save(obj = model.state_dict(), f = checkpoint_filepath)
-        logging.info(f"Saved the model to: {checkpoint_filepath}")
+
+        # save the optimizer states
+        optimizer_filepath = f"{CHECKPOINTS_DIR}/optimizer_{step}.pth"
+        torch.save(obj = optimizer.state_dict(), f = optimizer_filepath)
+
+        # save the scheduler states
+        scheduler_filepath = f"{CHECKPOINTS_DIR}/scheduler_{step}.pth"
+        torch.save(obj = scheduler.state_dict(), f = scheduler_filepath)
+
+        # log paths to which states were saved
+        logging.info(f"Model: {checkpoint_filepath}; Optimizer: {optimizer_filepath}; Scheduler: {scheduler_filepath}")
 
         # copy the model if it is the best model so far
-        if val_loss < min_val_loss:
-            min_val_loss = val_loss
-            shutil.copyfile(src = checkpoint_filepath, dst = f"{CHECKPOINTS_DIR}/best_model.pth")
+        if valid_loss < min_valid_loss:
+            min_valid_loss = valid_loss
+            shutil.copyfile(src = checkpoint_filepath, dst = best_model_filepath)
+            shutil.copyfile(src = optimizer_filepath, dst = best_optimizer_filepath)
+            shutil.copyfile(src = scheduler_filepath, dst = best_scheduler_filepath)
             if args.early_stopping: # reset the early stopping counter if we found a better model
                 count_early_stopping = 0
         elif args.early_stopping: # increment the early stopping counter if no improvement is found
@@ -356,18 +395,8 @@ if __name__ == "__main__":
     ##################################################
 
     # log minimum validation loss
-    logging.info(f"Minimum validation loss achieved: {min_val_loss}")
-    wandb.log({"min_val_loss": min_val_loss})
-
-    # save the optimizer states
-    optimizer_filepath = f"{CHECKPOINTS_DIR}/optimizer_{step}.pth"
-    torch.save(obj = optimizer.state_dict(), f = optimizer_filepath)
-    logging.info(f"Saved the optimizer state to: {optimizer_filepath}")
-
-    # save the scheduler states
-    scheduler_filepath = f"{CHECKPOINTS_DIR}/scheduler_{step}.pth"
-    torch.save(obj = scheduler.state_dict(), f = scheduler_filepath)
-    logging.info(f"Saved the scheduler state to: {scheduler_filepath}")
+    logging.info(f"Minimum validation loss achieved: {min_valid_loss}")
+    wandb.log({"min_valid_loss": min_valid_loss})
 
     # close the file
     loss_csv.close()

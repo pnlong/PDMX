@@ -41,30 +41,30 @@ class MusicTransformerWrapper(nn.Module):
             *,
             encoding: dict,
             max_seq_len: int,
-            attention_layers: AttentionLayers,
-            embedding_dim: int = None,
+            attn_layers: AttentionLayers,
+            emb_dim: int = None,
             max_beat: int = None,
-            max_memory_length: float = 0.0,
-            shift_memory_down: int = 0,
-            embedding_dropout: int = 0.0,
-            n_memory_tokens: int = None,
+            max_mem_len: float = 0.0,
+            shift_mem_down: int = 0,
+            emb_dropout: int = 0.0,
+            num_memory_token: int = None,
             tie_embedding: bool = False,
             use_abs_pos_emb: bool = True,
-            l2norm_embedding: bool = False
+            l2norm_embed: bool = False
         ):
         
         # initialize
         super().__init__()
-        assert isinstance(attention_layers, AttentionLayers), "attention layers must be one of Encoder or Decoder" # make sure attention_layers is of the correct type
+        assert isinstance(attn_layers, AttentionLayers), "attention layers must be one of Encoder or Decoder" # make sure attn_layers is of the correct type
 
         # get dimensions
-        dim = attention_layers.dim
-        embedding_dim = default(embedding_dim, dim)
+        dim = attn_layers.dim
+        emb_dim = default(emb_dim, dim)
 
         # set some lengths
         self.max_seq_len = max_seq_len
-        self.max_memory_length = max_memory_length
-        self.shift_memory_down = shift_memory_down
+        self.max_mem_len = max_mem_len
+        self.shift_mem_down = shift_mem_down
 
         # adjust n_tokens
         n_tokens = encoding["n_tokens"]
@@ -73,16 +73,16 @@ class MusicTransformerWrapper(nn.Module):
             n_tokens[beat_dim] = max_beat + 1
 
         # deal with embedding
-        self.l2norm_embedding = l2norm_embedding
-        self.token_embedding = nn.ModuleList([TokenEmbedding(dim = embedding_dim, num_tokens = n, l2norm_embed = l2norm_embedding) for n in n_tokens])
-        self.positional_embedding = AbsolutePositionalEmbedding(dim = embedding_dim, max_seq_len = max_seq_len, l2norm_embed = l2norm_embedding) if (use_abs_pos_emb and not attention_layers.has_pos_emb) else always(0)
+        self.l2norm_embed = l2norm_embed
+        self.token_embedding = nn.ModuleList([TokenEmbedding(dim = emb_dim, num_tokens = n, l2norm_embed = l2norm_embed) for n in n_tokens])
+        self.positional_embedding = AbsolutePositionalEmbedding(dim = emb_dim, max_seq_len = max_seq_len, l2norm_embed = l2norm_embed) if (use_abs_pos_emb and not attn_layers.has_pos_emb) else always(0)
 
         # dropout
-        self.embedding_dropout = nn.Dropout(p = embedding_dropout)
+        self.emb_dropout = nn.Dropout(p = emb_dropout)
 
         # embedding and layers
-        self.project_embedding = nn.Linear(in_features = embedding_dim, out_features = dim) if embedding_dim != dim else nn.Identity()
-        self.attention_layers = attention_layers
+        self.project_embedding = nn.Linear(in_features = emb_dim, out_features = dim) if emb_dim != dim else nn.Identity()
+        self.attn_layers = attn_layers
         self.norm = nn.LayerNorm(normalized_shape = dim)
 
         # run initializer helper function
@@ -92,15 +92,15 @@ class MusicTransformerWrapper(nn.Module):
         self.to_logits = nn.ModuleList(modules = [nn.Linear(in_features = dim, out_features = n) for n in n_tokens]) if not tie_embedding else [lambda t: t @ embedding.weight.t() for embedding in self.token_embedding]
 
         # memory tokens (like [cls]) from Memory Transformers paper
-        n_memory_tokens = default(n_memory_tokens, 0)
-        self.n_memory_tokens = n_memory_tokens
-        if n_memory_tokens > 0:
-            self.memory_tokens = nn.Parameter(data = torch.randn(n_memory_tokens, dim))
+        num_memory_token = default(num_memory_token, 0)
+        self.num_memory_token = num_memory_token
+        if num_memory_token > 0:
+            self.memory_tokens = nn.Parameter(data = torch.randn(num_memory_token, dim))
 
     # intialize helper
     def init_(self):
 
-        if self.l2norm_embedding:
+        if self.l2norm_embed:
             for embedding in self.token_embedding:
                 nn.init.normal_(tensor = embedding.emb.weight, std = 1e-5)
             nn.init.normal_(self.positional_embedding.emb.weight, std = 1e-5)
@@ -121,51 +121,51 @@ class MusicTransformerWrapper(nn.Module):
         x: torch.tensor, # shape : (b, n, d)
         return_embeddings: bool = False,
         mask: torch.tensor = None,
-        return_memories: bool = False,
-        return_attention: bool = False,
-        memories: list = None,
+        return_mems: bool = False,
+        return_attn: bool = False,
+        mems: list = None,
         **kwargs,
     ):
         
         # extract shape info from x
         b, _, _ = x.shape
-        n_memories = self.n_memory_tokens
+        num_mem = self.num_memory_token
 
         # calculate x
         x = sum(embedding(x[..., i]) for i, embedding in enumerate(self.token_embedding))
         x += self.positional_embedding(x)
-        x = self.embedding_dropout(x)
+        x = self.emb_dropout(x)
         x = self.project_embedding(x)
 
-        # deal with multiple memories
-        if n_memories > 0:
+        # deal with multiple mems
+        if num_mem > 0:
             memory = repeat(tensor = self.memory_tokens, pattern = "n d -> b n d", b = b)
             x = torch.cat(tensor = (memory, x), dim = 1)
             if exists(mask): # auto-handle masking after appending memory tokens
-                mask = F.pad(input = mask, pad = (n_memories, 0), value = True)
+                mask = F.pad(input = mask, pad = (num_mem, 0), value = True)
 
         # if shifting memory down
-        if self.shift_memory_down and exists(memories):
-            memories_left, memories_right = memories[: self.shift_memory_down], memories[self.shift_memory_down :]
-            memories = [*memories_right, *memories_left]
+        if self.shift_mem_down and exists(mems):
+            mems_left, mems_right = mems[: self.shift_mem_down], mems[self.shift_mem_down :]
+            mems = [*mems_right, *mems_left]
 
         # intermediates
-        x, intermediates = self.attention_layers(x, mask = mask, mems = memories, return_hiddens = True, **kwargs)
+        x, intermediates = self.attn_layers(x, mask = mask, mems = mems, return_hiddens = True, **kwargs)
         x = self.norm(x)
 
         # redefine memory and x
-        memory, x = x[:, :n_memories], x[:, n_memories:]
+        memory, x = x[:, :num_mem], x[:, num_mem:]
         output = [to_logit(x) for to_logit in self.to_logits] if not return_embeddings else x
 
-        # if returning memories
-        if return_memories:
+        # if returning mems
+        if return_mems:
             hiddens = intermediates.hiddens
-            new_memories = list(map(lambda pair: torch.cat(tensors = pair, dim = -2), zip(memories, hiddens))) if exists(memories) else hiddens
-            new_memories = list(map(lambda t: t[..., -self.max_memory_length :, :].detach(), new_memories))
-            return output, new_memories
+            new_mems = list(map(lambda pair: torch.cat(tensors = pair, dim = -2), zip(mems, hiddens))) if exists(mems) else hiddens
+            new_mems = list(map(lambda t: t[..., -self.max_mem_len :, :].detach(), new_mems))
+            return output, new_mems
 
         # if returning attention
-        if return_attention:
+        if return_attn:
             attention_maps = list(map(lambda t: t.post_softmax_attention, intermediates.attention_intermediates))
             return output, attention_maps
 
@@ -240,11 +240,11 @@ class MusicAutoregressiveWrapper(nn.Module):
         eos_token: str = None,
         temperature: Union[float, List[float]] = 1.0, # int or list of int
         filter_logits_fn: Union[str, List[str]] = "top_k", # str or list of str
-        filter_threshold: Union[float, List[float]] = 0.9, # int or list of int
+        filter_thres: Union[float, List[float]] = 0.9, # int or list of int
         min_p_pow: float = 2.0,
         min_p_ratio: float = 0.02,
         monotonicity_dim: Union[int, List[int]] = None,
-        return_attention: bool = False,
+        return_attn: bool = False,
         **kwargs,
     ):
         
@@ -265,13 +265,13 @@ class MusicAutoregressiveWrapper(nn.Module):
             filter_logits_fn = filter_logits_fn * dim
         else:
             assert len(filter_logits_fn) == dim, f"`filter_logits_fn` must be of length {dim}"
-        # convert filter_threshold to list
-        if isinstance(filter_threshold, (float, int)):
-            filter_threshold = [filter_threshold] * dim
-        elif len(filter_threshold) == 1:
-            filter_threshold = filter_threshold * dim
+        # convert filter_thres to list
+        if isinstance(filter_thres, (float, int)):
+            filter_thres = [filter_thres] * dim
+        elif len(filter_thres) == 1:
+            filter_thres = filter_thres * dim
         else:
-            assert len(filter_threshold) == dim, f"`filter_threshold` must be of length {dim}"
+            assert len(filter_thres) == dim, f"`filter_thres` must be of length {dim}"
         # deal with monotonicity_dim
         if isinstance(monotonicity_dim, str):
             monotonicity_dim = [self.dimensions[monotonicity_dim]]
@@ -304,11 +304,11 @@ class MusicAutoregressiveWrapper(nn.Module):
             mask = mask[:, -self.max_seq_len :]
 
             # get logits (and perhaps attention)
-            if return_attention:
-                logits, attention = self.net(x, mask = mask, return_attention = True, **kwargs)
+            if return_attn:
+                logits, attention = self.net(x, mask = mask, return_attn = True, **kwargs)
                 logits = [logit[:, -1, :] for logit in logits]
             else:
-                logits = [logit[:, -1, :] for logit in self.net(x, mask = mask, return_attention = False, **kwargs)]
+                logits = [logit[:, -1, :] for logit in self.net(x, mask = mask, return_attn = False, **kwargs)]
 
             # enforce monotonicity
             if monotonicity_dim is not None and 0 in monotonicity_dim:
@@ -319,7 +319,7 @@ class MusicAutoregressiveWrapper(nn.Module):
             logits[0][type_dim, 0] = -float("inf")
 
             # sample from the logits
-            sample_type = sample(logits = logits[0], kind = filter_logits_fn[0], threshold = filter_threshold[0], temperature = temperature[0], min_p_pow = min_p_pow, min_p_ratio = min_p_ratio)
+            sample_type = sample(logits = logits[0], kind = filter_logits_fn[0], threshold = filter_thres[0], temperature = temperature[0], min_p_pow = min_p_pow, min_p_ratio = min_p_ratio)
 
             # update current values
             if monotonicity_dim is not None and 0 in monotonicity_dim:
@@ -337,7 +337,7 @@ class MusicAutoregressiveWrapper(nn.Module):
                 elif s_type == self.instrument_type_code:
                     samples[i] += [torch.zeros_like(input = s_type)] * (len(logits) - 2)
                     logits[instrument_dim][:, 0] = -float("inf")  # avoid none
-                    sampled = sample(logits = logits[instrument_dim][i : i + 1], kind = filter_logits_fn[instrument_dim], threshold = filter_threshold[instrument_dim], temperature = temperature[instrument_dim], min_p_pow = min_p_pow, min_p_ratio = min_p_ratio)[0]
+                    sampled = sample(logits = logits[instrument_dim][i : i + 1], kind = filter_logits_fn[instrument_dim], threshold = filter_thres[instrument_dim], temperature = temperature[instrument_dim], min_p_pow = min_p_pow, min_p_ratio = min_p_ratio)[0]
                     samples[i].append(sampled)
 
                 # a value code
@@ -348,7 +348,7 @@ class MusicAutoregressiveWrapper(nn.Module):
                             logits[d][i, : current_values[d][i]] = -float("inf")
                         # sample from the logits
                         logits[d][:, 0] = -float("inf")  # avoid none
-                        sampled = sample(logits = logits[d][i : i + 1], kind = filter_logits_fn[d], threshold = filter_threshold[d], temperature = temperature[d], min_p_pow = min_p_pow, min_p_ratio = min_p_ratio)[0]
+                        sampled = sample(logits = logits[d][i : i + 1], kind = filter_logits_fn[d], threshold = filter_thres[d], temperature = temperature[d], min_p_pow = min_p_pow, min_p_ratio = min_p_ratio)[0]
                         samples[i].append(sampled)
                         # update current values
                         if monotonicity_dim is not None and d in monotonicity_dim:
@@ -380,7 +380,7 @@ class MusicAutoregressiveWrapper(nn.Module):
         self.net.train(was_training)
 
         # either return just the output or attention as well
-        if return_attention:
+        if return_attn:
             return output, attention
         return output
 
@@ -429,10 +429,10 @@ class MusicXTransformer(nn.Module):
         transformer_kwargs = {
             "max_seq_len": kwargs.pop("max_seq_len"),
             "max_beat": kwargs.pop("max_beat"),
-            "embedding_dropout": kwargs.pop("embedding_dropout", 0),
+            "emb_dropout": kwargs.pop("emb_dropout", 0),
             "use_abs_pos_emb": kwargs.pop("use_abs_pos_emb", True),
         }
-        self.decoder = MusicTransformerWrapper(encoding = encoding, attention_layers = Decoder(dim = dim, **kwargs), **transformer_kwargs)
+        self.decoder = MusicTransformerWrapper(encoding = encoding, attn_layers = Decoder(dim = dim, **kwargs), **transformer_kwargs)
         self.decoder = MusicAutoregressiveWrapper(net = self.decoder, encoding = encoding)
 
     # generate
@@ -489,7 +489,7 @@ if __name__ == "__main__":
         max_beat = 256,
         rel_pos_bias = True, # relative positional bias
         rotary_pos_emb = True, # rotary positional encoding
-        embedding_dropout = 0.1,
+        emb_dropout = 0.1,
         attention_dropout = 0.1,
         ff_dropout = 0.1,
     )

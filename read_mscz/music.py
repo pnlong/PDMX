@@ -25,6 +25,8 @@ from re import sub
 import yaml # for printing
 import json
 import gzip
+
+from .output import write_midi, write_audio, write_musicxml
 ##################################################
 
 
@@ -308,7 +310,7 @@ class BetterMusic(muspy.music.Music):
     # GET THE LENGTH OF THE SONG IN TIME STEPS
     ##################################################
 
-    def _get_max_time_obj_helper(obj) -> int:
+    def _get_max_time_obj_helper(self, obj) -> int:
         end_time = obj.time
         if hasattr(obj, "duration"): # look for duration at top-level
             end_time += obj.duration
@@ -484,7 +486,7 @@ class BetterMusic(muspy.music.Music):
     # WRITE
     ##################################################
 
-    def write(path: str, kind: str = None):
+    def write(self, path: str, kind: str = None, **kwargs):
         """Write a BetterMusic object in various file formats.
 
         Parameters
@@ -495,7 +497,26 @@ class BetterMusic(muspy.music.Music):
             File format of output. If not provided, the file format is inferred from `path`.
         """
 
-        return None
+        # infer kind if necessary
+        if kind is None:
+            if path.lower().endswith((".mid", ".midi")):
+                kind = "midi"
+            elif path.lower().endswith((".mxl", ".xml", ".mxml", ".musicxml")):
+                kind = "musicxml"
+            elif path.lower().endswith(("wav", "aiff", "flac", "oga")):
+                kind = "audio"
+            else:
+                raise ValueError("Cannot infer file format from the extension (expect MIDI, MusicXML, WAV, AIFF, FLAC or OGA).")
+        
+        # output
+        if kind.lower() == "midi": # write midi
+            return write_midi(path = path, music = self, **kwargs)
+        elif kind.lower() == "musicxml": # write musicxml
+            return write_musicxml(path = path, music = self, **kwargs)
+        elif kind.lower() == "audio": # write audio
+            return write_audio(path = path, music = self, **kwargs)
+        else:
+            raise ValueError(f"Expect `kind` to be 'midi', 'musicxml', or 'audio', but got : {kind}.")
 
     ##################################################
 
