@@ -12,6 +12,8 @@ import pprint
 import numpy as np
 import utils
 import argparse
+from itertools import combinations
+from read_mscz.classes import DEFAULT_VELOCITY
 ##################################################
 
 
@@ -85,7 +87,7 @@ TEMPO_QPM_MAP = { # each value is the maximum BPM before we go up a tempo, found
     "allegro": 156,
     "vivace": 176,
     "presto": 200,
-    "prestissimo": 1e10, # some arbitrary large number
+    "prestissimo": float("inf"), # some arbitrary large number
 }
 QPM_TEMPO_MAP = utils.inverse_dict(TEMPO_QPM_MAP)
 DEFAULT_QPM = 112
@@ -97,52 +99,73 @@ def QPM_TEMPO_MAPPER(qpm: float) -> str:
             return QPM_TEMPO_MAP[bpm]
 
 # time signature changes
-TIME_SIGNATURE_CHANGE_RATIOS = ["1", "1/4", "4", "1/2", "2", "3/4", "4/3", "3", "5/4", "4/5", "5", "3/2", "2/3", "9/16", "16/9", "3/8", "8/3", "5/8", "8/5", "9/4", "4/9", "3/5", "5/3"] # ratios between different time signatures
-TIME_SIGNATURE_CHANGE_RATIO_DEFAULT = "other" # default if a ratio doesn't fall in the discretized list
+time_signature_combinations = list(combinations(iterable = ["4/4", "3/4", "2/4", "5/8", "5/4", "3/8", "9/16", "9/8", "12/4"], r = 2))
+time_signature_change_ratios = [f"({combination[0]})/({combination[1]})" for combination in (time_signature_combinations + [time_signature_combination[::-1] for time_signature_combination in time_signature_combinations])] # ratios between different time signatures
+already_encountered_ratios = set()
+TIME_SIGNATURE_CHANGE_RATIOS = []
+for time_signature_change_ratio in time_signature_change_ratios: # make sure there are no duplicate ratios
+    ratio = eval(time_signature_change_ratio)
+    if ratio not in already_encountered_ratios:
+        TIME_SIGNATURE_CHANGE_RATIOS.append(time_signature_change_ratio)
+        already_encountered_ratios.add(ratio)
+del time_signature_combinations, time_signature_change_ratios, time_signature_change_ratio, already_encountered_ratios, ratio # clear up some memory
+TIME_SIGNATURE_CHANGE_PREFIX = "time-signature-change-"
+TIME_SIGNATURE_CHANGE_DEFAULT = TIME_SIGNATURE_CHANGE_PREFIX + "other" # default if a ratio doesn't fall in the discretized list
 def TIME_SIGNATURE_CHANGE_MAPPER(time_signature_change_ratio: float) -> str:
     discrete_time_signature_change_ratio_differences = [abs(time_signature_change_ratio - eval(discrete_time_signature_change_ratio)) for discrete_time_signature_change_ratio in TIME_SIGNATURE_CHANGE_RATIOS] # calculate difference with each time signature change ratio
     minimum_difference_index = min(range(len(discrete_time_signature_change_ratio_differences)), key = discrete_time_signature_change_ratio_differences.__getitem__) # get the index of the ratio that is closest
     if discrete_time_signature_change_ratio_differences[minimum_difference_index] < 1e-3: # if the minimum difference between the input ratio and one of the discrete ratios is small enough
-        return str(TIME_SIGNATURE_CHANGE_RATIOS[minimum_difference_index]) # return the ratio
+        return TIME_SIGNATURE_CHANGE_PREFIX + str(TIME_SIGNATURE_CHANGE_RATIOS[minimum_difference_index]) # return the ratio
     else: # if not sufficiently close
-        return TIME_SIGNATURE_CHANGE_RATIO_DEFAULT # return the default
+        return TIME_SIGNATURE_CHANGE_DEFAULT # return the default
+
+# dynamics
+DYNAMIC_VELOCITY_MAP = {
+    "pppppp": -32, "ppppp": -16, "pppp": 0, "ppp": 16, "pp": 33, "p": 49, "mp": 64,
+    "mf": 80, "f": 96, "ff": 112, "fff": 126, "ffff": 144, "fffff": 160, "ffffff": 176,
+    "sfpp": 96, "sfp": 112, "sf": 112, "sff": 126, "sfz": 112, "sffz": 126, "fz": 112, "rf": 112, "rfz": 112,
+    "fp": 96, "pf": 49, "s": DEFAULT_VELOCITY, "r": DEFAULT_VELOCITY, "z": DEFAULT_VELOCITY, "n": DEFAULT_VELOCITY, "m": DEFAULT_VELOCITY,
+}
 
 # expressive features
+DEFAULT_EXPRESSIVE_FEATURE_VALUES = {
+    "Barline": "barline",
+    "KeySignature": None,
+    "TimeSignature": TIME_SIGNATURE_CHANGE_DEFAULT,
+    "Fermata": "fermata",
+    "SlurSpanner": "slur",
+    "PedalSpanner": "pedal",
+    "Tempo": QPM_TEMPO_MAPPER(qpm = None),
+    "TempoSpanner": "tempo",
+    "Dynamic": "dynamic-marking",
+    "HairPinSpanner": "hair-pin",
+    "Articulation": "articulation",
+    "Text": "text",
+    "RehearsalMark": "rehearsal-mark",
+    "TextSpanner": "text-spanner",
+    "TechAnnotation": "tech-annotation",
+    # "Symbol": "symbol",
+}
 EXPRESSIVE_FEATURES = {
     # Barlines
     "Barline": [
-        "double-barline", "end-barline", "dotted-barline", "dashed-barline",
-        "barline", # default value
-        ],
+        "double-barline", "end-barline", "dotted-barline", "dashed-barline", DEFAULT_EXPRESSIVE_FEATURE_VALUES["Barline"],],
     # Key Signatures
-    "KeySignature": [f"key-signature-change-{distance}" for distance in range(7)],
+    "KeySignature": [f"key-signature-change-{distance}" for distance in range(-6, 7)],
     # Time Signatures
-    "TimeSignature": [f"time-signature-change-{time_signature_change_ratio}" for time_signature_change_ratio in (TIME_SIGNATURE_CHANGE_RATIOS + [TIME_SIGNATURE_CHANGE_RATIO_DEFAULT])],
+    "TimeSignature": [TIME_SIGNATURE_CHANGE_PREFIX + time_signature_change_ratio for time_signature_change_ratio in TIME_SIGNATURE_CHANGE_RATIOS] + [DEFAULT_EXPRESSIVE_FEATURE_VALUES["TimeSignature"],],
     # Fermata
-    "Fermata": [
-        "fermata",
-        ],
+    "Fermata": [DEFAULT_EXPRESSIVE_FEATURE_VALUES["Fermata"],],
     # SlurSpanner
-    "SlurSpanner": [
-        "slur",
-        ],
+    "SlurSpanner": [DEFAULT_EXPRESSIVE_FEATURE_VALUES["SlurSpanner"],],
     # PedalSpanner
-    "PedalSpanner": [
-        "pedal",
-        ],
+    "PedalSpanner": [DEFAULT_EXPRESSIVE_FEATURE_VALUES["PedalSpanner"],],
     # Tempo
     "Tempo": list(TEMPO_QPM_MAP.keys()), # no default value, default is set above in QPM_TEMPO_MAPPER
     # TempoSpanner
-    "TempoSpanner": [
-        "lentando", "lent", "smorzando", "smorz", "sostenuto", "sosten", "accelerando", "accel", "allargando", "allarg", "rallentando", "rall", "rallent", "ritardando", "rit",
-        "tempo", # default value
-        ],
+    "TempoSpanner": ["lentando", "lent", "smorzando", "smorz", "sostenuto", "sosten", "accelerando", "accel", "allargando", "allarg", "rallentando", "rall", "rallent", "ritardando", "rit", DEFAULT_EXPRESSIVE_FEATURE_VALUES["TempoSpanner"],],
     # Dynamic
-    "Dynamic": [
-        "pppppp", "ppppp", "pppp", "ppp", "pp", "p", "mp", "mf", "f", "ff", "fff", "ffff", "fffff", "ffffff",
-        "sfpp", "sfp", "sf", "sff", "sfz", "sffz", "fz", "rf", "rfz", "fp", "pf", "s", "r", "z", "n", "m",
-        "dynamic-marking", # default value
-        ],
+    "Dynamic": list(DYNAMIC_VELOCITY_MAP.keys()) + [DEFAULT_EXPRESSIVE_FEATURE_VALUES["Dynamic"],],
     # HairPinSpanner
     "HairPinSpanner": [
         "cresc", "dim", "dynamic-mezzodynamic-forte", "cresc-sempre", "molto-cresc", "dimin", "decresc",
@@ -181,7 +204,7 @@ EXPRESSIVE_FEATURES = {
         "sempre-cresc-e-affrettando", "sempre-cresc-e-string", "sempre-cresc-ed-accel", "sempre-dim-e-legatissimo", "sempre-dim-e-più-tranquillo", "sempre-dimin",
         "sempre-più-cresc-e-string", "sempre-più-forte", "sf", "si", "slentando", "smorzn", "smorzando-e-rallent", "stretto", "stretto-e-cresc",
         "stringendo-e-cresc", "stringendo-cresc", "tar", "un-peu-ralenti", "un-poco-animato-e-crescendo", "vif", "élargir",
-        "hair-pin", # default value
+        DEFAULT_EXPRESSIVE_FEATURE_VALUES["HairPinSpanner"],
     ],
     # Articulation (Chunks)
     "Articulation": [
@@ -209,7 +232,7 @@ EXPRESSIVE_FEATURES = {
         "no-sym", "wiggle-vibrato-large-slowest", "lutefingering-2nd", "strings-thumb-position", "artic-laissez-vibrer-above",
         "artic-laissez-vibrer-below", "wiggle-sawtooth", "wigglevibratolargeslowest", "lutefingering-3rd", "ulongfermata",
         "artic-soft-accent-tenuto-below", "artic-soft-accent-staccato-above", "artic-soft-accent-tenuto-staccato-above", "lute-fingering-r-h-third", "wigglesawtoothwide", "spiccato",
-        "articulation", # default value
+        DEFAULT_EXPRESSIVE_FEATURE_VALUES["Articulation"],
     ],
     # Text
     "Text": [
@@ -234,19 +257,19 @@ EXPRESSIVE_FEATURES = {
         "pizzicato", "portamento", "sforzando", "scordatura", "con-sordino", "senza-sordino",
         "tutti", "vibrato", "colla-voce", "banda", "comprimario", "convenienze", "coro", "diva", "prima-donna",
         "primo-uomo", "ripieno", "bel-canto", "bravura", "bravo", "maestro", "maestro-collaboratore", "maestro-sostituto", "maestro-suggeritore", "stagione",
-        "text",
+        DEFAULT_EXPRESSIVE_FEATURE_VALUES["Text"],
     ],
     # RehearsalMark
     "RehearsalMark": 
         list(map(chr, range(ord("a"), ord("z") + 1))) + [ # the letters
         "i", "i-i", "i-i-i", "i-v", "v", "v-i", "v-i-i", "v-i-i-i", "i-x", "x", # roman numerals
-        "introduction", "intro", "bridge", "chorus", "outro", "verse", "theme", "refrain", "solo-section", "solo", "variations", "trio" # song sections
-        "rehearsal-mark"
+        "introduction", "intro", "bridge", "chorus", "outro", "verse", "theme", "refrain", "solo-section", "solo", "variations", "trio", # song sections
+        DEFAULT_EXPRESSIVE_FEATURE_VALUES["RehearsalMark"],
     ],
     # TextSpanner
-    "TextSpanner": [],
+    "TextSpanner": [DEFAULT_EXPRESSIVE_FEATURE_VALUES["TextSpanner"],],
     # TechAnnotation
-    "TechAnnotation": [],
+    "TechAnnotation": [DEFAULT_EXPRESSIVE_FEATURE_VALUES["TechAnnotation"],],
     # Symbol
     # "Symbol": [
     #     "no-sym", "keyboard-pedal-ped", "notehead-parenthesis-left", "notehead-parenthesis-right", "keyboard-pedal-up", "handbells-mallet-bell-on-table", "guitar-string-7", "strings-harmonic", "pedal ped", "strings-down-bow", "handbells-martellato", "pedalasterisk", "chant-punctum", "notehead-black", "guitar-string-8", "arrow-open-left", "artic-accent-above", "accidental-natural", "breath-mark-comma", "keyboard-pedal-p",
@@ -269,7 +292,7 @@ EXPRESSIVE_FEATURES = {
     #     "unicode-note-half-up", "accdn-r-h-3-ranks-authentic-musette", "accdn-r-h-3-ranks-oboe", "accdn-r-h-3-ranks-tremolo-lower-8ve", "accdn-r-h-4-ranks-soft-tenor", "accidental-combining-raise-53-limit-comma", "analytics-hauptrhythmus", "arrow-black-down-left", "bracket-bottom", "brass-doit-short", "brass-fall-smooth-long", "breath-mark-salzedo", "caesura-short", "chant-augmentum", "coda", "dynamic-f-f", "dynamic-hairpin-bracket-right", "dynamic-niente-for-hairpin", "dynamic-p-p-p-p", "dynamic-rinforzando",
     #     "eight rest", "figbass-0", "figbass-double-flat", "fretboard-6-string", "fretboard-o", "function-bracket-left", "function-bracket-right", "guitar-wide-vibrato-stroke", "leger-line", "mensural-oblique-desc-3rd-white", "mensural-oblique-desc-5th-white", "mensural-proportion-4", "mensural-rest-brevis", "mensural-white-brevis", "met-augmentation-dot", "nine", "notehead-double-whole-square", "notehead-slash-vertical-ends-small", "ornament-down-curve", "ornament-precomp-double-cadence-upper-prefix",
     #     "ornament-turn-inverted", "ornament-turn-slash", "pict-beater-snare-sticks-up", "pict-beater-wire-brushes-up", "pict-open-rim-shot", "pict-tom-tom", "quindicesima-alta", "staff-4-lines", "text-tuplet-bracket-end-short-stem", "time-sig-0", "time-sig-7", "time-sig-9", "tuplet-8", "wiggle-random-4",
-    #     "symbol",
+    #     DEFAULT_EXPRESSIVE_FEATURE_VALUES["Symbol"],
     # ],
 }
 EXPRESSIVE_FEATURE_TYPE_MAP = {expressive_feature_subtype : expressive_feature_type for expressive_feature_type in tuple(EXPRESSIVE_FEATURES.keys()) for expressive_feature_subtype in EXPRESSIVE_FEATURES[expressive_feature_type]}

@@ -26,7 +26,7 @@ import numpy as np
 # muspy imports
 from .classes import *
 from .music import BetterMusic
-from muspy.utils import (CIRCLE_OF_FIFTHS, MODE_CENTERS, NOTE_TYPE_MAP, TONAL_PITCH_CLASSES)
+from muspy.utils import CIRCLE_OF_FIFTHS, MODE_CENTERS, NOTE_TYPE_MAP, TONAL_PITCH_CLASSES
 
 # create type variable
 T = TypeVar("T")

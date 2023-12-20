@@ -180,7 +180,7 @@ def scrape_time_signatures(time_signatures: List[TimeSignature], song_length: in
     for i in range(1, len(time_signatures) - 1): # ignore first time_signature, since we are tracking changes in time_signature; also ignore last one, since it is used for duration
         time_signatures_encoded["type"][i] = representation.EXPRESSIVE_FEATURE_TYPE_STRING
         time_signature_change_ratio = ((time_signatures[i].numerator / time_signatures[i].denominator) / (time_signatures[i - 1].numerator / time_signatures[i - 1].denominator)) if all((time_signature.numerator and time_signature.denominator for time_signature in time_signatures[i - 1:i + 1])) else -1e6 # ratio between time signatures
-        time_signatures_encoded["value"][i] = check_text(text = f"time-signature-change-{representation.TIME_SIGNATURE_CHANGE_MAPPER(time_signature_change_ratio = time_signature_change_ratio)}") # check_text(text = f"{time_signatures[i].numerator}/{time_signatures[i].denominator}")
+        time_signatures_encoded["value"][i] = check_text(text = representation.TIME_SIGNATURE_CHANGE_MAPPER(time_signature_change_ratio = time_signature_change_ratio)) # check_text(text = f"{time_signatures[i].numerator}/{time_signatures[i].denominator}")
         time_signatures_encoded["duration"][i] = time_signatures[i + 1].time - time_signatures[i].time if use_implied_duration else 0
         time_signatures_encoded["time"][i] = time_signatures[i].time
     return pd.DataFrame(data = time_signatures_encoded, columns = representation.DIMENSIONS) # create dataframe from scraped values
@@ -192,8 +192,8 @@ def scrape_key_signatures(key_signatures: List[KeySignature], song_length: int, 
     key_signatures.append(KeySignature(time = song_length, measure = 0)) # for duration
     for i in range(1, len(key_signatures) - 1): # ignore first key_signature, since we are tracking changes in key_signature; also ignore last one, since it is used for duration
         key_signatures_encoded["type"][i] = representation.EXPRESSIVE_FEATURE_TYPE_STRING
-        distance = abs(key_signatures[i].fifths - key_signatures[i - 1].fifths) if all((fifths != None for fifths in key_signatures[i - 1:i + 1])) else 0 # calculate key change distance in circle of fifths
-        key_signatures_encoded["value"][i] = check_text(text = f"key-signature-change-{min(distance, 12 - distance)}") # check_text(text = f"{key_signatures[i].root_str} {key_signatures[i].mode}") # or key_signatures[i].root or key_signatures[i].fifths
+        distance = key_signatures[i].fifths - key_signatures[i - 1].fifths if all((fifths != None for fifths in key_signatures[i - 1:i + 1])) else 0 # calculate key change distance in circle of fifths
+        key_signatures_encoded["value"][i] = check_text(text = f"key-signature-change-{int(min((distance, (-(distance / abs(distance)) * 12) + distance), key = lambda dist: abs(dist)))}") # check_text(text = f"{key_signatures[i].root_str} {key_signatures[i].mode}") # or key_signatures[i].root or key_signatures[i].fifths
         key_signatures_encoded["duration"][i] = key_signatures[i + 1].time - key_signatures[i].time if use_implied_duration else 0
         key_signatures_encoded["time"][i] = key_signatures[i].time
     return pd.DataFrame(data = key_signatures_encoded, columns = representation.DIMENSIONS) # create dataframe from scraped values

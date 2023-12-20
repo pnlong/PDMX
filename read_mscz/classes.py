@@ -110,7 +110,7 @@ class KeySignature(muspy.classes.KeySignature):
     _attributes = OrderedDict([("time", int), ("measure", int), ("root", int), ("mode", str), ("fifths", int), ("root_str", str)])
     _optional_attributes = ["root", "mode", "fifths", "root_str", "measure"]
 
-    def __init__(self, time: int, root: int = None, mode: str = None, fifths: int = None, root_str: str = None, measure: int = None):
+    def __init__(self, time: int, root: int = 0, mode: str = "major", fifths: int = 0, root_str: str = "C", measure: int = None):
         super().__init__(time = time, root = root, mode = mode, fifths = fifths, root_str = root_str)
         self.measure = measure
 
