@@ -96,17 +96,17 @@ if __name__ == "__main__":
 
     # training paths
     train_path = f"{base_dir}/train.txt"
-    utils.save_txt(filename = train_path, data = train_paths)
+    utils.save_txt(filepath = train_path, data = train_paths)
     logging.info(f"Collected {len(train_paths):,} files for training. Saved training set to {train_path}")
 
     # validation paths
     valid_path = f"{base_dir}/valid.txt"
-    utils.save_txt(filename = valid_path, data = valid_paths)
+    utils.save_txt(filepath = valid_path, data = valid_paths)
     logging.info(f"Collected {len(valid_paths):,} files for validation. Saved validation set to {valid_path}")
 
     # test paths
     test_path = f"{base_dir}/test.txt"
-    utils.save_txt(filename = test_path, data = test_paths)
+    utils.save_txt(filepath = test_path, data = test_paths)
     logging.info(f"Collected {len(test_paths):,} files for testing. Saved testing set to {test_path}")
 
     ##################################################
