@@ -782,7 +782,7 @@ def write_musicxml(path: str, music: "BetterMusic", compressed: bool = None):
             try:
                 part.insert(offsetOrItemOrList = offset, itemOrNone = deepcopy(m21_annotation)) # as to avoid the StreamException object * is already found in this Stream
             except StreamException as stream_exception:
-                print(f"Warning: {str(m21_annotation)}")
+                print(str(stream_exception))
         # append the part to score
         score.append(part)
 
