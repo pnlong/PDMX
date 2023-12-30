@@ -24,7 +24,7 @@ import utils
 # CONSTANTS
 ##################################################
 
-INPUT_FILEPATH = "/data2/pnlong/musescore/data.csv"
+INPUT_FILEPATH = "/data2/pnlong/musescore/data/data.csv"
 PARTITIONS = {"train": 0.8, "valid": 0.1, "test": 0.1}
 
 ##################################################
@@ -92,7 +92,7 @@ if __name__ == "__main__":
     if args.output_dir is not None:
         base_dir = args.output_dir
     else: # infer output dir
-        base_dir = dirname(dirname(dirname(train_paths[0])))
+        base_dir = dirname(args.input_filepath)
 
     # training paths
     train_path = f"{base_dir}/train.txt"
