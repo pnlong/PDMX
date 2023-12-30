@@ -24,6 +24,7 @@ from copy import copy
 
 import utils
 import representation
+from encode import extract_data
 from read_mscz.read_mscz import read_musescore, get_musescore_version
 from read_mscz.classes import *
 
@@ -112,7 +113,7 @@ def extract(path: str, path_output_prefix: str):
         # create BetterMusic object with just one track (we are not doing multitrack)
         track_music = copy(x = music)
         track_music.tracks = [track,]
-        data = representation.extract_data(music = track_music, use_implied_duration = USE_IMPLIED_DURATION)
+        data = extract_data(music = track_music, use_implied_duration = USE_IMPLIED_DURATION)
 
         # create output path from path_output_prefix
         path_output = f"{path_output_prefix}.{i}.npy"

@@ -13,7 +13,7 @@ import warnings
 import argparse
 from unidecode import unidecode
 from typing import List
-from re import sub
+from re import sub, IGNORECASE
 import utils
 import representation
 from read_mscz.music import BetterMusic
@@ -94,7 +94,7 @@ def clean_up_text(text: str):
 # SCRAPE EXPLICIT FEATURES
 ##################################################
 
-desired_expressive_feature_types = ("Text", "TextSpanner", "RehearsalMark", "Dynamic", "HairPinSpanner", "Fermata", "TempoSpanner", "TechAnnotation", "Symbol")
+desired_expressive_feature_types = ("Text", "TextSpanner", "RehearsalMark", "Dynamic", "HairPinSpanner", "Fermata", "TempoSpanner", "TechAnnotation") # "Symbol"
 def scrape_annotations(annotations: List[Annotation], song_length: int, use_implied_duration: bool = True) -> pd.DataFrame:
     """Scrape annotations. song_length is the length of the song (in time steps). use_implied_duration is whether or not to calculate an 'implied duration' value for features without duration."""
 
@@ -109,44 +109,47 @@ def scrape_annotations(annotations: List[Annotation], song_length: int, use_impl
         if expressive_feature_type not in desired_expressive_feature_types: # ignore expressive we are not interested in
             continue
         
-        annotation_attributes = vars(annotation.annotation).keys()
-
         # time
         annotations_encoded["time"].append(annotation.time)
 
         # event type
         annotations_encoded["type"].append(representation.EXPRESSIVE_FEATURE_TYPE_STRING)
 
+        # deal withspecial case when the dynamic is a hike dynamic (e.g. sfz or rf)
+        is_hike_dynamic = False
+        if expressive_feature_type == "Dynamic":
+            if utils.split_camel_case(string = annotation.annotation.subtype) not in representation.DYNAMIC_DYNAMICS:
+                is_hike_dynamic = True
         # duration
-        if "duration" in annotation_attributes:
+        if hasattr(annotation.annotation, "duration"):
             duration = annotation.annotation.duration # get the duration
-        elif use_implied_duration: # deal with implied duration (time until next of same type)
+        elif (not use_implied_duration) or (use_implied_duration and is_hike_dynamic): # not using implied duration or this is a hike dynamic
+            duration = 0
+        else: # deal with implied duration (time until next of same type)
             if encounters[expressive_feature_type] is not None: # to deal with the first encounter
                 annotations_encoded["duration"][encounters[expressive_feature_type]] = annotation.time - annotations_encoded["time"][encounters[expressive_feature_type]]
             encounters[expressive_feature_type] = len(annotations_encoded["duration"]) # update encounter index
             duration = None # append None for current duration, will be fixed later           
-        else: # not use_implied_duration ; not using implied duration
-            duration = 0
         annotations_encoded["duration"].append(duration) # add a duration value if there is one
         
         # deal with value field
         value = None
-        if "text" in annotation_attributes:
+        if hasattr(annotation.annotation, "text"):
             value = clean_up_text(text = annotation.annotation.text)
-        elif "subtype" in annotation_attributes:
+        elif hasattr(annotation.annotation, "subtype"):
             value = utils.split_camel_case(string = annotation.annotation.subtype)
         if (value is None) or (value == ""): # if there is no text or subtype value, make the value the expressive feature type (e.g. "TempoSpanner")
             value = utils.split_camel_case(string = sub(pattern = "Spanner", repl = "", string = expressive_feature_type))
         # deal with special cases
         if value in ("dynamic", "other-dynamics"):
-            value = "dynamic-marking"
+            value = representation.DEFAULT_EXPRESSIVE_FEATURE_VALUES["Dynamic"]
         elif expressive_feature_type == "Fermata":
-            value = "fermata"
+            value = representation.DEFAULT_EXPRESSIVE_FEATURE_VALUES["Fermata"]
         elif expressive_feature_type == "RehearsalMark" and value.isdigit():
-            value = "rehearsal-mark"
+            value = representation.DEFAULT_EXPRESSIVE_FEATURE_VALUES["RehearsalMark"]
         annotations_encoded["value"].append(check_text(text = value))
     
-    # get final if using implied durationdurations
+    # get final if using implied durations
     if use_implied_duration:
         for expressive_feature_type in tuple(encounters.keys()):
             if encounters[expressive_feature_type] is not None:
@@ -235,8 +238,15 @@ def scrape_articulations(annotations: List[Annotation], maximum_gap: int, articu
         for articulation_subtype in tuple(encounters.keys()):
             if (time - encounters[articulation_subtype]["end"]) > maximum_gap: # if the articulation chunk is over
                 if encounters[articulation_subtype]["count"] >= articulation_count_threshold:
+                    value = utils.split_camel_case(string = check_text(text = sub(pattern = "artic|below|above|ornament|strings|up|down|inverted", repl = "", string = articulation_subtype, flags = IGNORECASE) if articulation_subtype is not None else "articulation"))
+                    if any((keyword in value for keyword in ("lutefingering", "lute-fingering"))): # skip certain articulations
+                        continue
+                    elif "prall" in value:
+                        value = "trill"
+                    elif value.startswith("u") or value.startswith("d"): # get rid of u or d prefix (up or down)
+                        value = value[1:]
                     articulations_encoded["type"].append(representation.EXPRESSIVE_FEATURE_TYPE_STRING)
-                    articulations_encoded["value"].append(utils.split_camel_case(string = check_text(text = articulation_subtype if articulation_subtype is not None else "articulation")))
+                    articulations_encoded["value"].append(value)
                     articulations_encoded["duration"].append(encounters[articulation_subtype]["end"] - encounters[articulation_subtype]["start"])
                     articulations_encoded["time"].append(encounters[articulation_subtype]["start"])
                 del encounters[articulation_subtype] # erase articulation subtype, let it be recreated when it comes up again

@@ -13,6 +13,7 @@ import json
 import pathlib
 import warnings
 from os.path import exists
+from typing import Union, List, Tuple
 
 import numpy as np
 
@@ -36,11 +37,16 @@ def inverse_dict(d):
 
 # implementation of R's rep function
 def rep(x: object, times: int, flatten: bool = False):
-    """An implementation of R's rep() function."""
+    """An implementation of R's rep() function. This can not be used to create a list of empty lists (see https://stackoverflow.com/questions/240178/list-of-lists-changes-reflected-across-sublists-unexpectedly)."""
     l = [x] * times
     if flatten:
         l = sum(l, [])
     return l
+
+# unique values in list while retaining order
+def unique(l: Union[List, Tuple]) -> list:
+    """Returns the unique values from a list while retaining order."""
+    return list(dict.fromkeys(list(l)))
 
 ##################################################
 

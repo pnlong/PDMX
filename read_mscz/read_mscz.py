@@ -763,43 +763,47 @@ def parse_constant_features(staff: Element, resolution: int, measure_indicies: L
                     key_signatures.append(KeySignature(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), root = root, mode = mode, fifths = fifths, root_str = root_str))
 
                 # Time signatures
-                if elem.tag == "TimeSig":
+                elif elem.tag == "TimeSig":
                     numerator, denominator = parse_time(elem = elem)
                     time_signatures.append(TimeSignature(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), numerator = numerator, denominator = denominator))
 
                 # Tempo elements
-                if elem.tag == "Tempo":
+                elif elem.tag == "Tempo":
                     tempo_qpm = 60 * float(_get_required_text(element = elem, path = "tempo"))
                     tempo_text = _get_raw_text(element = elem)
                     tempos.append(Tempo(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), qpm = tempo_qpm, text = tempo_text))
 
                 # Tempo spanner elements
-                if elem.tag == "Spanner" and elem.get("type") == "GradualTempoChange" and elem.find(path = "next/location/measures") is not None:
+                elif elem.tag == "Spanner" and elem.get("type") == "GradualTempoChange" and elem.find(path = "next/location/measures") is not None:
                     annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = TempoSpanner(duration = get_spanner_duration(spanner = elem, resolution = resolution, default_measure_len = measure_len), subtype = _get_raw_text(element = elem, path = "GradualTempoChange/tempoChangeType"))))
                     
                 # Text spanner elements (system)
-                if elem.tag == "Spanner" and elem.get("type") == "TextLine" and elem.find(path = "next/location/measures") is not None:
+                elif elem.tag == "Spanner" and elem.get("type") == "TextLine" and elem.find(path = "next/location/measures") is not None:
                     text_line_is_system = "system" in elem.find(path = "TextLine").attrib.keys()
                     if text_line_is_system: # only append the text spanner if it is system text
                         annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = TextSpanner(duration = get_spanner_duration(spanner = elem, resolution = resolution, default_measure_len = measure_len), text = _get_required_text(element = elem, path = "TextLine/beginText"), is_system = text_line_is_system)))
                 
                 # System Text
-                if elem.tag == "SystemText": # save staff text for other function
+                elif elem.tag == "SystemText": # save staff text for other function
                     annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = Text(text = _get_raw_text(element = elem, path = "text"), is_system = True, style = _get_raw_text(element = elem, path = "style"))))
 
                 # Rehearsal Mark
-                if elem.tag == "RehearsalMark":
+                elif elem.tag == "RehearsalMark":
                     annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = RehearsalMark(text = _get_raw_text(element = elem))))
 
+                # Fermatas
+                elif elem.tag == "Fermata":
+                    annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = Fermata(is_fermata_above = (_get_text(element = elem, path = "subtype") == "fermataAbove"))))
+
                 # Tuplet elements
-                if elem.tag == "Tuplet":
+                elif elem.tag == "Tuplet":
                     is_tuple = True
                     normal_notes = int(_get_required_text(element = elem, path = "normalNotes"))
                     actual_notes = int(_get_required_text(element = elem, path = "actualNotes"))
                     tuple_ratio = normal_notes / actual_notes
 
                 # Rest elements
-                if elem.tag == "Rest":
+                elif elem.tag == "Rest":
                     # Move time position forward if it is a rest
                     duration_type = _get_required_text(element = elem, path = "durationType")
                     if duration_type == "measure":
@@ -815,7 +819,7 @@ def parse_constant_features(staff: Element, resolution: int, measure_indicies: L
                     continue
 
                 # Chord elements
-                if elem.tag == "Chord":
+                elif elem.tag == "Chord":
                     # Compute duration
                     duration_type = _get_required_text(element = elem, path = "durationType")
                     duration = NOTE_TYPE_MAP[duration_type] * resolution
@@ -842,7 +846,7 @@ def parse_constant_features(staff: Element, resolution: int, measure_indicies: L
                         position += duration
 
                 # Handle last tuplet note
-                if elem.tag == "endTuplet":
+                elif elem.tag == "endTuplet":
                     old_duration = round(NOTE_TYPE_MAP[duration_type] * resolution)
                     new_duration = normal_notes * old_duration - (actual_notes - 1) * round(old_duration * tuple_ratio)
                     if duration != new_duration:
@@ -932,60 +936,56 @@ def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], ti
                     annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = Dynamic(subtype = _get_required_text(element = elem, path = "subtype"), velocity = velocity)))
 
                 # Hairpin elements
-                if elem.tag == "Spanner" and elem.get("type") == "HairPin" and elem.find(path = "next/location/measures") is not None:
+                elif elem.tag == "Spanner" and elem.get("type") == "HairPin" and elem.find(path = "next/location/measures") is not None:
                     annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = HairPinSpanner(duration = get_spanner_duration(spanner = elem, resolution = resolution, default_measure_len = measure_len), subtype = _get_text(element = elem, path = "HairPin/beginText"), hairpin_type = int(_get_required_text(element = elem, path = "HairPin/subtype")))))
 
                 # Text spanner elements (staff)
-                if elem.tag == "Spanner" and elem.get("type") == "TextLine" and elem.find(path = "next/location/measures") is not None:
+                elif elem.tag == "Spanner" and elem.get("type") == "TextLine" and elem.find(path = "next/location/measures") is not None:
                     text_line_is_system = "system" in elem.find(path = "TextLine").attrib.keys()
                     if not text_line_is_system: # only append the text spanner if it is staff text
                         annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = TextSpanner(duration = get_spanner_duration(spanner = elem, resolution = resolution, default_measure_len = measure_len), text = _get_raw_text(element = elem, path = "TextLine/beginText"), is_system = text_line_is_system)))
                 
                 # Staff Text
-                if elem.tag == "StaffText":
+                elif elem.tag == "StaffText":
                     annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = Text(text = _get_raw_text(element = elem), is_system = False, style = _get_raw_text(element = elem, path = "style"))))
 
                 # Pedals
-                if elem.tag == "Spanner" and elem.get("type") == "Pedal" and elem.find(path = "next/location/measures") is not None:
+                elif elem.tag == "Spanner" and elem.get("type") == "Pedal" and elem.find(path = "next/location/measures") is not None:
                     annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = PedalSpanner(duration = get_spanner_duration(spanner = elem, resolution = resolution, default_measure_len = measure_len))))
 
                 # Trill Spanners
-                if elem.tag == "Spanner" and elem.get("type") == "Trill" and elem.find(path = "next/location/measures") is not None:
+                elif elem.tag == "Spanner" and elem.get("type") == "Trill" and elem.find(path = "next/location/measures") is not None:
                     annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = TrillSpanner(duration = get_spanner_duration(spanner = elem, resolution = resolution, default_measure_len = measure_len), subtype = _get_text(element = elem, path = "Trill/subtype"), ornament = _get_text(element = elem, path = "Trill/Ornament/subtype"))))
 
                 # Vibrato Spanners
-                if elem.tag == "Spanner" and elem.get("type") == "Vibrato" and elem.find(path = "next/location/measures") is not None:
+                elif elem.tag == "Spanner" and elem.get("type") == "Vibrato" and elem.find(path = "next/location/measures") is not None:
                     annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = VibratoSpanner(duration = get_spanner_duration(spanner = elem, resolution = resolution, default_measure_len = measure_len), subtype = _get_text(element = elem, path = "Vibrato/subtype"))))
 
                 # Glissando Spanners
-                if elem.tag == "Spanner" and elem.get("type") == "Glissando" and elem.find(path = "next/location/measures") is not None:
+                elif elem.tag == "Spanner" and elem.get("type") == "Glissando" and elem.find(path = "next/location/measures") is not None:
                     annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = GlissandoSpanner(duration = get_spanner_duration(spanner = elem, resolution = resolution, default_measure_len = measure_len), is_wavy = bool(_get_text(element = elem, path = "Trill/subtype")))))
 
                 # Ottava Spanners
-                if elem.tag == "Spanner" and elem.get("type") == "Ottava" and elem.find(path = "next/location/measures") is not None:
+                elif elem.tag == "Spanner" and elem.get("type") == "Ottava" and elem.find(path = "next/location/measures") is not None:
                     annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = OttavaSpanner(duration = get_spanner_duration(spanner = elem, resolution = resolution, default_measure_len = measure_len), subtype = _get_text(element = elem, path = "Ottava/subtype"))))
-
-                # Fermatas
-                if elem.tag == "Fermata":
-                    annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = Fermata(is_fermata_above = (_get_text(element = elem, path = "subtype") == "fermataAbove"))))
-
+                
                 # Technical Annotation
-                if elem.tag == "PlayTechAnnotation":
+                elif elem.tag == "PlayTechAnnotation":
                     annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = TechAnnotation(text = _get_raw_text(element = elem), tech_type = _get_raw_text(element = elem, path = "playTechType"), is_system = False)))
                 
                 # Tremolo Bar
-                if elem.tag == "TremoloBar":
+                elif elem.tag == "TremoloBar":
                     annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = TremoloBar(points = [Point(time = int(point.get("time")), pitch = int(point.get("pitch")), vibrato = int(point.get("vibrato"))) for point in elem.findall("point")])))
 
                 # Tuplet elements
-                if elem.tag == "Tuplet":
+                elif elem.tag == "Tuplet":
                     is_tuple = True
                     normal_notes = int(_get_required_text(element = elem, path = "normalNotes"))
                     actual_notes = int(_get_required_text(element = elem, path = "actualNotes"))
                     tuple_ratio = normal_notes / actual_notes
 
                 # Rest elements
-                if elem.tag == "Rest":
+                elif elem.tag == "Rest":
                     # Move time position forward if it is a rest
                     duration_type = _get_required_text(element = elem, path = "durationType")
                     if duration_type == "measure":
@@ -1001,7 +1001,7 @@ def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], ti
                     continue
 
                 # Chord elements
-                if elem.tag == "Chord":
+                elif elem.tag == "Chord":
                     # Compute duration
                     duration_type = _get_required_text(element = elem, path = "durationType")
                     duration = NOTE_TYPE_MAP[duration_type] * resolution
@@ -1032,7 +1032,7 @@ def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], ti
                             is_outgoing_tie = True
                     
                         # Check for any slurs
-                        if spanner.get("type") == "Slur" and spanner.find(path = "next/location/measures") is not None:
+                        elif spanner.get("type") == "Slur" and spanner.find(path = "next/location/measures") is not None:
                             annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = SlurSpanner(duration = get_spanner_duration(spanner = spanner, resolution = resolution, default_measure_len = measure_len), is_slur = True)))
 
                     # Check for ornament
@@ -1114,7 +1114,7 @@ def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], ti
                         position += duration
 
                 # Handle last tuplet note
-                if elem.tag == "endTuplet":
+                elif elem.tag == "endTuplet":
                     old_duration = round(NOTE_TYPE_MAP[duration_type] * resolution)
                     new_duration = normal_notes * old_duration - (actual_notes - 1) * round(old_duration * tuple_ratio)
                     if notes[-1].duration != new_duration:

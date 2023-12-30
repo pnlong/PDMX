@@ -63,16 +63,15 @@ class Tempo(muspy.classes.Tempo):
     ----------
     time : int
         Start time of the tempo, in time steps.
-    measure : int, optional, default: None
-        Measure number where this element is found.
     qpm : float
         Tempo in qpm (quarters per minute).
     text : str
         Text associated with the tempo (if applicable)
-    
+    measure : int, optional, default: None
+        Measure number where this element is found.
     """
 
-    _attributes = OrderedDict([("time", int), ("measure", int), ("qpm", (float, int)), ("text", str)])
+    _attributes = OrderedDict([("time", int), ("qpm", (float, int)), ("text", str), ("measure", int)])
     _optional_attributes = ["measure"]
 
     def __init__(self, time: int, qpm: float, text: str = None, measure: int = None):
@@ -218,15 +217,15 @@ class Annotation(muspy.classes.Annotation):
         Measure number where this element is found.
     annotation : any
         Annotation of any type.
-    group : str, optional
+    group : Any, optional
         Group name (for better organizing the annotations).
 
     """
 
-    _attributes = OrderedDict([("time", int), ("measure", int), ("annotation", object), ("group", str)])
+    _attributes = OrderedDict([("time", int), ("measure", int), ("annotation", object), ("group", Any)])
     _optional_attributes = ["measure", "group"]
 
-    def __init__(self, time: int, annotation: Any, measure: int = None, group: str = None):
+    def __init__(self, time: int, annotation: Any, measure: int = None, group: Any = None):
         super().__init__(time = time, annotation = annotation, group = group)
         self.measure = measure
 

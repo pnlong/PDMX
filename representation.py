@@ -14,6 +14,7 @@ import utils
 import argparse
 from itertools import combinations
 from read_mscz.classes import DEFAULT_VELOCITY
+from utils import unique
 ##################################################
 
 
@@ -110,34 +111,37 @@ for time_signature_change_ratio in time_signature_change_ratios: # make sure the
         already_encountered_ratios.add(ratio)
 del time_signature_combinations, time_signature_change_ratios, time_signature_change_ratio, already_encountered_ratios, ratio # clear up some memory
 TIME_SIGNATURE_CHANGE_PREFIX = "time-signature-change-"
-TIME_SIGNATURE_CHANGE_DEFAULT = TIME_SIGNATURE_CHANGE_PREFIX + "other" # default if a ratio doesn't fall in the discretized list
+DEFAULT_TIME_SIGNATURE_CHANGE = TIME_SIGNATURE_CHANGE_PREFIX + "other" # default if a ratio doesn't fall in the discretized list
 def TIME_SIGNATURE_CHANGE_MAPPER(time_signature_change_ratio: float) -> str:
     discrete_time_signature_change_ratio_differences = [abs(time_signature_change_ratio - eval(discrete_time_signature_change_ratio)) for discrete_time_signature_change_ratio in TIME_SIGNATURE_CHANGE_RATIOS] # calculate difference with each time signature change ratio
     minimum_difference_index = min(range(len(discrete_time_signature_change_ratio_differences)), key = discrete_time_signature_change_ratio_differences.__getitem__) # get the index of the ratio that is closest
     if discrete_time_signature_change_ratio_differences[minimum_difference_index] < 1e-3: # if the minimum difference between the input ratio and one of the discrete ratios is small enough
         return TIME_SIGNATURE_CHANGE_PREFIX + str(TIME_SIGNATURE_CHANGE_RATIOS[minimum_difference_index]) # return the ratio
     else: # if not sufficiently close
-        return TIME_SIGNATURE_CHANGE_DEFAULT # return the default
+        return DEFAULT_TIME_SIGNATURE_CHANGE # return the default
 
 # dynamics
+DEFAULT_DYNAMIC = "dynamic-marking"
 DYNAMIC_VELOCITY_MAP = {
-    "pppppp": -32, "ppppp": -16, "pppp": 0, "ppp": 16, "pp": 33, "p": 49, "mp": 64,
-    "mf": 80, "f": 96, "ff": 112, "fff": 126, "ffff": 144, "fffff": 160, "ffffff": 176,
+    "pppppp": 4, "ppppp": 8, "pppp": 12, "ppp": 16, "pp": 33, "p": 49, "mp": 64,
+    "mf": 80, "f": 96, "ff": 112, "fff": 126, "ffff": 127, "fffff": 127, "ffffff": 127,
     "sfpp": 96, "sfp": 112, "sf": 112, "sff": 126, "sfz": 112, "sffz": 126, "fz": 112, "rf": 112, "rfz": 112,
     "fp": 96, "pf": 49, "s": DEFAULT_VELOCITY, "r": DEFAULT_VELOCITY, "z": DEFAULT_VELOCITY, "n": DEFAULT_VELOCITY, "m": DEFAULT_VELOCITY,
+    DEFAULT_DYNAMIC: DEFAULT_VELOCITY,
 }
+DYNAMIC_DYNAMICS = set(tuple(DYNAMIC_VELOCITY_MAP.keys())[:tuple(DYNAMIC_VELOCITY_MAP.keys()).index("ffffff")]) # dynamics that are actually dynamic markings and not sudden dynamic hikes
 
 # expressive features
 DEFAULT_EXPRESSIVE_FEATURE_VALUES = {
     "Barline": "barline",
     "KeySignature": None,
-    "TimeSignature": TIME_SIGNATURE_CHANGE_DEFAULT,
+    "TimeSignature": DEFAULT_TIME_SIGNATURE_CHANGE,
     "Fermata": "fermata",
     "SlurSpanner": "slur",
     "PedalSpanner": "pedal",
     "Tempo": QPM_TEMPO_MAPPER(qpm = None),
     "TempoSpanner": "tempo",
-    "Dynamic": "dynamic-marking",
+    "Dynamic": DEFAULT_DYNAMIC,
     "HairPinSpanner": "hair-pin",
     "Articulation": "articulation",
     "Text": "text",
@@ -148,8 +152,7 @@ DEFAULT_EXPRESSIVE_FEATURE_VALUES = {
 }
 EXPRESSIVE_FEATURES = {
     # Barlines
-    "Barline": [
-        "double-barline", "end-barline", "dotted-barline", "dashed-barline", DEFAULT_EXPRESSIVE_FEATURE_VALUES["Barline"],],
+    "Barline": ["double-barline", "end-barline", "dotted-barline", "dashed-barline", DEFAULT_EXPRESSIVE_FEATURE_VALUES["Barline"],],
     # Key Signatures
     "KeySignature": [f"key-signature-change-{distance}" for distance in range(-6, 7)],
     # Time Signatures
@@ -208,30 +211,14 @@ EXPRESSIVE_FEATURES = {
     ],
     # Articulation (Chunks)
     "Articulation": [
-        "staccato", "artic-staccato-above", "artic-staccato-below", "sforzato", "artic-accent-above",
-        "artic-accent-below", "marcato", "tenuto", "ornament-trill",
-        "artic-marcato-above", "portato", "artic-tenuto-above", "artic-tenuto-below", "staccatissimo",
-        "trill", "artic-staccatissimo-above", "strings-up-bow", "strings-down-bow", "artic-staccatissimo-below",
-        "artic-tenuto-staccato-below", "artic-tenuto-staccato-above", "downbow", "ornament-mordent", "upbow",
-        "ornament-mordent-inverted", "prall", "artic-accent-staccato-above", "artic-marcato-staccato-above", "artic-tenuto-accent-below",
-        "artic-tenuto-accent-above", "artic-accent-staccato-below", "brass-mute-closed", "umarcato", "artic-marcato-tenuto-above",
-        "artic-marcato-below", "guitar-fade-out", "mordent", "fadeout", "ouvert",
-        "plusstop", "artic-staccatissimo-wedge-above", "ornament-turn", "prallprall", "brass-mute-open",
-        "ornament-tremblement", "turn", "dportato", "ustaccatissimo", "artic-staccatissimo-wedge-below",
-        "dmarcato", "lutefingering-1st", "lutefingeringthumb", "strings-harmonic", "fadein",
-        "dfermata", "artic-marcato-tenuto-below", "downprall", "snappizzicato", "ornament-precomp-mordent-upper-prefix",
-        "artic-marcato-staccato-below", "lute-fingering-r-h-first", "plucked-snap-pizzicato-above", "shortfermata", "prallmordent",
-        "artic-stress-above", "lute-fingering-r-h-second", "lute-fingering-r-h-thumb", "ornament-prall-mordent", "artic-soft-accent-below",
-        "uportato", "artic-stress-below", "ornament-turn-inverted", "wiggle-vibrato-large-faster", "reverseturn",
-        "artic-staccatissimo-stroke-above", "artic-unstress-above", "fermata-above", "guitar-volume-swell", "longfermata",
-        "guitar-fade-in", "artic-soft-accent-above", "downmordent", "ornament-up-prall", "volumeswell",
-        "thumb", "upprall", "artic-unstress-below", "dstaccatissimo", "ornament-line-prall",
-        "lineprall", "schleifer", "verylongfermata", "wigglevibratolargefaster", "artic-staccatissimo-stroke-below",
-        "pralldown", "ornament-prall-up", "espressivo", "upmordent", "ornament-prall-down",
-        "ushortfermata", "ornament-precomp-slide", "ornament-up-mordent", "prallup", "ornament-down-mordent",
-        "no-sym", "wiggle-vibrato-large-slowest", "lutefingering-2nd", "strings-thumb-position", "artic-laissez-vibrer-above",
-        "artic-laissez-vibrer-below", "wiggle-sawtooth", "wigglevibratolargeslowest", "lutefingering-3rd", "ulongfermata",
-        "artic-soft-accent-tenuto-below", "artic-soft-accent-staccato-above", "artic-soft-accent-tenuto-staccato-above", "lute-fingering-r-h-third", "wigglesawtoothwide", "spiccato",
+        "staccato", "sforzato", "accent", "marcato", "tenuto", "trill", "portato", "staccatissimo", "up-bow", "down-bow", "tenuto-staccato", "mordent",
+        "accent-staccato", "marcato-staccato", "tenuto-accent", "brass-mute-closed", "marcato-tenuto", "guitar-fade-out", "fadeout", "ouvert",
+        "plusstop", "staccatissimo-wedge", "turn", "brass-mute-open", "tremblement", "harmonic", "fadein", "snappizzicato",
+        "precomp-mordent-upper-prefix", "plucked-snap-pizzicato", "shortfermata", "stress", "soft-accent",
+        "wiggle-vibrato-large-faster", "reverseturn", "staccatissimo-stroke", "unstress", "fermata", "guitar-volume-swell", "longfermata",
+        "guitar-fade-in", "volumeswell", "thumb", "schleifer", "verylongfermata", "wigglevibratolargefaster",
+        "espressivo", "precomp-slide", "no-sym", "wiggle-vibrato-large-slowest", "thumb-position", "laissez-vibrer", "wiggle-sawtooth",
+        "wigglevibratolargeslowest", "soft-accent-tenuto", "soft-accent-staccato", "soft-accent-tenuto-staccato", "wigglesawtoothwide", "spiccato",
         DEFAULT_EXPRESSIVE_FEATURE_VALUES["Articulation"],
     ],
     # Text
@@ -583,7 +570,7 @@ INSTRUMENT_PROGRAM_MAP = {
     "synth-drums": 118,
 }
 KNOWN_PROGRAMS = list(k for k, v in PROGRAM_INSTRUMENT_MAP.items() if v is not None)
-KNOWN_INSTRUMENTS = list(dict.fromkeys(INSTRUMENT_PROGRAM_MAP.keys()))
+KNOWN_INSTRUMENTS = unique(l = INSTRUMENT_PROGRAM_MAP.keys())
 INSTRUMENT_CODE_MAP = {instrument: i + 1 for i, instrument in enumerate(KNOWN_INSTRUMENTS)}
 INSTRUMENT_CODE_MAP[None] = 0
 CODE_INSTRUMENT_MAP = utils.inverse_dict(INSTRUMENT_CODE_MAP)
