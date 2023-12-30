@@ -61,7 +61,7 @@ def parse_args(args = None, namespace = None):
 # EXTRACTION FUNCTION (EXTRACT RELEVANT DATA FROM A GIVEN MUSESCORE FILE
 ##################################################
 
-def extract(path: str, path_output_prefix: str):
+def extract(path: str, path_output_prefix: str) -> int:
     """Extract relevant information from a .mscz file, output as tokens
 
     Parameters
@@ -73,7 +73,7 @@ def extract(path: str, path_output_prefix: str):
 
     Returns
     -------
-    :void:
+    int: # of tracks processed (including failures)
     """
     
     # LOAD IN MSCZ FILE, CONSTANTS
@@ -104,7 +104,11 @@ def extract(path: str, path_output_prefix: str):
     # LOOP THROUGH TRACKS, SCRAPE OBJECTS
     ##################################################
     
+    n_total = 0
     for i, track in enumerate(music.tracks):
+
+        # increment total number of tracks
+        n_total += 1
 
         # do not record if track is drum or is an unknown program
         if track.is_drum or track.program not in representation.KNOWN_PROGRAMS:
@@ -145,6 +149,8 @@ def extract(path: str, path_output_prefix: str):
 
     utils.write_to_file(info = {"time": total_time}, output_filepath = TIMING_OUTPUT_FILEPATH)
 
+    return n_total
+
     ##################################################
 
 
@@ -169,8 +175,8 @@ if __name__ == "__main__":
     # some constants
     METADATA_MAPPING_FILEPATH = f"{args.file_output_dir}/metadata_to_data.csv"
     prefix = basename(args.output_dir)
-    TIMING_OUTPUT_FILEPATH = f"{args.file_output_dir}/{prefix}.timing.txt"
-    MAPPING_OUTPUT_FILEPATH = f"{args.file_output_dir}/{prefix}.csv"
+    TIMING_OUTPUT_FILEPATH = f"{args.output_dir}/{prefix}.timing.txt"
+    MAPPING_OUTPUT_FILEPATH = f"{args.output_dir}/{prefix}.csv"
     USE_IMPLIED_DURATION = not bool(args.explicit_duration)
 
     # for getting metadata
@@ -198,6 +204,8 @@ if __name__ == "__main__":
     # load in paths
     with open(args.paths) as file:
         paths = [path.strip() for path in file.readlines()]
+        # from random import sample
+        # paths = sample(population = paths, k = int(0.1 * len(paths)))
 
     # see if I've already completed some path
     if exists(MAPPING_OUTPUT_FILEPATH):
@@ -226,6 +234,8 @@ if __name__ == "__main__":
     total_time = end_time - start_time # compute total time elapsed
     total_time = strftime("%H:%M:%S", gmtime(total_time)) # convert into pretty string
     logging.info(f"Total time: {total_time}")
+    n_total = sum(results)
+    logging.info(f"Total Number of Tracks Processed: {n_total:,}")
 
     ##################################################
 
