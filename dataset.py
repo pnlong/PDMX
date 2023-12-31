@@ -238,11 +238,11 @@ if __name__ == "__main__":
 
         # show example on first iteration
         if i == 0:
-            example += f"EXAMPLE\nPath: {batch['path'][0]}"
+            example += f"EXAMPLE:\n  - Path: {batch['path'][0]}\n"
             for key, value in batch.items():
                 if key == "path":
                     continue
-                example += f"Shape of {key}: {value.shape}\n"
+                example += f"  - Shape of {key}: {value.shape}\n"
 
     # output number of batches and example
     logging.info(example)

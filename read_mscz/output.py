@@ -812,9 +812,10 @@ def write_musicxml(path: str, music: "BetterMusic", compressed: bool = None):
 if __name__ == "__main__":
 
     from read_mscz.read_mscz import read_musescore
-    music = read_musescore("/data2/pnlong/musescore/test_data/laufey/from_the_start.mscz")
-    music.write(path = "/data2/pnlong/musescore/test_data/laufey/from_the_start.xml") # tests xml output
-    music.write(path = "/data2/pnlong/musescore/test_data/laufey/from_the_start.wav") # tests midi and audio output
+    prefix = "/data2/pnlong/musescore/test_data/laufey/from_the_start"
+    music = read_musescore(path = f"{prefix}.mscz")
+    music.write(path = f"{prefix}.xml") # tests xml output
+    music.write(path = f"{prefix}.wav") # tests midi and audio output
 
 ##################################################
    
