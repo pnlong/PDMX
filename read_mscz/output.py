@@ -138,14 +138,13 @@ def to_delta_time(midi_track: MidiTrack):
     """
 
     # sort messages by absolute time
-    midi_track.sort(key = lambda x: x.time)
+    midi_track.sort(key = lambda message: message.time)
 
     # convert to delta time
     time = 0
     for message in midi_track:
         time_ = message.time
-        message.time -= time
-        message.time = int(message.time) # ensure message time is int
+        message.time = int(message.time - time) # ensure message time is int
         time = time_
 
 
@@ -202,7 +201,6 @@ def to_mido_meta_track(music: "BetterMusic") -> MidiTrack:
             if annotation.annotation.subtype is None:
                 continue
             else:
-                annotation = deepcopy(annotation) # make sure we are not operating on the music object itself
                 annotation.annotation.subtype = clean_up_subtype(subtype = annotation.annotation.subtype) # clean up the subtype
         # update current_tempo_index if necessary
         if current_tempo_index < len(tempo_changes) - 1: # avoid index error later on at last element in tempo_changes
@@ -309,8 +307,7 @@ def to_mido_track(track: Track, music: "BetterMusic", channel: int = None, use_n
     # deal with expressive features
     note_times = sorted(unique(l = [note.time for note in track.notes])) # times of notes, sorted ascending, removing duplicates
     expressive_features: Dict[int, List[Annotation]] = dict(zip(note_times, ([] for _ in range(len(note_times))))) # dictionary where keys are time and values are expressive feature annotation objects
-    for annotation_ in sorted(track.annotations + music.annotations, key = lambda annotation: annotation.time): # sort staff and system level annotations
-        annotation = deepcopy(annotation_) # make sure annotation is a copy as to not change the music object itself
+    for annotation in sorted(track.annotations + music.annotations, key = lambda annotation: annotation.time): # sort staff and system level annotations
         if hasattr(annotation.annotation, "subtype"):
             if annotation.annotation.subtype is None:
                 continue
@@ -354,8 +351,7 @@ def to_mido_track(track: Track, music: "BetterMusic", channel: int = None, use_n
             expressive_features[note_time][0].annotation.velocity = representation.DYNAMIC_VELOCITY_MAP[DEFAULT_DYNAMIC] # set to default velocity
 
     # note on and note off messages
-    for note_ in track.notes:
-        note = deepcopy(note_) # ensure note is a copy so we are not operating on the music object itself
+    for note in track.notes:
         note.velocity = expressive_features[note.time][0].annotation.velocity # the first index is always the dynamic
         for annotation in expressive_features[note.time][1:]: # skip the first index, since we just dealt with it
             # ensure that values are valid
@@ -435,6 +431,9 @@ def write_midi(path: str, music: "BetterMusic", use_note_off_message: bool = Fal
 
     """
     
+    # ensure we are operating on a copy of music
+    music = deepcopy(music)
+
     # create a .mid file object
     midi = MidiFile(type = 1, ticks_per_beat = music.resolution)
 
@@ -496,6 +495,9 @@ def write_audio(path: str, music: "BetterMusic", audio_format: str = "auto", sou
     # create a temporary directory
     with tempfile.TemporaryDirectory() as temp_dir:
 
+        # ensure we are operating on a copy of music
+        music = deepcopy(music)
+
         # write the BetterMusic object to a temporary .mid file
         midi_path = f"{temp_dir}/temp.mid"
         write_midi(path = midi_path, music = music)
@@ -530,6 +532,9 @@ def write_musicxml(path: str, music: "BetterMusic", compressed: bool = None):
         an uncompressed file, '.mxl' for a compressed file).
 
     """
+
+    # ensure we are operating on a copy of music
+    music = deepcopy(music)
 
     # create a new score
     score = Score()
@@ -664,8 +669,7 @@ def write_musicxml(path: str, music: "BetterMusic", compressed: bool = None):
         del lyrics, noteheads, articulations
 
         # add expressive features to part
-        for annotation_ in sorted(music.annotations + track.annotations, key = lambda annotation: annotation.time):
-            annotation = deepcopy(annotation_) # make sure it is a copy so that we are not operating on the actual music object
+        for annotation in sorted(music.annotations + track.annotations, key = lambda annotation: annotation.time):
             if hasattr(annotation.annotation, "subtype"):
                 if annotation.annotation.subtype is None:
                     continue
@@ -779,6 +783,9 @@ def write_musicxml(path: str, music: "BetterMusic", compressed: bool = None):
             #     pass # so rare that this is not worth implementing
             else:
                 continue
+            if "m21_annotation" not in locals(): # check if m21_annotation was created and not caught in some offcase
+                continue
+            # insert annotation into part
             try:
                 part.insert(offsetOrItemOrList = offset, itemOrNone = deepcopy(m21_annotation)) # as to avoid the StreamException object * is already found in this Stream
             except StreamException as stream_exception:
@@ -812,7 +819,7 @@ def write_musicxml(path: str, music: "BetterMusic", compressed: bool = None):
 if __name__ == "__main__":
 
     from read_mscz.read_mscz import read_musescore
-    prefix = "/data2/pnlong/musescore/test_data/laufey/from_the_start"
+    prefix = "/data2/pnlong/musescore/test_data/toploader/dancing_in_the_moonlight.test"
     music = read_musescore(path = f"{prefix}.mscz")
     music.write(path = f"{prefix}.xml") # tests xml output
     music.write(path = f"{prefix}.wav") # tests midi and audio output

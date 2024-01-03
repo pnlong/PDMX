@@ -512,7 +512,7 @@ def parse_part_info(elem: Element, musescore_version: int) -> Tuple[Optional[Lis
         part_info["program"] = int(program) if program is not None else 0
     else:
         part_info["program"] = 0
-    part_info["is_drum"] = (int(_get_text(instrument, "Channel/midiChannel", 0)) == 10)
+    part_info["is_drum"] = ((int(_get_text(element = instrument, path = "Channel/midiChannel", default = 0)) == 9) or (_get_text(element = instrument, path = "clef", default = "") == "PERC") or ("drum" in _get_text(element = instrument, path = "trackName", default = "").lower()) or (len(instrument.findall(path = "Drum")) > 0))
 
     return staff_ids, part_info
 
@@ -694,8 +694,7 @@ def get_spanner_duration(spanner: Element, resolution: int, default_measure_len:
 def parse_constant_features(staff: Element, resolution: int, measure_indicies: List[int], timeout: int = None) -> Tuple[List[Tempo], List[KeySignature], List[TimeSignature], List[Barline], List[Beat], List[Annotation]]:
     """Return data parsed from a meta staff element.
 
-    This function only parses the tempos, key and time signatures. Use
-    `parse_staff` to parse the notes and lyrics.
+    This function only parses the tempos, key and time signatures. Use `parse_staff` to parse the notes and lyrics.
 
     """
 
@@ -918,9 +917,9 @@ def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], ti
         position = 0
 
         # Get voice elements
-        voices = list(measure.findall(path = "voice"))  # MuseScore 3.x
+        voices = list(measure.findall(path = "voice")) # MuseScore 3.x
         if not voices:
-            voices = [measure]  # MuseScore 1.x and 2.x
+            voices = [measure] # MuseScore 1.x and 2.x
 
         # Iterate over voice elements
         for voice in voices:

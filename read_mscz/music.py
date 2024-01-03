@@ -155,10 +155,7 @@ class BetterMusic(muspy.music.Music):
 
     Note
     ----
-    Indexing a BetterMusic object returns the track of a certain index. That
-    is, ``music[idx]`` returns ``music.tracks[idx]``. Length of a Music
-    object is the number of tracks. That is, ``len(music)``  returns
-    ``len(music.tracks)``.
+    Indexing a BetterMusic object returns the track of a certain index. That is, ``music[idx]`` returns ``music.tracks[idx]``. Length of a Music object is the number of tracks. That is, ``len(music)`` returns ``len(music.tracks)``.
 
     """
 
@@ -171,7 +168,7 @@ class BetterMusic(muspy.music.Music):
     # INITIALIZER
     ##################################################
 
-    def __init__(self, metadata: Metadata = None, resolution: int = None, tempos: List[Tempo] = None, key_signatures: List[KeySignature] = None, time_signatures: List[TimeSignature] = None, barlines: List[Barline] = None, beats: List[Beat] = None, lyrics: List[Lyric] = None, annotations: List[Annotation] = None, tracks: List[Track] = None):
+    def __init__(self, metadata: Metadata = None, resolution: int = None, tempos: List[Tempo] = None, key_signatures: List[KeySignature] = None, time_signatures: List[TimeSignature] = None, barlines: List[Barline] = None, beats: List[Beat] = None, lyrics: List[Lyric] = None, annotations: List[Annotation] = None, tracks: List[Track] = None, song_length: int = None):
         self.metadata = metadata if metadata is not None else Metadata()
         self.resolution = resolution if resolution is not None else muspy.DEFAULT_RESOLUTION
         self.tempos = tempos if tempos is not None else []
@@ -182,7 +179,7 @@ class BetterMusic(muspy.music.Music):
         self.lyrics = lyrics if lyrics is not None else []
         self.annotations = annotations if annotations is not None else []
         self.tracks = tracks if tracks is not None else []
-        self.song_length = self.get_song_length()
+        self.song_length = self.get_song_length() if song_length is None else song_length
 
     ##################################################
 
