@@ -333,7 +333,6 @@ def to_mido_track(track: Track, music: "BetterMusic", channel: int = None, use_n
                 expressive_features[note_times[current_note_time_index]].append(annotation)
                 current_note_time_index += 1 # increment
             del current_note_time_index
-    del annotation_falls_on_note
 
     # make sure all notes have a dynamic at index 0
     for i, note_time in enumerate(note_times):
@@ -819,7 +818,7 @@ def write_musicxml(path: str, music: "BetterMusic", compressed: bool = None):
 if __name__ == "__main__":
 
     from read_mscz.read_mscz import read_musescore
-    prefix = "/data2/pnlong/musescore/test_data/toploader/dancing_in_the_moonlight.test"
+    prefix = "/data2/pnlong/musescore/test_data/test2/QmbbxbpgJHyNRzjkbyxdoV5saQ9HY38MauKMd5CijTPFiF"
     music = read_musescore(path = f"{prefix}.mscz")
     music.write(path = f"{prefix}.xml") # tests xml output
     music.write(path = f"{prefix}.wav") # tests midi and audio output
