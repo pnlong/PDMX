@@ -14,28 +14,34 @@ import glob
 from os.path import isfile, exists, basename
 import random
 import pandas as pd
+import numpy as np
+from typing import List
 from tqdm import tqdm
 from time import perf_counter, strftime, gmtime
 import multiprocessing
 import argparse
 import logging
-from typing import List
+from copy import copy
 import json
 import pickle
 from read_mscz.read_mscz import read_musescore, get_musescore_version
-from read_mscz.classes import *
-from utils import rep, write_to_file
+from read_mscz.classes import Lyric
+import representation
+from encode import extract_data
+from utils import write_to_file
 
 ##################################################
 
 
 # CONSTANTS
 ##################################################
-OUTPUT_DIR = "/data2/pnlong/musescore/expressive_features"
-FILE_OUTPUT_DIR = "/data2/pnlong/musescore"
-EXPRESSIVE_FEATURE_COLUMNS = ("time", "measure", "duration", "type", "feature", "comment")
-OUTPUT_COLUMNS = ("path", "track", "expressive_features", "metadata", "version", "is_public_domain", "is_valid", "n_expressive_features")
-ERROR_COLUMNS = ("path", "error_type", "error_message")
+INPUT_DIR = "/data2/pnlong/musescore"
+METADATA_MAPPING = f"{INPUT_DIR}/metadata_to_data.csv"
+OUTPUT_DIR = f"{INPUT_DIR}/expressive_features"
+EXPRESSIVE_FEATURE_COLUMNS = ["time", "type", "value"]
+OUTPUT_COLUMNS = ["path", "track", "expressive_features", "metadata", "version", "is_public_domain", "is_valid", "n_expressive_features"]
+OUTPUT_COLUMNS_BY_PATH = ["path", "metadata", "version", "is_public_domain", "is_valid", "n_expressive_features"]
+ERROR_COLUMNS = ["path", "error_type", "error_message"]
 NA_STRING = "NA"
 N_EXPRESSIVE_FEATURES_TO_STORE_THRESHOLD = 2
 ##################################################
@@ -47,244 +53,20 @@ N_EXPRESSIVE_FEATURES_TO_STORE_THRESHOLD = 2
 def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(prog = "Parse MuseScore", description = "Extract expressive features from MuseScore files.")
+    parser.add_argument("-m", "--metadata_mapping", type = str, default = METADATA_MAPPING, help = "Absolute filepath to metadata-to-data table")
     parser.add_argument("-o", "--output_dir", type = str, default = OUTPUT_DIR, help = "Output directory")
-    parser.add_argument("-f", "--file_output_dir", type = str, default = FILE_OUTPUT_DIR, help = "Directory to output any data tables")
     parser.add_argument("-j", "--jobs", type = int, default = int(multiprocessing.cpu_count() / 4), help = "Number of Jobs")
     return parser.parse_args(args = args, namespace = namespace)
 
 ##################################################
 
 
-# HELPER FUNCTIONS
+# HELPER FUNCTION(S) FOR EXTRACTING EXPRESSIVE FEATURES NOT EXTRACTING IN encode.py
 ##################################################
 
-# make sure text is ok
-def check_text(text: str):
-    if text:
-        return " ".join(text.split()).replace(", ", ",").replace(": ", ":").strip()
-    else:
-        return None
-
-# initialize empty lists
-def initialize_empty_lists(length: int) -> tuple:
-    # create empty lists
-    times = rep(x = None, times = length)
-    measures = rep(x = None, times = length)
-    types = rep(x = None, times = length)
-    durations = rep(x = None, times = length)
-    features = rep(x = None, times = length)
-    comments = rep(x = None, times = length)
-    return (times, measures, types, durations, features, comments)
-
-##################################################
-
-
-# SCRAPE OBJECTS FROM A LIST OF OBJECTS
-##################################################
-
-def scrape_annotations(annotations: List[Annotation], out_columns: List[str] = EXPRESSIVE_FEATURE_COLUMNS) -> pd.DataFrame:
-    """Given a list of annotations, create a dataframe with the scraped expressive tokens."""
-    
-    # create empty lists
-    times, measures, types, durations, features, comments = initialize_empty_lists(length = len(annotations))
-
-    # loop
-    for i, annotation in enumerate(annotations):
-
-        # get timings
-        times[i] = int(annotation.time)
-        measures[i] = int(annotation.measure)
-
-        # get the type of annotation
-        types[i] = annotation.annotation.__class__.__name__
-
-        # get annotations attributes
-        annotation_attributes = vars(annotation.annotation).copy()
-
-        # check for duration
-        if "Spanner" in types[i]: # if spanner, add duration
-            durations[i] = annotation_attributes["duration"]
-            del annotation_attributes["duration"]
-
-        # get what type of feature it is
-        feature = None
-        if "text" in annotation_attributes.keys(): # if a text element
-            feature = "text"
-        elif "subtype" in annotation_attributes.keys(): # if a subtype element
-            feature = "subtype"
-        if feature: # if there is a feature to add
-            features[i] = check_text(text = str(annotation_attributes[feature]))
-            del annotation_attributes[feature]
-        else: # so there is no text or subtype
-            features[i] = check_text(text = types[i].lower())
-
-        # any extra info add to comments
-        if len(annotation_attributes.keys()) > 0:
-            for key in (key for key in annotation_attributes.keys() if hasattr(annotation_attributes[key], "__dict__")): # deal with nested objects
-                annotation_attributes[key] = json.dumps(obj = vars(annotation_attributes[key]))
-            for key in (key for key in annotation_attributes.keys() if type(annotation_attributes[key]) is list or type(annotation_attributes[key]) is tuple): # deal with list of nested objects
-                for k in range(len(annotation_attributes[key])):
-                    annotation_attributes[key][k] = json.dumps(obj = vars(annotation_attributes[key][k]))
-            comments[i] = check_text(text = json.dumps(obj = annotation_attributes))
-        
-    # create dataframe from scraped values
-    annotations = pd.DataFrame(data = dict(zip(out_columns, (times, measures, durations, types, features, comments))), columns = out_columns)
-    return annotations
-
-
-def scrape_barlines(barlines: List[Barline], out_columns: List[str] = EXPRESSIVE_FEATURE_COLUMNS) -> pd.DataFrame:
-    """Given a list of barlines, create a dataframe with the scraped expressive tokens."""
-    
-    # create empty lists
-    barlines = list(filter(lambda barline: not ((barline.subtype == "single") or ("repeat" in barline.subtype.lower())), barlines)) # filter out single barlines
-    times, measures, types, durations, features, comments = initialize_empty_lists(length = len(barlines))
-
-    # loop
-    for i, barline in enumerate(barlines):
-
-        # get timings
-        times[i] = int(barline.time)
-        measures[i] = int(barline.measure)
-        # barlines have no duration
-
-        # update feature and subtype
-        types[i] = "Barline"
-        features[i] = barline.subtype
-        
-    # create dataframe from scraped values
-    barlines = pd.DataFrame(data = dict(zip(out_columns, (times, measures, durations, types, features, comments))), columns = out_columns)
-    return barlines
-
-
-def scrape_timesigs(timesigs: List[TimeSignature], out_columns: List[str] = EXPRESSIVE_FEATURE_COLUMNS) -> pd.DataFrame:
-    """Given a list of timesigs, create a dataframe with the scraped expressive tokens."""
-    
-    # create empty lists
-    times, measures, types, durations, features, comments = initialize_empty_lists(length = len(timesigs))
-
-    # loop
-    for i, timesig in enumerate(timesigs):
-
-        # get timings
-        times[i] = int(timesig.time)
-        measures[i] = int(timesig.measure)
-        # timesigs have no duration
-
-        # update feature and subtype
-        types[i] = "TimeSignature"
-        features[i] = f"{timesig.numerator}/{timesig.denominator}"
-        
-    # create dataframe from scraped values
-    timesigs = pd.DataFrame(data = dict(zip(out_columns, (times, measures, durations, types, features, comments))), columns = out_columns)
-    return timesigs
-
-
-def scrape_keysigs(keysigs: List[KeySignature], out_columns: List[str] = EXPRESSIVE_FEATURE_COLUMNS) -> pd.DataFrame:
-    """Given a list of keysigs, create a dataframe with the scraped expressive tokens."""
-    
-    # create empty lists
-    times, measures, types, durations, features, comments = initialize_empty_lists(length = len(keysigs))
-
-    # loop
-    for i, keysig in enumerate(keysigs):
-
-        # get timings
-        times[i] = int(keysig.time)
-        measures[i] = int(keysig.measure)
-        # keysigs have no duration
-
-        # (root, mode, fifths, root_str)
-        # update feature and subtype
-        types[i] = "KeySignature"
-        features[i] = check_text(text = f"{keysig.root_str} {keysig.mode}")
-
-        # comment with extra info
-        comments[i] = check_text(text = json.dumps(obj = {key: vars(keysig)[key] for key in ("root", "fifths")}))
-        
-    # create dataframe from scraped values
-    keysigs = pd.DataFrame(data = dict(zip(out_columns, (times, measures, durations, types, features, comments))), columns = out_columns)
-    return keysigs
-
-
-def scrape_tempos(tempos: List[Tempo], out_columns: List[str] = EXPRESSIVE_FEATURE_COLUMNS) -> pd.DataFrame:
-    """Given a list of tempos, create a dataframe with the scraped expressive tokens."""
-    
-    # create empty lists
-    times, measures, types, durations, features, comments = initialize_empty_lists(length = len(tempos))
-
-    # loop
-    for i, tempo in enumerate(tempos):
-
-        # get timings
-        times[i] = int(tempo.time)
-        measures[i] = int(tempo.measure)
-        # tempos have no duration
-
-        # (root, mode, fifths, root_str)
-        # update feature and subtype
-        types[i] = "Tempo"
-        features[i] = check_text(text = tempo.text)
-
-        # comment with extra info
-        comments[i] = check_text(text = json.dumps(obj = {key: vars(tempo)[key] for key in ("qpm",)}))
-        
-    # create dataframe from scraped values
-    tempos = pd.DataFrame(data = dict(zip(out_columns, (times, measures, durations, types, features, comments))), columns = out_columns)
-    return tempos
-
-
-def scrape_notes(notes: List[Note], out_columns: List[str] = EXPRESSIVE_FEATURE_COLUMNS) -> pd.DataFrame:
-    """Given a list of notes, create a dataframe with the scraped expressive tokens."""
-
-    # get horizontal density
-    ## IMPLEMENT ON A LATER DATE
-    
-    # create empty lists
-    notes = list(filter(lambda note: note.is_grace, notes)) # filter out normal notes
-    times, measures, types, durations, features, comments = initialize_empty_lists(length = len(notes))
-
-    # loop
-    for i, note in enumerate(notes):
-
-        # set the note type and features
-        types[i] = "GraceNote"
-
-        # get timings
-        times[i] = int(note.time)
-        measures[i] = int(note.measure)
-        durations[i] = int(note.duration)
-        
-    # create dataframe from scraped values
-    notes = pd.DataFrame(data = dict(zip(out_columns, (times, measures, durations, types, features, comments))), columns = out_columns)
-    return notes
-
-
-def scrape_lyrics(lyrics: List[Lyric], out_columns: List[str] = EXPRESSIVE_FEATURE_COLUMNS) -> pd.DataFrame:
-    """Given a list of lyrics, create a dataframe with the scraped expressive tokens."""
-    
-    # create empty lists
-    lyrics = list(filter(lambda lyric: len("".join(lyric.lyric.split() if lyric.lyric is not None else "")) > 0, lyrics)) # filter out whitespace lyrics
-    times, measures, types, durations, features, comments = initialize_empty_lists(length = len(lyrics))
-
-    # loop
-    for i, lyric in enumerate(lyrics):
-
-        # check if this is a relevant lyric
-        comments[i] = check_text(text = lyric.lyric)
-
-        # set the lyric type and features
-        types[i] = "Lyric"
-        # I stored the lyric text inside of comment, not features
-
-        # get timings
-        times[i] = int(lyric.time)
-        measures[i] = int(lyric.measure)
-        # there is no duration for a lyric
-        
-    # create dataframe from scraped values
-    lyrics = pd.DataFrame(data = dict(zip(out_columns, (times, measures, durations, types, features, comments))), columns = out_columns)
-    return lyrics
-
+def scrape_lyrics(lyrics: List[Lyric]) -> pd.DataFrame:
+    lyrics_encoded = [(lyric.time, "Lyric", lyric.lyric) for lyric in lyrics]
+    return pd.DataFrame(data = lyrics_encoded, columns = EXPRESSIVE_FEATURE_COLUMNS)
 
 ##################################################
 
@@ -349,7 +131,7 @@ def extract_expressive_features(path: str, path_output_prefix: str):
 
     # try to read musescore
     try:
-        mscz = read_musescore(path = path, timeout = 10)
+        music = read_musescore(path = path, timeout = 10)
     # if that fails
     except Exception as exc:
         # print most recent error, determine error type
@@ -371,7 +153,7 @@ def extract_expressive_features(path: str, path_output_prefix: str):
         # output error message to file
         write_to_file(info = dict(zip(ERROR_COLUMNS, (path, error_type, error_message.replace(",", "")))), output_filepath = ERROR_MESSAGE_OUTPUT_FILEPATH, columns = ERROR_COLUMNS)
         # write mapping
-        write_to_file(info = dict(zip(OUTPUT_COLUMNS, (path, None, None, metadata_path, version, is_public_domain, False, None))), output_filepath = MAPPING_OUTPUT_FILEPATH, columns = OUTPUT_COLUMNS)
+        write_to_file(info = dict(zip(OUTPUT_COLUMNS, (path, None, None, metadata_path, version, is_public_domain, False, None))), output_filepath = OUTPUT_FILEPATH, columns = OUTPUT_COLUMNS)
 
         return None # exit here
 
@@ -381,37 +163,31 @@ def extract_expressive_features(path: str, path_output_prefix: str):
     ##################################################
 
 
-    # SCRAPE SYSTEM-LEVEL EXPRESSIVE FEATURES
-    ##################################################
-
-    system_annotations = scrape_annotations(annotations = mscz.annotations, out_columns = EXPRESSIVE_FEATURE_COLUMNS)
-    system_barlines = scrape_barlines(barlines = mscz.barlines, out_columns = EXPRESSIVE_FEATURE_COLUMNS)
-    system_timesigs = scrape_timesigs(timesigs = mscz.time_signatures, out_columns = EXPRESSIVE_FEATURE_COLUMNS)
-    system_keysigs = scrape_keysigs(keysigs = mscz.key_signatures, out_columns = EXPRESSIVE_FEATURE_COLUMNS)
-    system_tempos = scrape_tempos(tempos = mscz.tempos, out_columns = EXPRESSIVE_FEATURE_COLUMNS)
-
-    ##################################################
-
-
     # LOOP THROUGH TRACKS, SCRAPE OBJECTS
     ##################################################
-    for i, track in enumerate(mscz.tracks):
+    
+    system_lyrics = scrape_lyrics(lyrics = music.lyrics) # get system-level lyrics
+    n_system_expressive_features = len(music.annotations) + len(music.tempos) + (len(music.key_signatures) - 1) + (len(music.time_signatures) - 1) + len(list(filter(lambda barline: not ((barline.subtype == "single") or ("repeat" in barline.subtype.lower())), music.barlines))) + len(system_lyrics) # start with count of system-level expressive features
+    n_expressive_features_by_path = n_system_expressive_features
+    for i, track in enumerate(music.tracks):
 
-        # scrape various annotations
-        expressive_features = pd.DataFrame(columns = EXPRESSIVE_FEATURE_COLUMNS) # create dataframe
-        staff_annotations = scrape_annotations(annotations = track.annotations, out_columns = EXPRESSIVE_FEATURE_COLUMNS)
-        staff_notes = scrape_notes(notes = track.notes, out_columns = EXPRESSIVE_FEATURE_COLUMNS)
-        staff_lyrics = scrape_lyrics(lyrics = track.lyrics, out_columns = EXPRESSIVE_FEATURE_COLUMNS)
-        expressive_features = pd.concat(
-            objs = (expressive_features, system_annotations, system_barlines, system_timesigs, system_keysigs, system_tempos, staff_annotations, staff_notes, staff_lyrics),
-            axis = 0, ignore_index = True) # update current output
-        expressive_features = expressive_features.sort_values("time") # sort by time
-        seconds_column_name = "time_seconds"
-        expressive_features[seconds_column_name] = expressive_features["time"].apply(lambda time_steps: mscz.metrical_time_to_absolute_time(time_steps = time_steps))
-        expressive_feature_columns = list(EXPRESSIVE_FEATURE_COLUMNS)
-        expressive_feature_columns.insert(expressive_feature_columns.index("time") + 1, seconds_column_name)
-        expressive_features = expressive_features[expressive_feature_columns].reset_index(drop = True) # reorder columns, reset indicies
+        # do not record if track is drum or is an unknown program
+        if track.is_drum or track.program not in representation.KNOWN_PROGRAMS:
+            continue
+        
+        # create BetterMusic object with just one track (we are not doing multitrack)
+        track_music = copy(x = music)
+        track_music.tracks = [track,]
 
+        # extract data
+        data = extract_data(music = track_music, use_implied_duration = False, include_annotation_class_name = True) # duration doesn't matter for our purposes here
+        data = data[data[:, 0] == representation.EXPRESSIVE_FEATURE_TYPE_STRING] # filter down to just expressive features
+        data = pd.DataFrame(data = data[:, [representation.DIMENSIONS.index("time"), data.shape[1] - 1, representation.DIMENSIONS.index("value")]], columns = EXPRESSIVE_FEATURE_COLUMNS) # create pandas data frame
+        staff_lyrics = scrape_lyrics(lyrics = track.lyrics) # get staff-level lyrics
+        expressive_features = pd.concat(objs = (data, staff_lyrics, system_lyrics), axis = 0) # combine data and lyrics
+        n_expressive_features_by_path += (len(expressive_features) - n_system_expressive_features) # update n_expressive_features_by_path
+
+        # create current output (to be pickled)
         current_output = {
             "path" : path,
             "metadata" : metadata_path,
@@ -420,15 +196,15 @@ def extract_expressive_features(path: str, path_output_prefix: str):
             "track" : i,
             "program" : track.program,
             "is_drum" : bool(track.is_drum),
-            "resolution" : mscz.resolution,
+            "resolution" : music.resolution,
             "track_length" : {
-                "time_steps": mscz.song_length,
-                "seconds": mscz.metrical_time_to_absolute_time(time_steps = mscz.song_length),
-                "bars": len(mscz.barlines),
-                "beats": len(mscz.beats)},
+                "time_steps": music.song_length,
+                "seconds": music.metrical_time_to_absolute_time(time_steps = music.song_length),
+                "bars": len(music.barlines),
+                "beats": len(music.beats)},
             "n_annotations" : {
-                "system": len(system_annotations) + len(system_barlines) + len(system_timesigs) + len(system_keysigs) + len(system_tempos),
-                "staff": len(staff_annotations) + len(staff_notes) + len(staff_lyrics)},
+                "system": len(music.annotations),
+                "staff": len(data) - len(music.annotations)},
             "expressive_features" : expressive_features
         }
 
@@ -438,6 +214,7 @@ def extract_expressive_features(path: str, path_output_prefix: str):
         # OUTPUT
         ##################################################
 
+        # output if it is worthwhile (at least some expressive features)
         if len(expressive_features) >= N_EXPRESSIVE_FEATURES_TO_STORE_THRESHOLD:
 
             # create output path from path_output_prefix
@@ -455,7 +232,7 @@ def extract_expressive_features(path: str, path_output_prefix: str):
             path_output = None # because we didn't write this file
 
         # write mapping
-        write_to_file(info = dict(zip(OUTPUT_COLUMNS, (path, i, path_output, metadata_path, version, is_public_domain, True, len(expressive_features)))), output_filepath = MAPPING_OUTPUT_FILEPATH, columns = OUTPUT_COLUMNS)
+        write_to_file(info = dict(zip(OUTPUT_COLUMNS, (path, i, path_output, metadata_path, version, is_public_domain, True, len(expressive_features)))), columns = OUTPUT_COLUMNS, output_filepath = OUTPUT_FILEPATH)
 
         ##################################################
 
@@ -463,9 +240,12 @@ def extract_expressive_features(path: str, path_output_prefix: str):
     # END STATS
     ##################################################
 
+    # write to number expressive features per path
+    write_to_file(info = dict(zip(OUTPUT_COLUMNS_BY_PATH, (path, metadata_path, version, is_public_domain, True, n_expressive_features_by_path))), columns = OUTPUT_COLUMNS_BY_PATH, output_filepath = OUTPUT_FILEPATH_BY_PATH)
+
+    # write to timing output
     end_time = perf_counter()
     total_time = end_time - start_time
-
     write_to_file(info = {"time": total_time}, output_filepath = TIMING_OUTPUT_FILEPATH)
 
     ##################################################
@@ -483,14 +263,14 @@ if __name__ == "__main__":
     args = parse_args()
 
     # constant filepaths
-    METADATA_MAPPING_FILEPATH = f"{args.file_output_dir}/metadata_to_data.csv"
     prefix = basename(args.output_dir)
-    ERROR_MESSAGE_OUTPUT_FILEPATH = f"{args.file_output_dir}/{prefix}.errors.csv"
-    TIMING_OUTPUT_FILEPATH = f"{args.file_output_dir}/{prefix}.timing.txt"
-    MAPPING_OUTPUT_FILEPATH = f"{args.file_output_dir}/{prefix}.csv"
+    ERROR_MESSAGE_OUTPUT_FILEPATH = f"{args.output_dir}/{prefix}.errors.csv"
+    TIMING_OUTPUT_FILEPATH = f"{args.output_dir}/{prefix}.timing.txt"
+    OUTPUT_FILEPATH = f"{args.output_dir}/{prefix}.csv"
+    OUTPUT_FILEPATH_BY_PATH = f"{args.output_dir}/{prefix}.path.csv"
 
     # for getting metadata
-    METADATA = pd.read_csv(filepath_or_buffer = METADATA_MAPPING_FILEPATH, sep = ",", header = 0, index_col = False)
+    METADATA = pd.read_csv(filepath_or_buffer = args.metadata_mapping, sep = ",", header = 0, index_col = False)
     METADATA = {data : (metadata if not pd.isna(metadata) else None) for data, metadata in zip(METADATA["data_path"], METADATA["metadata_path"])}
 
     # set up logging
@@ -504,8 +284,8 @@ if __name__ == "__main__":
     # use glob to get all mscz files
     paths = glob.iglob(pathname = f"/data2/zachary/musescore/data/**", recursive = True) # glob filepaths recursively, generating an iterator object
     paths = tuple(path for path in paths if isfile(path) and path.endswith("mscz")) # filter out non-file elements that were globbed
-    if exists(MAPPING_OUTPUT_FILEPATH):
-        completed_paths = set(pd.read_csv(filepath_or_buffer = MAPPING_OUTPUT_FILEPATH, sep = ",", header = 0, index_col = False)["path"].tolist())
+    if exists(OUTPUT_FILEPATH):
+        completed_paths = set(pd.read_csv(filepath_or_buffer = OUTPUT_FILEPATH, sep = ",", header = 0, index_col = False)["path"].tolist())
         paths = list(path for path in tqdm(iterable = paths, desc = "Determining already-completed paths") if path not in completed_paths)
         paths = tuple(random.sample(paths, len(paths)))
 
@@ -514,15 +294,6 @@ if __name__ == "__main__":
         path = "/".join(path.split("/")[-3:]) # get the base name
         return f"{args.output_dir}/{path.split('.')[0]}"
     path_output_prefixes = tuple(map(get_path_output_prefixes, paths))
-
-    ##################################################
-
-
-    # HELPER FUNCTION TO ALLOW PROGRESS BAR USAGE
-    ##################################################
-
-    # def extract_expressive_features_helper(arguments: list):
-    #     extract_expressive_features(path = arguments[0], path_output_prefix = arguments[1])
 
     ##################################################
 

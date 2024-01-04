@@ -73,7 +73,7 @@ def extract(path: str, path_output_prefix: str) -> int:
 
     Returns
     -------
-    int: # of tracks processed (including failures)
+    int: # of tracks processed
     """
     
     # LOAD IN MSCZ FILE, CONSTANTS
@@ -104,11 +104,7 @@ def extract(path: str, path_output_prefix: str) -> int:
     # LOOP THROUGH TRACKS, SCRAPE OBJECTS
     ##################################################
     
-    n_total = 0
     for i, track in enumerate(music.tracks):
-
-        # increment total number of tracks
-        n_total += 1
 
         # do not record if track is drum or is an unknown program
         if track.is_drum or track.program not in representation.KNOWN_PROGRAMS:
@@ -149,7 +145,7 @@ def extract(path: str, path_output_prefix: str) -> int:
 
     utils.write_to_file(info = {"time": total_time}, output_filepath = TIMING_OUTPUT_FILEPATH)
 
-    return n_total
+    return len(music.tracks)
 
     ##################################################
 

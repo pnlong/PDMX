@@ -18,6 +18,7 @@ from time import perf_counter, strftime, gmtime
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib
+from typing import Tuple
 import numpy as np
 import argparse
 import logging
@@ -67,12 +68,15 @@ def parse_args(args = None, namespace = None):
 # GIVEN PICKLE PATH, EXTRACT INFO
 ##################################################
 
-def extract_information(path: str) -> tuple:
+def extract_information(path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Given a path to a pickled expressive-feature information file, extract some information on said file.
 
-    # what kinds of expressive text are present?
-    # what is the relative distance between successive expression markings (both in notes and in seconds)?
-    #   - if markings are relatively dense we can sub select sequences
-    #   - if they’re sparse than it really depends on what kinds of expression they are
+    what kinds of expressive text are present?
+    what is the relative distance between successive expression markings (both in notes and in seconds)?
+      - if markings are relatively dense we can sub select sequences
+      - if they're sparse than it really depends on what kinds of expression they are
+
+    """
 
     # OPEN PICKLE FILE, DO NECESSARY WRANGLING
     ##################################################
@@ -106,7 +110,7 @@ def extract_information(path: str) -> tuple:
     # CALCULATE DENSITY OF EXPRESSIVE FEATURES
     ##################################################
 
-    density = {time_unit: length / len(expressive_features) for time_unit, length in unpickled["track_length"].items()} # time unit per expressive feature
+    density = {time_unit: (song_length_in_time_unit / len(expressive_features)) for time_unit, song_length_in_time_unit in unpickled["track_length"].items()} # time unit per expressive feature
     density["path"] = path
     density = pd.DataFrame(data = [density], columns = DENSITY_COLUMNS)
     density.to_csv(path_or_buf = PLOT_DATA_OUTPUT_FILEPATHS[list(PLOT_DATA_OUTPUT_FILEPATHS.keys())[0]], sep = ",", na_rep = "NA", header = False, index = False, mode = "a")
@@ -143,8 +147,8 @@ def extract_information(path: str) -> tuple:
     sparsity = sparsity[SPARSITY_COLUMNS].sort_values("time_steps") # sort by increasing times
 
     # helper function to calculate difference between successive rows
-    def calculate_difference_between_successive_entries(df: pd.DataFrame, columns: list):
-        df = df.sort_values(columns[0]) # sort values
+    def calculate_difference_between_successive_entries(df: pd.DataFrame, columns: list) -> pd.DataFrame:
+        df = df.sort_values(by = columns[0]) # sort values
         df_values = df[columns] # store values of columns
         for column in columns: # for every column in columns
             df[column] = rep(x = np.nan, times = len(df)) # set columns' values to None

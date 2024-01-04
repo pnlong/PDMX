@@ -61,11 +61,11 @@ version_labels_mapping = ["1", "2", "3", chr(10006)]
 version_types_mapping = ["All Files", "All Tracks", "Invalid Files"]
 
 # helper function to group by version
-def _group_by_version(df):
-    df.loc[:, "version"] = df["version"].apply(lambda version: str(version).strip()[0] if not pd.isna(version) else version_labels_mapping[-1]) # switch out to base version
+def _group_by_version(df: pd.DataFrame) -> pd.DataFrame:
+    df["version"] = df["version"].apply(lambda version: str(version).strip()[0] if not pd.isna(version) else version_labels_mapping[-1]) # switch out to base version
     df = df.groupby(by = "version").size() # sum over each version
     df = df.reset_index().rename(columns = {0: "count"}) # make error type into column
-    df["percent"] = 100 * df["count"] / df["count"].sum() # calculate percentage
+    df["percent"] = 100 * (df["count"] / df["count"].sum()) # calculate percentage
     return df[["version", "count", "percent"]] # select only subset of columns
 
 def _make_versions_bar_chart(axes: plt.Axes, df: pd.DataFrame, col: str):
@@ -85,9 +85,9 @@ def make_versions_plot(output_filepath: str):
     fig, axes = plt.subplot_mosaic(mosaic = [[version_types_mapping[0], version_types_mapping[1]], [version_types_mapping[2], "bar_all"]], constrained_layout = True, figsize = (12, 8))
     fig.suptitle("Distribution of Musescore Versions", fontweight = "bold")
     bar_data = {
-        version_types_mapping[0]: _group_by_version(df = data_by["path"][versions_columns]),
-        version_types_mapping[1]: _group_by_version(df = data_by["track"][versions_columns]),
-        version_types_mapping[2]: _group_by_version(df = data_by["track"][~data_by["track"]["is_valid"]][versions_columns].reset_index(drop = True))
+        version_types_mapping[0]: _group_by_version(df = data_by["path"][versions_columns].copy()),
+        version_types_mapping[1]: _group_by_version(df = data_by["track"][versions_columns].copy()),
+        version_types_mapping[2]: _group_by_version(df = data_by["track"][~data_by["track"]["is_valid"]][versions_columns].reset_index(drop = True).copy())
     }
     width = 0.2
 
@@ -157,10 +157,10 @@ def make_error_plot(input_filepath: str, output_filepath: str):
 public_domain_labels_mapping = ["path", "track"]
 
 # helper function to group by version
-def _group_by_copyright(df, label):
+def _group_by_copyright(df: pd.DataFrame, label: str) -> pd.DataFrame:
     df = df.groupby(by = "is_public_domain").size() # sum over each version
     df = df.reset_index().rename(columns = {0: "count"}) # make error type into column
-    df["percent"] = 100 * df["count"] / df["count"].sum() # calculate percentage
+    df["percent"] = 100 * (df["count"] / df["count"].sum()) # calculate percentage
     df["type"] = rep(x = public_domain_labels_mapping.index(label), times = len(df))
     return df[["is_public_domain", "count", "percent", "type"]] # select only subset of columns
 
@@ -192,8 +192,8 @@ def make_public_domain_plot(output_filepath: str):
     fig, axes = plt.subplot_mosaic(mosaic = [["count", "percent"]], constrained_layout = True, figsize = (12, 8))
     fig.suptitle("Copyrights for MuseScore Data", fontweight = "bold")
     public_domain = pd.concat(objs = (
-        _group_by_copyright(df = data_by[public_domain_labels_mapping[0]][public_domain_columns], label = public_domain_labels_mapping[0]),
-        _group_by_copyright(df = data_by[public_domain_labels_mapping[1]][public_domain_columns], label = public_domain_labels_mapping[1])
+        _group_by_copyright(df = data_by[public_domain_labels_mapping[0]][public_domain_columns].copy(), label = public_domain_labels_mapping[0]),
+        _group_by_copyright(df = data_by[public_domain_labels_mapping[1]][public_domain_columns].copy(), label = public_domain_labels_mapping[1])
         ), axis = 0)
 
     # make count plot
@@ -331,7 +331,7 @@ if __name__ == "__main__":
     INPUT_FILEPATH = f"{args.input_dir}/expressive_features.csv"
     ERROR_FILEPATH = f"{args.input_dir}/expressive_features.errors.csv"
     TIMING_FILEPATH = f"{args.input_dir}/expressive_features.timing.txt"
-    N_EXPRESSIVE_FEATURES_PER_PATH_FILEPATH = f"{args.input_dir}/n_expressive_features_per_path.csv"
+    INPUT_FILEPATH_BY_PATH = f"{args.input_dir}/expressive_features.path.csv"
 
     logging.basicConfig(level = logging.INFO, format = "%(message)s")
     ##################################################
@@ -344,51 +344,9 @@ if __name__ == "__main__":
 
     # get path- and track-grouped versions of data;
     data_by = {
-        "path" : data.groupby(by = "path", as_index = False).size().reset_index(drop = True).merge(right = data[["path", "metadata", "version", "is_public_domain", "is_valid"]], on = "path", how = "left"), # get the first row path from every file
+        "path" : pd.read_csv(filepath_or_buffer = INPUT_FILEPATH_BY_PATH, sep = ",", header = 0, index_col = False),
         "track": data.drop(columns = "path")
-        }
-
-    n = len(data_by["path"])
-    n_tracks = len(data_by["track"])
-
-    if not exists(N_EXPRESSIVE_FEATURES_PER_PATH_FILEPATH):
-        
-        # calculate number of expressive features per path
-        total_expressive_features_per_path = data[["path", "n_expressive_features"]].groupby(by = "path", as_index = False).sum()
-        tracks_per_path = data_by["path"][["path", "size"]].merge(right = total_expressive_features_per_path, on = "path", how = "inner").merge(right = data.drop_duplicates(subset = "path").reset_index(drop = True)[["path", "expressive_features"]], on = "path", how = "left")
-
-        # add n_expressive_features column
-        data_by["path"]["n_expressive_features"] = rep(x = 0, times = len(data_by["path"]))
-
-        # helper function for multiprocessing
-        def extract_annotations_per_path(i: int):
-            try:
-                with open(str(tracks_per_path.at[i, "expressive_features"]), "rb") as pickle_file:
-                    n_system_annotations = pickle.load(file = pickle_file)["n_annotations"]["system"]
-            except (OSError, FileNotFoundError): # if pickle file not available, assume 2 system annotations: a key signature and a time signature
-                n_system_annotations = 2 # look at the tracks at the path to determine how many system annotations there were
-            data_by["path"].at[i, "n_expressive_features"] = tracks_per_path.at[i, "n_expressive_features"] - ((tracks_per_path.at[i, "size"] - 1) * n_system_annotations) # at least one system
-        
-        # use multiprocessing
-        chunk_size = 1
-        start_time = perf_counter() # start the timer
-        with multiprocessing.Pool(processes = args.jobs) as pool:
-            results = list(tqdm(iterable = pool.imap_unordered(func = extract_annotations_per_path, iterable = tracks_per_path.index, chunksize = chunk_size), desc = "Parsing Pickle Files", total = len(tracks_per_path)))
-        end_time = perf_counter() # stop the timer
-        total_time = end_time - start_time # compute total time elapsed
-        total_time = strftime("%H:%M:%S", gmtime(total_time)) # convert into pretty string
-        logging.info(f"Total time: {total_time}")
-            
-        # data_by["path"]["n_expressive_features"] = data_by["path"]["n_expressive_features"].apply(lambda n_expressive_features: max(n_expressive_features, DIVIDE_BY_ZERO_CONSTANT)) # get rid of negative numbers if there are any
-        del tracks_per_path, total_expressive_features_per_path
-
-        # write the n_expressive_features per path to original file
-        data_by["path"].to_csv(path_or_buf = N_EXPRESSIVE_FEATURES_PER_PATH_FILEPATH, sep = ",", na_rep = "NA", header = True, index = False)
-
-    else: # if we previously calculated n_expressive_features_per_path, just reload it
-
-        # reload data_by["path"]
-        data_by["path"] = pd.read_csv(filepath_or_buffer = N_EXPRESSIVE_FEATURES_PER_PATH_FILEPATH, sep = ",", header = 0, index_col = False)
+    }
 
     ##################################################
 
