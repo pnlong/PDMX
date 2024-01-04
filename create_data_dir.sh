@@ -12,6 +12,7 @@
 datadir="/data2/pnlong/musescore/data" # default value for datadir
 zachdir="/data2/zachary/musescore/data"
 basedir="$(echo "$zachdir" | cut -d'/' -f2)"
+usage="Usage: $(basename $0) [-f] (the directory in which to create the directory structure)"
 
 # parse command line arguments
 while getopts ':f:h' opt; do
@@ -20,15 +21,15 @@ while getopts ':f:h' opt; do
       datadir="$OPTARG"
       ;;
     h)
-      echo "Usage: $(basename $0) [-f]"
+      echo $usage
       exit 0
       ;;
     :)
-      echo -e "option requires an argument.\nUsage: $(basename $0) [-f]"
+      echo -e "option requires an argument.\n$usage"
       exit 1
       ;;
     ?)
-      echo -e "Invalid command option.\nUsage: $(basename $0) [-f]"
+      echo -e "Invalid command option.\n$usage"
       exit 1
       ;;
   esac

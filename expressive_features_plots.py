@@ -33,7 +33,7 @@ from utils import rep
 ##################################################
 
 INPUT_FILEPATH = "/data2/pnlong/musescore/expressive_features.csv"
-FILE_OUTPUT_DIR = "/data2/pnlong/musescore"
+FILE_OUTPUT_DIR = "/data2/pnlong/musescore/expressive_features"
 
 COLORS = ("#186F65", "#B5CB99", "#FCE09B", "#B2533E")
 LINE_COLORS = ("tab:blue", "tab:red", "tab:green", "tab:orange", "tab:purple", "tab:brown", "tab:pink", "tab:olive", "tab:cyan")
@@ -178,7 +178,7 @@ def extract_information(path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataF
 # DENSITY
 ##################################################
 
-def make_density_plot(output_filepath: str):
+def make_density_plot(output_filepath: str) -> None:
 
     relevant_density_types = ["seconds", "bars", "beats"]
 
@@ -271,7 +271,7 @@ def make_feature_summary_plot(output_filepath: str) -> list:
 # SHOW SPARSITY OF EXPRESSIVE FEATURES
 ##################################################
 
-def make_sparsity_plot(output_filepath_prefix: str, expressive_feature_types: list):
+def make_sparsity_plot(output_filepath_prefix: str, expressive_feature_types: list) -> None:
 
     # hyper parameters
     relevant_time_units = ["beats", "seconds"]
