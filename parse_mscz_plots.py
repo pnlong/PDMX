@@ -14,12 +14,10 @@ import pandas as pd
 from numpy import percentile, log10, arange
 import matplotlib.pyplot as plt
 from os.path import exists
-import pickle
-from time import perf_counter
+from os import makedirs
 import multiprocessing
 import argparse
 import logging
-from tqdm import tqdm
 from time import strftime, gmtime
 from read_mscz.music import DIVIDE_BY_ZERO_CONSTANT
 from utils import rep
@@ -30,8 +28,8 @@ from utils import rep
 # CONSTANTS
 ##################################################
 
-INPUT_DIR = "/data2/pnlong/musescore"
-OUTPUT_DIR = "/data2/pnlong/musescore/plots"
+INPUT_DIR = "/data2/pnlong/musescore/expressive_features"
+OUTPUT_DIR = "/data2/pnlong/musescore/expressive_features/plots"
 OUTPUT_RESOLUTION_DPI = 200
 
 COLORS = ("#9BC1BC", "#F4F1BB", "#ED6A5A") # color palette copied from https://coolors.co/palettes/popular/3%20colors
@@ -82,6 +80,7 @@ def make_versions_plot(output_filepath: str):
     versions_columns = ["version", "is_valid"]
 
     # create figure
+    plt.set_loglevel("WARNING") # to avoid Using categorical units to plot a list of strings that are all parsable as floats or dates. If these strings should be plotted as numbers, cast to the appropriate data type before plotting.
     fig, axes = plt.subplot_mosaic(mosaic = [[version_types_mapping[0], version_types_mapping[1]], [version_types_mapping[2], "bar_all"]], constrained_layout = True, figsize = (12, 8))
     fig.suptitle("Distribution of Musescore Versions", fontweight = "bold")
     bar_data = {
@@ -127,6 +126,7 @@ def make_error_plot(input_filepath: str, output_filepath: str):
     errors = pd.read_csv(filepath_or_buffer = input_filepath, sep = ",", header = 0, index_col = False)
 
     n_errors = len(errors)
+    n = len(data_by["path"])
     error_rate = n_errors / n
 
     # create figure
@@ -296,7 +296,7 @@ def make_tracks_plot(output_filepath: str):
     fig, axes = plt.subplot_mosaic(mosaic = [["box", "hist", "hist"]], constrained_layout = True, figsize = (12, 8))
     fig.suptitle("Number of Tracks per MuseScore File", fontweight = "bold")
 
-    tracks_data = data_by["path"][data_by["path"]["is_valid"]]["size"]
+    tracks_data = data_by["path"]["n_tracks"] # data_by["track"][data_by["track"]["is_valid"]].groupby(by = "path").size().tolist()
     upper_limit_of_interest = 50
 
     # boxplot
@@ -327,25 +327,33 @@ if __name__ == "__main__":
 
     # CONSTANTS
     ##################################################
+
+    # command line arguments
     args = parse_args()
     INPUT_FILEPATH = f"{args.input_dir}/expressive_features.csv"
     ERROR_FILEPATH = f"{args.input_dir}/expressive_features.errors.csv"
     TIMING_FILEPATH = f"{args.input_dir}/expressive_features.timing.txt"
     INPUT_FILEPATH_BY_PATH = f"{args.input_dir}/expressive_features.path.csv"
 
+    # make sure directories exist
+    if not exists(args.input_dir):
+        makedirs(args.input_dir)
+    if not exists(args.output_dir):
+        makedirs(args.output_dir)
+
+    # set up logging
     logging.basicConfig(level = logging.INFO, format = "%(message)s")
+
     ##################################################
 
 
     # READ IN DATA FRAME
     ##################################################
 
-    data = pd.read_csv(filepath_or_buffer = INPUT_FILEPATH, sep = ",", header = 0, index_col = False)
-
     # get path- and track-grouped versions of data;
     data_by = {
         "path" : pd.read_csv(filepath_or_buffer = INPUT_FILEPATH_BY_PATH, sep = ",", header = 0, index_col = False),
-        "track": data.drop(columns = "path")
+        "track": pd.read_csv(filepath_or_buffer = INPUT_FILEPATH, sep = ",", header = 0, index_col = False)
     }
 
     ##################################################

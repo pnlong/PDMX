@@ -13,6 +13,7 @@
 import pickle
 import multiprocessing
 from os.path import exists
+from os import makedirs
 from tqdm import tqdm
 from time import perf_counter, strftime, gmtime
 import pandas as pd
@@ -475,11 +476,24 @@ if __name__ == "__main__":
 
     # CONSTANTS
     ##################################################
+
+    # command-line arguments
     args = parse_args()
+
+    # make sure files/directories exist
+    if not exists(args.input_filepath):
+        raise FileNotFoundError(f"{args.input_filepath} does not exist.")
+    if not exists(args.file_output_dir):
+        makedirs(args.file_output_dir)
+    if not exists(args.output_dir):
+        makedirs(args.output_dir)
+
     # output filepaths for data used in plots
     PLOT_DATA_OUTPUT_FILEPATHS = {plot_type : f"{args.file_output_dir}/{plot_type}.csv" for plot_type in ("density", "feature_types_summary", "sparsity")}
 
+    # set up logging
     logging.basicConfig(level = logging.INFO, format = "%(message)s")
+
     ##################################################
 
 

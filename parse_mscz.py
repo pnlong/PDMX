@@ -39,8 +39,8 @@ INPUT_DIR = "/data2/pnlong/musescore"
 METADATA_MAPPING = f"{INPUT_DIR}/metadata_to_data.csv"
 OUTPUT_DIR = f"{INPUT_DIR}/expressive_features"
 EXPRESSIVE_FEATURE_COLUMNS = ["time", "type", "value"]
-OUTPUT_COLUMNS = ["path", "track", "expressive_features", "metadata", "version", "is_public_domain", "is_valid", "n_expressive_features"]
-OUTPUT_COLUMNS_BY_PATH = ["path", "metadata", "version", "is_public_domain", "is_valid", "n_expressive_features"]
+OUTPUT_COLUMNS = ["path", "track", "expressive_features", "metadata", "version", "is_public_domain", "is_valid", "n_expressive_features", "n_expressive_features_with_lyrics"]
+OUTPUT_COLUMNS_BY_PATH = ["path", "metadata", "version", "is_public_domain", "is_valid", "n_tracks", "n_expressive_features", "n_expressive_features_with_lyrics"]
 ERROR_COLUMNS = ["path", "error_type", "error_message"]
 NA_STRING = "NA"
 N_EXPRESSIVE_FEATURES_TO_STORE_THRESHOLD = 2
@@ -151,10 +151,11 @@ def extract_expressive_features(path: str, path_output_prefix: str):
         else:
             error_type = "other"
         # output error message to file
-        write_to_file(info = dict(zip(ERROR_COLUMNS, (path, error_type, error_message.replace(",", "")))), output_filepath = ERROR_MESSAGE_OUTPUT_FILEPATH, columns = ERROR_COLUMNS)
-        # write mapping
-        write_to_file(info = dict(zip(OUTPUT_COLUMNS, (path, None, None, metadata_path, version, is_public_domain, False, None))), output_filepath = OUTPUT_FILEPATH, columns = OUTPUT_COLUMNS)
-
+        write_to_file(info = dict(zip(ERROR_COLUMNS, (path, error_type, error_message.replace(",", "")))), columns = ERROR_COLUMNS, output_filepath = ERROR_MESSAGE_OUTPUT_FILEPATH)
+        # write mapping by track
+        write_to_file(info = dict(zip(OUTPUT_COLUMNS, (path, None, None, metadata_path, version, is_public_domain, False, None, None))), columns = OUTPUT_COLUMNS, output_filepath = OUTPUT_FILEPATH)
+        # write mapping by path
+        write_to_file(info = dict(zip(OUTPUT_COLUMNS_BY_PATH, (path, metadata_path, version, is_public_domain, False, None, None, None))), columns = OUTPUT_COLUMNS_BY_PATH, output_filepath = OUTPUT_FILEPATH_BY_PATH)
         return None # exit here
 
     # start timer
@@ -167,13 +168,17 @@ def extract_expressive_features(path: str, path_output_prefix: str):
     ##################################################
     
     system_lyrics = scrape_lyrics(lyrics = music.lyrics) # get system-level lyrics
-    n_system_expressive_features = len(music.annotations) + len(music.tempos) + (len(music.key_signatures) - 1) + (len(music.time_signatures) - 1) + len(list(filter(lambda barline: not ((barline.subtype == "single") or ("repeat" in barline.subtype.lower())), music.barlines))) + len(system_lyrics) # start with count of system-level expressive features
-    n_expressive_features_by_path = n_system_expressive_features
+    n_system_expressive_features = len(music.annotations) + len(music.tempos) + (len(music.key_signatures) - 1) + (len(music.time_signatures) - 1) + len(list(filter(lambda barline: not ((barline.subtype == "single") or ("repeat" in barline.subtype.lower())), music.barlines))) # start with count of system-level expressive features
+    n_system_expressive_features_with_lyrics = n_system_expressive_features + len(system_lyrics) # add lyrics to the count
+    n_expressive_features_by_path, n_expressive_features_by_path_with_lyrics = n_system_expressive_features, n_system_expressive_features_with_lyrics
+    n_tracks = 0
     for i, track in enumerate(music.tracks):
 
         # do not record if track is drum or is an unknown program
         if track.is_drum or track.program not in representation.KNOWN_PROGRAMS:
             continue
+        else:
+            n_tracks += 1
         
         # create BetterMusic object with just one track (we are not doing multitrack)
         track_music = copy(x = music)
@@ -183,9 +188,10 @@ def extract_expressive_features(path: str, path_output_prefix: str):
         data = extract_data(music = track_music, use_implied_duration = False, include_annotation_class_name = True) # duration doesn't matter for our purposes here
         data = data[data[:, 0] == representation.EXPRESSIVE_FEATURE_TYPE_STRING] # filter down to just expressive features
         data = pd.DataFrame(data = data[:, [representation.DIMENSIONS.index("time"), data.shape[1] - 1, representation.DIMENSIONS.index("value")]], columns = EXPRESSIVE_FEATURE_COLUMNS) # create pandas data frame
+        n_expressive_features_by_path += (len(data) - n_system_expressive_features) # update n_expressive_features_by_path
         staff_lyrics = scrape_lyrics(lyrics = track.lyrics) # get staff-level lyrics
         expressive_features = pd.concat(objs = (data, staff_lyrics, system_lyrics), axis = 0) # combine data and lyrics
-        n_expressive_features_by_path += (len(expressive_features) - n_system_expressive_features) # update n_expressive_features_by_path
+        n_expressive_features_by_path_with_lyrics += (len(expressive_features) - n_system_expressive_features_with_lyrics) # update n_expressive_features_by_path_with_lyrics
 
         # create current output (to be pickled)
         current_output = {
@@ -202,9 +208,6 @@ def extract_expressive_features(path: str, path_output_prefix: str):
                 "seconds": music.metrical_time_to_absolute_time(time_steps = music.song_length),
                 "bars": len(music.barlines),
                 "beats": len(music.beats)},
-            "n_annotations" : {
-                "system": len(music.annotations),
-                "staff": len(data) - len(music.annotations)},
             "expressive_features" : expressive_features
         }
 
@@ -232,7 +235,7 @@ def extract_expressive_features(path: str, path_output_prefix: str):
             path_output = None # because we didn't write this file
 
         # write mapping
-        write_to_file(info = dict(zip(OUTPUT_COLUMNS, (path, i, path_output, metadata_path, version, is_public_domain, True, len(expressive_features)))), columns = OUTPUT_COLUMNS, output_filepath = OUTPUT_FILEPATH)
+        write_to_file(info = dict(zip(OUTPUT_COLUMNS, (path, i, path_output, metadata_path, version, is_public_domain, True, len(data), len(expressive_features)))), columns = OUTPUT_COLUMNS, output_filepath = OUTPUT_FILEPATH)
 
         ##################################################
 
@@ -241,7 +244,7 @@ def extract_expressive_features(path: str, path_output_prefix: str):
     ##################################################
 
     # write to number expressive features per path
-    write_to_file(info = dict(zip(OUTPUT_COLUMNS_BY_PATH, (path, metadata_path, version, is_public_domain, True, n_expressive_features_by_path))), columns = OUTPUT_COLUMNS_BY_PATH, output_filepath = OUTPUT_FILEPATH_BY_PATH)
+    write_to_file(info = dict(zip(OUTPUT_COLUMNS_BY_PATH, (path, metadata_path, version, is_public_domain, True, n_tracks, n_expressive_features_by_path, n_expressive_features_by_path_with_lyrics))), columns = OUTPUT_COLUMNS_BY_PATH, output_filepath = OUTPUT_FILEPATH_BY_PATH)
 
     # write to timing output
     end_time = perf_counter()

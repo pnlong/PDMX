@@ -62,17 +62,16 @@ def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser()
     # paths
-    parser.add_argument("-i", "--data_dir", default = DATA_DIR, type = str, help = "Input data directory")
-    parser.add_argument("-t", "--paths_train", default = PATHS_TRAIN, type = str, help = ".txt file with absolute filepaths to training dataset.")
-    parser.add_argument("-v", "--paths_valid", default = PATHS_VALID, type = str, help = ".txt file with absolute filepaths to validation dataset.")
+    parser.add_argument("-pt", "--paths_train", default = PATHS_TRAIN, type = str, help = ".txt file with absolute filepaths to training dataset.")
+    parser.add_argument("-pv", "--paths_valid", default = PATHS_VALID, type = str, help = ".txt file with absolute filepaths to validation dataset.")
     parser.add_argument("-e", "--encoding", default = ENCODING_FILEPATH, type = str, help = ".json file with encoding information.")
-    parser.add_argument("-o", "--output_dir", default = OUTPUT_DIR, type = str, help = "Output directory")
+    parser.add_argument("-o", "--output_dir", default = OUTPUT_DIR, type = str, help = "Output directory that contains any necessary files/subdirectories (such as model checkpoints) created at runtime")
     # data
     parser.add_argument("-bs", "--batch_size", default = 8, type = int, help = "Batch size")
     parser.add_argument("--aug", action = argparse.BooleanOptionalAction, default = True, help = "Whether to use data augmentation")
     parser.add_argument("-c", "--conditioning", default = encode.DEFAULT_CONDITIONING, choices = encode.CONDITIONINGS, type = str, help = "Conditioning type")
     parser.add_argument("-s", "--sigma", default = encode.SIGMA, type = float, help = "Sigma anticipation value (for anticipation conditioning, ignored when --conditioning != 'anticipation')")
-    parser.add_argument("-b", "--baseline", action = "store_true", help = "Whether or not this is training the baseline model. The baseline ignores all expressive features.")
+    parser.add_argument("--baseline", action = "store_true", help = "Whether or not this is training the baseline model. The baseline ignores all expressive features.")
     # model
     parser.add_argument("--max_seq_len", default = 1024, type = int, help = "Maximum sequence length")
     parser.add_argument("--max_beat", default = 256, type = int, help = "Maximum number of beats")
@@ -138,8 +137,6 @@ if __name__ == "__main__":
         raise ValueError("Invalid --paths_train argument. File does not exist.")
     if not exists(args.paths_valid):
         raise ValueError("Invalid --paths_valid argument. File does not exist.")
-    if not exists(args.data_dir):
-        raise ValueError("Invalid --data_dir argument. Directory does not exist, so there is no data on which to train.")
     args.output_dir = f"{args.output_dir}/{args.conditioning if not args.baseline else 'baseline'}" # custom output directory based on arguments
     if not exists(args.output_dir):
         makedirs(args.output_dir)
