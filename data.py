@@ -34,9 +34,9 @@ from read_mscz.classes import *
 # CONSTANTS
 ##################################################
 
+INPUT_DIR = "/data2/pnlong/musescore"
+MSCZ_FILEPATHS = f"{INPUT_DIR}/relevant_mscz_files.txt"
 OUTPUT_DIR = "/data2/pnlong/musescore/data"
-FILE_OUTPUT_DIR = "/data2/pnlong/musescore"
-MSCZ_FILEPATHS = f"{FILE_OUTPUT_DIR}/relevant_mscz_files.txt"
 OUTPUT_COLUMNS = ("path", "musescore", "track", "metadata", "version", "n")
 
 ##################################################
@@ -49,8 +49,8 @@ def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(prog = "Data", description = "Extract Notes and Expressive Features from MuseScore Data.")
     parser.add_argument("-p", "--paths", type = str, default = MSCZ_FILEPATHS, help = "List of (absolute) filepaths to MuseScore files whose data will be extracted")
+    parser.add_argument("-i", "--input_dir", type = str, default = INPUT_DIR, help = "Directory containing all data tables needed as input")
     parser.add_argument("-o", "--output_dir", type = str, default = OUTPUT_DIR, help = "Output directory")
-    parser.add_argument("-f", "--file_output_dir", type = str, default = FILE_OUTPUT_DIR, help = "Directory to output any data tables")
     parser.add_argument('-ed', '--explicit_duration', action = "store_true", help = "Whether or not to calculate the 'implied duration' of features without an explicitly-defined duration.")
     parser.add_argument("-j", "--jobs", type = int, default = int(multiprocessing.cpu_count() / 4), help = "Number of Jobs")
     return parser.parse_args(args = args, namespace = namespace)
@@ -165,11 +165,9 @@ if __name__ == "__main__":
     args = parse_args()
     if not exists(args.output_dir): # make output_dir if it doesn't yet exist
         makedirs(args.output_dir)
-    if not exists(args.file_output_dir): # make file_output_dir if it doesn't yet exist
-        makedirs(args.file_output_dir)
 
     # some constants
-    METADATA_MAPPING_FILEPATH = f"{args.file_output_dir}/metadata_to_data.csv"
+    METADATA_MAPPING_FILEPATH = f"{args.input_dir}/metadata_to_data.csv"
     prefix = basename(args.output_dir)
     TIMING_OUTPUT_FILEPATH = f"{args.output_dir}/{prefix}.timing.txt"
     MAPPING_OUTPUT_FILEPATH = f"{args.output_dir}/{prefix}.csv"
@@ -190,7 +188,7 @@ if __name__ == "__main__":
 
     # create list of paths if does not exist
     if not exists(args.paths):
-        data = pd.read_csv(filepath_or_buffer = f"{args.file_output_dir}/expressive_features.csv", sep = ",", header = 0, index_col = False) # load in data frame
+        data = pd.read_csv(filepath_or_buffer = f"{args.input_dir}/expressive_features/expressive_features.csv", sep = ",", header = 0, index_col = False) # load in data frame
         data = data[data["is_valid"] & data["is_public_domain"] & (data["n_expressive_features"] > 0)] # filter
         paths = pd.unique(values = data["path"]).tolist()
         with open(args.paths, "w") as file:
