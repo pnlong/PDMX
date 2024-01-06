@@ -32,6 +32,7 @@ import torch
 import torch.utils.data
 from tqdm import tqdm
 import wandb
+import datetime
 
 from dataset import MusicDataset
 import music_x_transformers
@@ -162,7 +163,8 @@ if __name__ == "__main__":
             print(logging_output.read())
 
     # start a new wandb run to track the script
-    run = wandb.init(project = "ExpressionNet-Train", config = vars(args), name = basename(args.output_dir), resume = args.resume) # set project title, configure with hyperparameters
+    current_datetime = datetime.datetime.now().strftime("%-m/%-d/%y;%-H:%M")
+    run = wandb.init(project = "ExpressionNet-Train", config = vars(args), name = f"{basename(args.output_dir)}-{current_datetime}", resume = args.resume) # set project title, configure with hyperparameters
 
     ##################################################
 
