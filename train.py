@@ -287,14 +287,14 @@ if __name__ == "__main__":
 
             # update the model parameters
             optimizer.zero_grad()
-            loss = model(seq, mask = mask)
-            loss.backward()
+            loss_batch = model(seq, mask = mask)
+            loss_batch.backward()
             torch.nn.utils.clip_grad_norm_(parameters = model.parameters(), max_norm = args.grad_norm_clip)
             optimizer.step()
             scheduler.step()
 
             # compute the moving average of the loss
-            recent_losses.append(float(loss))
+            recent_losses.append(float(loss_batch))
             if len(recent_losses) > 10:
                 del recent_losses[0]
             loss[PARTITIONS[0]] = np.mean(a = recent_losses, axis = 0)
@@ -322,24 +322,24 @@ if __name__ == "__main__":
 
             total_loss, count = 0, 0
             total_losses = [0] * len(encoding["dimensions"])
-            for batch in data_loader[PARTITIONS[1]]:
+            for batch in tqdm(iterable = data_loader[PARTITIONS[1]], desc = "Validating"):
 
                 # get input and output pair
                 seq = batch["seq"].to(device)
                 mask = batch["mask"].to(device)
 
                 # pass through the model
-                loss, losses = model(seq, return_list = True, mask = mask)
+                loss_batch, losses_batch = model(seq, return_list = True, mask = mask)
 
                 # accumulate validation loss
                 count += len(batch)
-                total_loss += len(batch) * float(loss)
+                total_loss += len(batch) * float(loss_batch)
                 for index in range(len(encoding["dimensions"])):
-                    total_losses[index] += float(losses[index])
+                    total_losses[index] += float(losses_batch[index])
         
         # get loss
         loss[PARTITIONS[1]] = total_loss / count
-        individual_losses = {dimension: (loss / count) for dimension, loss in zip(encoding["dimensions"], total_losses)}
+        individual_losses = {dimension: (loss_by_dimension / count) for dimension, loss_by_dimension in zip(encoding["dimensions"], total_losses)}
 
         # output statistics
         logging.info(f"Validation loss: {loss[PARTITIONS[1]]:.4f}")
