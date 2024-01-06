@@ -363,7 +363,7 @@ if __name__ == "__main__":
         loss_csv.write(f"{step},{loss[PARTITIONS[0]]},{loss[PARTITIONS[1]]}," + ",".join(map(str, individual_losses)) + "\n")
 
         # see whether or not to save
-        is_an_improvement = False
+        is_an_improvement = False # whether or not the loss has improved
         for partition in PARTITIONS[:2]:
             if loss[partition] < min_loss[partition]:
                 min_loss[partition] = loss[partition]
@@ -373,10 +373,10 @@ if __name__ == "__main__":
                 torch.save(obj = optimizer.state_dict(), f = optimizer_filepath) # save the optimizer state
                 scheduler_filepath = f"{CHECKPOINTS_DIR}/scheduler_{step}.pth" # path to scheduler
                 torch.save(obj = scheduler.state_dict(), f = scheduler_filepath) # save the scheduler state
-                logging.info(f"Model: {checkpoint_filepath}; Optimizer: {optimizer_filepath}; Scheduler: {scheduler_filepath}") # log paths to which states were saved
-                shutil.copyfile(src = checkpoint_filepath, dst = best_model_filepath[partition])
-                shutil.copyfile(src = optimizer_filepath, dst = best_optimizer_filepath[partition])
-                shutil.copyfile(src = scheduler_filepath, dst = best_scheduler_filepath[partition])
+                logging.info(f"{partition}_loss minimized. Model: {checkpoint_filepath}; Optimizer: {optimizer_filepath}; Scheduler: {scheduler_filepath}.") # log paths to which states were saved
+                shutil.copyfile(src = checkpoint_filepath, dst = best_model_filepath[partition]) # copy to best model
+                shutil.copyfile(src = optimizer_filepath, dst = best_optimizer_filepath[partition]) # copy to best optimizer
+                shutil.copyfile(src = scheduler_filepath, dst = best_scheduler_filepath[partition]) # copy to best scheduler
                 if args.early_stopping: # reset the early stopping counter if we found a better model
                     count_early_stopping = 0
                     is_an_improvement = True # we only care about the lack of improvement when we are thinking about early stopping, so turn off this boolean flag, since there was an improvement
