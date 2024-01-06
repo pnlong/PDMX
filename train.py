@@ -373,7 +373,7 @@ if __name__ == "__main__":
                 torch.save(obj = optimizer.state_dict(), f = optimizer_filepath) # save the optimizer state
                 scheduler_filepath = f"{CHECKPOINTS_DIR}/scheduler_{step}.pth" # path to scheduler
                 torch.save(obj = scheduler.state_dict(), f = scheduler_filepath) # save the scheduler state
-                logging.info(f"{partition}_loss minimized. Model: {checkpoint_filepath}; Optimizer: {optimizer_filepath}; Scheduler: {scheduler_filepath}.") # log paths to which states were saved
+                logging.info(f"Best {partition}_loss so far! Checkpoints saved in {CHECKPOINTS_DIR}. Model: {basename(checkpoint_filepath)}; Optimizer: {basename(optimizer_filepath)}; Scheduler: {basename(scheduler_filepath)}.") # log paths to which states were saved
                 shutil.copyfile(src = checkpoint_filepath, dst = best_model_filepath[partition]) # copy to best model
                 shutil.copyfile(src = optimizer_filepath, dst = best_optimizer_filepath[partition]) # copy to best optimizer
                 shutil.copyfile(src = scheduler_filepath, dst = best_scheduler_filepath[partition]) # copy to best scheduler
