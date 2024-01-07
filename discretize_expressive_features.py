@@ -20,8 +20,8 @@ import pandas as pd
 import argparse
 import logging
 from re import sub
-from representation import clean_up_text as data_text_clean
-from utils import rep
+from encode import clean_up_text as data_text_clean
+from utils import rep, unique
 
 ##################################################
 
@@ -32,7 +32,7 @@ from utils import rep
 INPUT_FILEPATH = "/data2/pnlong/musescore/expressive_features.csv"
 OUTPUT_FILEPATH = "/data2/pnlong/musescore/discrete_expressive_features.csv"
 
-OUTPUT_COLUMNS = ["type", "feature"]
+OUTPUT_COLUMNS = ["type", "value"]
 NA_VALUE = "NA"
 MISSING_VALUE = "no value"
 MAX_DISCRETE_VALUES_TO_CARE_ABOUT = 1000 # when displaying discretized values, display a maximum of this number if there are more than that
@@ -95,14 +95,14 @@ def extract_information(path: str, output_filepath: str):
         return None
     
     # extract expressive features dataframe
-    expressive_features = unpickled.pop("expressive_features") # ("time", "measure", "duration", "type", "feature", "comment")
+    expressive_features = unpickled.pop("expressive_features") # ("time", "type", "value")
     del unpickled
 
     # remove spanner subfix
     # expressive_features["type"] = expressive_features["type"].apply(lambda type_: type_.replace("Spanner", ""))
 
     # fix missing feature values
-    expressive_features["feature"] = expressive_features["feature"].apply(lambda feature: feature if feature is not None else MISSING_VALUE)
+    expressive_features["value"] = expressive_features["value"].apply(lambda value: value if value is not None else MISSING_VALUE)
 
     # extract specific columns
     expressive_features = expressive_features[OUTPUT_COLUMNS]
@@ -159,11 +159,11 @@ if __name__ == "__main__":
         total_time = strftime("%H:%M:%S", gmtime(total_time)) # convert into pretty string
         logging.info(f"Total time: {total_time}")
 
+        # clean up text, arrange, write temp output
         data = pd.read_csv(filepath_or_buffer = temp_output_filepath, sep = ",", na_values = NA_VALUE, header = 0, index_col = False)
-
         data = data.groupby(by = OUTPUT_COLUMNS, as_index = False).size()
-        # data = data[data["feature"] != str(None)] # filter out None values
-        data["feature"] = data["feature"].apply(clean_up_text)
+        # data = data[data["value"] != str(None)] # filter out None values
+        data["value"] = data["value"].apply(clean_up_text)
         data = data.sort_values(by = ["type", "size"], ascending = False)
         data.to_csv(path_or_buf = args.output_filepath, sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w")
         remove(temp_output_filepath)
@@ -181,14 +181,14 @@ if __name__ == "__main__":
 
     # relevant expressive feature types we care about extracting
     expressive_feature_types = pd.unique(values = data["type"])
-    # expressive_feature_types = {"GraceNote", "Barline", "TimeSignature", "KeySignature", "Tempo", "Text", "RehearsalMark", "Dynamic", "HairPin", "Fermata", "TechAnnotation", "Symbol", "Articulation", "Slur", "Pedal"}
+    # expressive_feature_types = {"Barline", "TimeSignature", "KeySignature", "Tempo", "Text", "RehearsalMark", "Dynamic", "HairPin", "Fermata", "TechAnnotation", "Symbol", "Articulation", "Slur", "Pedal"}
     output = {expressive_feature_type: ["", 0] for expressive_feature_type in expressive_feature_types}
 
     # create ouptut
     for expressive_feature_type in expressive_feature_types:
-        expressive_feature_type_subtypes = data[data["type"] == expressive_feature_type]["feature"].tolist()
+        expressive_feature_type_subtypes = data[data["type"] == expressive_feature_type]["value"].tolist()
         if expressive_feature_type in ("Text", "TextSpanner", "RehearsalMark", "HairPinSpanner", "TempoSpanner"):
-            expressive_feature_type_subtypes = list(dict.fromkeys([data_text_clean(text = str(expressive_feature_type_subtype)) for expressive_feature_type_subtype in expressive_feature_type_subtypes]))
+            expressive_feature_type_subtypes = unique(l = [data_text_clean(text = str(expressive_feature_type_subtype)) for expressive_feature_type_subtype in expressive_feature_type_subtypes])
         output[expressive_feature_type][1] = len(expressive_feature_type_subtypes) # for sorting by this value later
         n_expressive_feature_subtypes = str(output[expressive_feature_type][1])
         # if len(expressive_feature_type_subtypes) == 0:

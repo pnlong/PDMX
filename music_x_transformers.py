@@ -442,7 +442,7 @@ class MusicXTransformer(nn.Module):
 
     # forward pass
     def forward(self, seq: torch.tensor, mask: torch.tensor = None, **kwargs):
-        return self.decoder(seq, mask = mask, **kwargs)
+        return self.decoder(x = seq, mask = mask, **kwargs)
 
 ##################################################
 

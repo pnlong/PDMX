@@ -237,8 +237,8 @@ def make_percentile_plot(output_filepath: str):
     percentile_values = {
         legend_values[0]: percentile(a = data_by["track"][data_by["track"]["is_valid"]]["n_expressive_features"], q = percentiles),
         legend_values[1]: percentile(a = data_by["track"][data_by["track"]["is_valid"] & data_by["track"]["is_public_domain"]]["n_expressive_features"], q = percentiles),
-        legend_values[2]: percentile(a = data_by["path"][data_by["path"]["is_valid"]]["n_expressive_features"], q = percentiles),
-        legend_values[3]: percentile(a = data_by["path"][data_by["path"]["is_valid"] & data_by["path"]["is_public_domain"]]["n_expressive_features"], q = percentiles)
+        legend_values[2]: percentile(a = data_by["path"][data_by["path"]["is_valid"] & (data_by["path"]["n_expressive_features"] >= 0)]["n_expressive_features"], q = percentiles),
+        legend_values[3]: percentile(a = data_by["path"][data_by["path"]["is_valid"] & data_by["path"]["is_public_domain"] & (data_by["path"]["n_expressive_features"] >= 0)]["n_expressive_features"], q = percentiles)
         }
     df = pd.concat(objs = [pd.DataFrame(data = {"type": rep(x = legend_value, times = len(percentiles)), "percentile": percentiles, "log": log10(percentile_values[legend_value] + DIVIDE_BY_ZERO_CONSTANT)}) for legend_value in legend_values], axis = 0)
 
@@ -308,7 +308,7 @@ def make_tracks_plot(output_filepath: str):
 
     # histogram
     binwidth = 5
-    axes["hist"].hist(x = tracks_data, bins = range(0, max(tracks_data) + binwidth, binwidth), color = COLORS[0], edgecolor = "0")
+    axes["hist"].hist(x = tracks_data, bins = range(0, int(max(tracks_data)) + binwidth, binwidth), color = COLORS[0], edgecolor = "0")
     axes["hist"].set_xlim(left = 0, right = upper_limit_of_interest)
     axes["hist"].set_xlabel("Number of Tracks")
     axes["hist"].set_ylabel("Count")

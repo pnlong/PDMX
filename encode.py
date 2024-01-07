@@ -438,9 +438,10 @@ def extract_data(music: BetterMusic, use_implied_duration: bool = True, include_
 
     # sort by time
     output = output[np.lexsort(keys = ([representation.TYPE_CODE_MAP[type_] for type_ in output[:, 0]], output[:, time_dim]), axis = 0)] # sort order
-    if len(output) > 0: # set start beat to 0
-        output[:, time_dim] = output[:, time_dim] - output[0, time_dim]
-        output[:, time_dim + 1] = output[:, time_dim + 1] - output[0, time_dim + 1]
+    if len(output) > 0:
+        output[:, output_columns.index("beat")] = output[:, output_columns.index("beat")] - output[0, output_columns.index("beat")] # start beat to 0
+        output[:, time_dim] = output[:, time_dim] - output[0, time_dim] # start time to 0
+        output[:, time_dim + 1] = output[:, time_dim + 1] - output[0, time_dim + 1] # start time.s to 0
 
     return output
 
@@ -523,10 +524,10 @@ def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_COND
     # encode the notes / expressive features
     core_codes = np.zeros(shape = (data.shape[0], codes.shape[1]), dtype = ENCODING_ARRAY_TYPE)
     core_codes[:, 0] = list(map(lambda type_: type_code_map[str(type_)], data[:, 0])) # encode type column
-    core_codes[:, beat_dim] = list(map(lambda beat: beat_code_map[int(beat)], data[:, beat_dim])) # encode beat
-    core_codes[:, position_dim] = list(map(lambda position: position_code_map[int(position)], data[:, position_dim])) # encode position
+    core_codes[:, beat_dim] = list(map(lambda beat: beat_code_map[int(max(0, beat))], data[:, beat_dim])) # encode beat
+    core_codes[:, position_dim] = list(map(lambda position: position_code_map[int(max(0, position))], data[:, position_dim])) # encode position
     core_codes[:, value_dim] = list(map(value_code_mapper, data[:, value_dim])) # encode value column
-    core_codes[:, duration_dim] = list(map(lambda duration: duration_code_map[min(abs(int(duration)), int(max_duration))], data[:, duration_dim])) # encode duration
+    core_codes[:, duration_dim] = list(map(lambda duration: duration_code_map[int(min(max_duration, max(0, duration)))], data[:, duration_dim])) # encode duration
     core_codes[:, instrument_dim] = list(map(program_instrument_mapper, data[:, instrument_dim])) # encode instrument column
     core_codes = core_codes[core_codes[:, beat_dim] <= max_beat] # remove data if beat greater than max beat
     core_codes = core_codes[core_codes[:, instrument_dim] >= 0] # skip unknown instruments

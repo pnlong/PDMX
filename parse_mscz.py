@@ -27,7 +27,7 @@ import pickle
 from read_mscz.read_mscz import read_musescore, get_musescore_version
 from read_mscz.classes import Lyric
 import representation
-from encode import extract_data
+from encode import extract_data, get_system_level_expressive_features
 from utils import write_to_file
 
 ##################################################
@@ -168,7 +168,7 @@ def extract_expressive_features(path: str, path_output_prefix: str):
     ##################################################
     
     system_lyrics = scrape_lyrics(lyrics = music.lyrics) # get system-level lyrics
-    n_system_expressive_features = len(music.annotations) + len(music.tempos) + (len(music.key_signatures) - 1) + (len(music.time_signatures) - 1) + len(list(filter(lambda barline: not ((barline.subtype == "single") or ("repeat" in barline.subtype.lower())), music.barlines))) # start with count of system-level expressive features
+    n_system_expressive_features = len(get_system_level_expressive_features(music = music, use_implied_duration = False, include_annotation_class_name = False)) # start with count of system-level expressive features
     n_system_expressive_features_with_lyrics = n_system_expressive_features + len(system_lyrics) # add lyrics to the count
     n_expressive_features_by_path, n_expressive_features_by_path_with_lyrics = n_system_expressive_features, n_system_expressive_features_with_lyrics
     n_tracks = 0

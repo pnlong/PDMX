@@ -22,7 +22,7 @@
 import argparse
 import logging
 from os import makedirs, mkdir
-from os.path import exists, basename
+from os.path import exists, basename, dirname
 import pprint
 import shutil
 import sys
@@ -50,7 +50,7 @@ DATA_DIR = "/data2/pnlong/musescore/data"
 PARTITIONS = ("train", "valid", "test")
 PATHS_TRAIN = f"{DATA_DIR}/{PARTITIONS[0]}.txt"
 PATHS_VALID = f"{DATA_DIR}/{PARTITIONS[1]}.txt"
-OUTPUT_DIR = "/data2/pnlong/musescore/train"
+OUTPUT_DIR = "/data2/pnlong/musescore/data/train"
 ENCODING_FILEPATH = "/data2/pnlong/musescore/encoding.json"
 
 ##################################################
@@ -94,7 +94,7 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("--grad_norm_clip", default = 1.0, type = float, help = "Gradient norm clipping")
     # others
     parser.add_argument("-r", "--resume", action = "store_true", help = "Whether or not to resume training from most recently-trained step")
-    parser.add_argument("-g", "--gpu", default = 0, type = int, help = "GPU number")
+    parser.add_argument("-g", "--gpu", default = -1, type = int, help = "GPU number")
     parser.add_argument("-j", "--jobs", default = 4, type = int, help = "Number of workers for data loading")
     return parser.parse_args(args = args, namespace = namespace)
 
@@ -164,7 +164,8 @@ if __name__ == "__main__":
 
     # start a new wandb run to track the script
     current_datetime = datetime.datetime.now().strftime("%-m/%-d/%y;%-H:%M")
-    run = wandb.init(project = "ExpressionNet-Train", config = vars(args), name = f"{basename(args.output_dir)}-{current_datetime}", resume = args.resume) # set project title, configure with hyperparameters
+    run_name = basename(args.output_dir) + ("-aug" if args.aug else "")
+    run = wandb.init(config = vars(args), resume = args.resume, project = "ExpressionNet-Train", group = dirname(args.output_dir), name = run_name) # set project title, configure with hyperparameters
 
     ##################################################
 
@@ -173,8 +174,7 @@ if __name__ == "__main__":
     ##################################################
 
     # get the specified device
-    args.gpu = abs(args.gpu)
-    device = torch.device(f"cuda:{args.gpu}" if (torch.cuda.is_available() and args.gpu >= 0) else "cpu")
+    device = torch.device(f"cuda:{abs(args.gpu)}" if (torch.cuda.is_available() and args.gpu != -1) else "cpu")
     logging.info(f"Using device: {device}")
 
     # load the encoding
@@ -209,7 +209,7 @@ if __name__ == "__main__":
     best_model_filepath = {partition: f"{CHECKPOINTS_DIR}/best_model.{partition}.pth" for partition in PARTITIONS[:2]}
     model_previously_created = args.resume and all(exists(filepath) for filepath in best_model_filepath.values())
     if model_previously_created:
-        model.load_state_dict(torch.load(f = best_model_filepath))
+        model.load_state_dict(torch.load(f = best_model_filepath[PARTITIONS[1]]))
 
     # summarize the model
     if model_previously_created:
@@ -223,7 +223,7 @@ if __name__ == "__main__":
     optimizer = torch.optim.Adam(params = model.parameters(), lr = args.learning_rate)
     best_optimizer_filepath = {partition: f"{CHECKPOINTS_DIR}/best_optimizer.{partition}.pth" for partition in PARTITIONS[:2]}
     if args.resume and all(exists(filepath) for filepath in best_optimizer_filepath.values()):
-        optimizer.load_state_dict(torch.load(f = best_optimizer_filepath))
+        optimizer.load_state_dict(torch.load(f = best_optimizer_filepath[PARTITIONS[1]]))
 
     # create the scheduler
     scheduler = torch.optim.lr_scheduler.LambdaLR(
@@ -237,14 +237,14 @@ if __name__ == "__main__":
     )
     best_scheduler_filepath = {partition: f"{CHECKPOINTS_DIR}/best_scheduler.{partition}.pth" for partition in PARTITIONS[:2]}
     if args.resume and all(exists(filepath) for filepath in best_scheduler_filepath.values()):
-        scheduler.load_state_dict(torch.load(f = best_scheduler_filepath))
+        scheduler.load_state_dict(torch.load(f = best_scheduler_filepath[PARTITIONS[1]]))
 
     # create a file to record losses
     loss_output_filepath = f"{args.output_dir}/loss.csv"
     loss_columns_must_be_written = not (exists(loss_output_filepath) and args.resume) # whether or not to write loss column names
-    loss_csv = open(loss_output_filepath, "a" if args.resume else "w") # open loss file
-    if loss_columns_must_be_written: # if column names need to be written
-        loss_csv.write(f"step,{PARTITIONS[0]}_loss,{PARTITIONS[1]}_loss," + ",".join(map(lambda dimension: f"{dimension}_loss", encoding["dimensions"])) + "\n")
+    with open(loss_output_filepath, "a" if args.resume else "w") as loss_csv: # open loss file
+        if loss_columns_must_be_written: # if column names need to be written
+            loss_csv.write(f"step,{PARTITIONS[0]}_loss,{PARTITIONS[1]}_loss," + ",".join(map(lambda dimension: f"{dimension}_loss", encoding["dimensions"])) + "\n")
 
     ##################################################
 
@@ -256,7 +256,11 @@ if __name__ == "__main__":
     step = 0
     min_loss = {partition: float("inf") for partition in PARTITIONS[:2]}
     if not loss_columns_must_be_written:
-        min_loss[PARTITIONS[1]] = float(pd.read_csv(filepath_or_buffer = loss_output_filepath, sep = ",", header = 0, index_col = False)[f"{PARTITIONS[1]}_loss"].min(axis = 0)) # get minimum loss by reading in loss values and extracting the minimum
+        previous_loss_csv = pd.read_csv(filepath_or_buffer = loss_output_filepath, sep = ",", header = 0, index_col = False) # read in previous loss values
+        for partition in PARTITIONS[:2]:
+            min_loss[partition] = float(previous_loss_csv[f"{partition}_loss"].min(axis = 0)) # get minimum loss by extracting the minimum
+        step = int(previous_loss_csv["step"].max(axis = 0)) # update step
+        del previous_loss_csv
     if args.early_stopping:
         count_early_stopping = 0
 
@@ -279,7 +283,7 @@ if __name__ == "__main__":
             # get next batch
             try:
                 batch = next(train_iterator)
-            except StopIteration:
+            except (StopIteration):
                 train_iterator = iter(data_loader[PARTITIONS[0]]) # reinitialize dataset iterator
                 batch = next(train_iterator)
 
@@ -289,7 +293,7 @@ if __name__ == "__main__":
 
             # update the model parameters
             optimizer.zero_grad()
-            loss_batch = model(seq, mask = mask)
+            loss_batch = model(seq = seq, mask = mask) ############## ERROR
             loss_batch.backward()
             torch.nn.utils.clip_grad_norm_(parameters = model.parameters(), max_norm = args.grad_norm_clip)
             optimizer.step()
@@ -303,7 +307,7 @@ if __name__ == "__main__":
             progress_bar.set_postfix(loss = f"{loss[PARTITIONS[0]]:8.4f}")
 
             # log training loss for wandb
-            wandb.log({"step": step, f"{PARTITIONS[0]}/loss": loss[PARTITIONS[0]]})
+            wandb.log({f"{PARTITIONS[0]}/loss": loss[PARTITIONS[0]]}, step = step)
 
             # increment step
             step += 1
@@ -331,7 +335,7 @@ if __name__ == "__main__":
                 mask = batch["mask"].to(device)
 
                 # pass through the model
-                loss_batch, losses_batch = model(seq, return_list = True, mask = mask)
+                loss_batch, losses_batch = model(seq = seq, return_list = True, mask = mask)
 
                 # accumulate validation loss
                 count += len(batch)
@@ -348,9 +352,9 @@ if __name__ == "__main__":
         logging.info(f"Individual losses: type = {individual_losses['type']:.4f}, beat: {individual_losses['beat']:.4f}, position: {individual_losses['position']:.4f}, value: {individual_losses['value']:.4f}, duration: {individual_losses['duration']:.4f}, instrument: {individual_losses['instrument']:.4f}")
 
         # log validation info for wandb
-        wandb.log({"step": step, f"{PARTITIONS[1]}/loss": loss[PARTITIONS[1]]})
+        wandb.log({f"{PARTITIONS[1]}/loss": loss[PARTITIONS[1]]}, step = step)
         for dimension, loss_val in individual_losses.items():
-            wandb.log({"step": step, f"{PARTITIONS[1]}/loss_{dimension}": loss_val})
+            wandb.log({f"{PARTITIONS[1]}/loss_{dimension}": loss_val}, step = step)
 
         # release GPU memory right away
         del seq, mask
@@ -362,7 +366,8 @@ if __name__ == "__main__":
         ##################################################
 
         # write losses to file
-        loss_csv.write(f"{step},{loss[PARTITIONS[0]]},{loss[PARTITIONS[1]]}," + ",".join(map(str, individual_losses)) + "\n")
+        with open(loss_output_filepath, "a") as loss_csv:
+            loss_csv.write(f"{step},{loss[PARTITIONS[0]]},{loss[PARTITIONS[1]]}," + ",".join(map(str, individual_losses)) + "\n")
 
         # see whether or not to save
         is_an_improvement = False # whether or not the loss has improved
@@ -401,9 +406,6 @@ if __name__ == "__main__":
     # log minimum validation loss
     logging.info(f"Minimum validation loss achieved: {min_loss[PARTITIONS[1]]}")
     wandb.log({f"min_{PARTITIONS[1]}_loss": min_loss[PARTITIONS[1]]})
-
-    # close the file
-    loss_csv.close()
 
     # finish the wandb run
     wandb.finish()
