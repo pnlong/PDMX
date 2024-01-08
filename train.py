@@ -164,7 +164,7 @@ if __name__ == "__main__":
 
     # start a new wandb run to track the script
     current_datetime = datetime.datetime.now().strftime("%-m/%-d/%y;%-H:%M")
-    run = wandb.init(config = vars(args), resume = args.resume, project = "ExpressionNet-Train", group = dirname(args.output_dir), name = basename(args.output_dir)) # set project title, configure with hyperparameters
+    run = wandb.init(config = vars(args), resume = args.resume and (not log_hyperparameters), project = "ExpressionNet-Train", group = dirname(args.output_dir), name = basename(args.output_dir)) # set project title, configure with hyperparameters
 
     ##################################################
 
@@ -256,9 +256,10 @@ if __name__ == "__main__":
     min_loss = {partition: float("inf") for partition in PARTITIONS[:2]}
     if not loss_columns_must_be_written:
         previous_loss_csv = pd.read_csv(filepath_or_buffer = loss_output_filepath, sep = ",", header = 0, index_col = False) # read in previous loss values
-        for partition in PARTITIONS[:2]:
-            min_loss[partition] = float(previous_loss_csv[f"{partition}_loss"].min(axis = 0)) # get minimum loss by extracting the minimum
-        step = int(previous_loss_csv["step"].tolist()[-1]) # update step
+        if len(previous_loss_csv) > 0:
+            for partition in PARTITIONS[:2]:
+                min_loss[partition] = float(previous_loss_csv[f"{partition}_loss"].min(axis = 0)) # get minimum loss by extracting the minimum
+            step = int(previous_loss_csv["step"].tolist()[-1]) # update step
         del previous_loss_csv
     if args.early_stopping:
         count_early_stopping = 0
@@ -373,16 +374,10 @@ if __name__ == "__main__":
         for partition in PARTITIONS[:2]:
             if loss[partition] < min_loss[partition]:
                 min_loss[partition] = loss[partition]
-                checkpoint_filepath = f"{CHECKPOINTS_DIR}/model_{step}.pth" # path to model
-                torch.save(obj = model.state_dict(), f = checkpoint_filepath) # save the model
-                optimizer_filepath = f"{CHECKPOINTS_DIR}/optimizer_{step}.pth" # path to optimizer
-                torch.save(obj = optimizer.state_dict(), f = optimizer_filepath) # save the optimizer state
-                scheduler_filepath = f"{CHECKPOINTS_DIR}/scheduler_{step}.pth" # path to scheduler
-                torch.save(obj = scheduler.state_dict(), f = scheduler_filepath) # save the scheduler state
-                logging.info(f"Best {partition}_loss so far! Checkpoints saved in {CHECKPOINTS_DIR}. Model: {basename(checkpoint_filepath)}; Optimizer: {basename(optimizer_filepath)}; Scheduler: {basename(scheduler_filepath)}.") # log paths to which states were saved
-                shutil.copyfile(src = checkpoint_filepath, dst = best_model_filepath[partition]) # copy to best model
-                shutil.copyfile(src = optimizer_filepath, dst = best_optimizer_filepath[partition]) # copy to best optimizer
-                shutil.copyfile(src = scheduler_filepath, dst = best_scheduler_filepath[partition]) # copy to best scheduler
+                logging.info(f"Best {partition}_loss so far!") # log paths to which states were saved
+                torch.save(obj = model.state_dict(), f = best_model_filepath[partition]) # save the model
+                torch.save(obj = optimizer.state_dict(), f = best_optimizer_filepath[partition]) # save the optimizer state
+                torch.save(obj = scheduler.state_dict(), f = best_scheduler_filepath[partition]) # save the scheduler state
                 if args.early_stopping: # reset the early stopping counter if we found a better model
                     count_early_stopping = 0
                     is_an_improvement = True # we only care about the lack of improvement when we are thinking about early stopping, so turn off this boolean flag, since there was an improvement
