@@ -558,9 +558,7 @@ def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_COND
             sigma = SIGMA
         core_codes_with_seconds = np.concatenate((core_codes, data[:, data.shape[1] - 1].reshape(data.shape[0], 1)), axis = 1) # add seconds column
         seconds_column = core_codes_with_seconds.shape[1] - 1 # get the index of the seconds column
-        for i in range(core_codes_with_seconds.shape[0]): # iterate through core_codes_with_seconds
-            if core_codes_with_seconds[i, 0] == type_code_map[representation.EXPRESSIVE_FEATURE_TYPE_STRING]: # if the type is expressive feature
-                core_codes_with_seconds[i, seconds_column] -= sigma # add anticipation
+        core_codes_with_seconds[:, seconds_column] -= (core_codes_with_seconds[:, 0] == type_code_map[representation.EXPRESSIVE_FEATURE_TYPE_STRING]) * sigma # subtract anticipation value from expressive features
         core_codes_with_seconds = core_codes_with_seconds[np.lexsort(keys = (core_codes_with_seconds[:, 0], core_codes_with_seconds[:, seconds_column]), axis = 0)] # sort by time (seconds)
         core_codes = np.delete(arr = core_codes_with_seconds, obj = seconds_column, axis = 1).astype(ENCODING_ARRAY_TYPE) # remove seconds column
         del core_codes_with_seconds, seconds_column

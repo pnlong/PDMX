@@ -34,7 +34,7 @@ from utils import rep
 # CONSTANTS
 ##################################################
 
-INPUT_FILEPATH = "/data2/pnlong/musescore/expressive_features.csv"
+INPUT_FILEPATH = "/data2/pnlong/musescore/expressive_features/expressive_features.csv"
 FILE_OUTPUT_DIR = "/data2/pnlong/musescore/expressive_features"
 
 COLORS = ("#186F65", "#B5CB99", "#FCE09B", "#B2533E")
@@ -46,7 +46,7 @@ LINE_COMBINATIONS = tuple((color, linestyle) for color in LINE_COLORS for linest
 DENSITY_COLUMNS = ["path", "time_steps", "seconds", "bars", "beats"]
 FEATURE_TYPES_SUMMARY_COLUMNS = ["path", "type", "size"]
 SPARSITY_SUCCESSIVE_SUFFIX = "_successive"
-SPARSITY_COLUMNS = ["path", "type", "feature", "time_steps", "seconds", "beats", "fraction"]
+SPARSITY_COLUMNS = ["path", "type", "value", "time_steps", "seconds", "beats", "fraction"]
 SPARSITY_COLUMNS += [column + SPARSITY_SUCCESSIVE_SUFFIX for column in SPARSITY_COLUMNS[SPARSITY_COLUMNS.index("time_steps"):]]
 
 ##################################################
@@ -71,7 +71,7 @@ def parse_args(args = None, namespace = None):
 ##################################################
 # helper function to calculate difference between successive rows
 def calculate_difference_between_successive_entries(df: pd.DataFrame, columns: list) -> pd.DataFrame:
-    df = df.sort_values(by = columns[0]) # sort values
+    df = df.copy().sort_values(by = columns[0]) # sort values
     df_values = df[columns] # store values of columns
     for column in columns: # for every column in columns
         df[column] = rep(x = np.nan, times = len(df)) # set columns' values to None
@@ -151,7 +151,7 @@ def extract_information(path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataF
     sparsity["fraction"] = sparsity["time_steps"] / (unpickled["track_length"]["time_steps"] + DIVIDE_BY_ZERO_CONSTANT)
     for successive_distance_column, distance_column in zip(successive_distance_columns, distance_columns): # add successive times columns
         sparsity[successive_distance_column] = sparsity[distance_column]
-    sparsity = sparsity[SPARSITY_COLUMNS].sort_values("time_steps") # sort by increasing times
+    sparsity = sparsity[SPARSITY_COLUMNS].sort_values("time_steps").reset_index(drop = True) # sort by increasing times
 
     # calculate distances
     sparsity = calculate_difference_between_successive_entries(df = sparsity, columns = distance_columns)
@@ -278,7 +278,7 @@ def make_sparsity_plot(output_filepath_prefix: str, expressive_feature_types: li
     # we have distances between successive expressive features in time_steps, beats, seconds, and as a fraction of the length of the song
     sparsity = pd.read_csv(filepath_or_buffer = PLOT_DATA_OUTPUT_FILEPATHS["sparsity"], sep = ",", header = 0, index_col = False)
     # sparsity = sparsity.drop(index = sparsity.index[-1]) # last row is None, since there is no successive expressive features, so drop it
-    sparsity = sparsity.drop(columns = "feature") # we don't need this column
+    sparsity = sparsity.drop(columns = "value") # we don't need this column
 
     # calculate percentiles, save in pickle
     all_features_type_name = "AllFeatures" # name of all features plot name
