@@ -50,7 +50,7 @@ DATA_DIR = "/data2/pnlong/musescore/data"
 PARTITIONS = ("train", "valid", "test")
 PATHS_TRAIN = f"{DATA_DIR}/{PARTITIONS[0]}.txt"
 PATHS_VALID = f"{DATA_DIR}/{PARTITIONS[1]}.txt"
-OUTPUT_DIR = "/data2/pnlong/musescore/data/train"
+OUTPUT_DIR = "/data2/pnlong/musescore/data"
 ENCODING_FILEPATH = "/data2/pnlong/musescore/encoding.json"
 
 ##################################################
@@ -138,7 +138,7 @@ if __name__ == "__main__":
         raise ValueError("Invalid --paths_train argument. File does not exist.")
     if not exists(args.paths_valid):
         raise ValueError("Invalid --paths_valid argument. File does not exist.")
-    args.output_dir = f"{args.output_dir}/{args.conditioning if not args.baseline else 'baseline'}" # custom output directory based on arguments
+    args.output_dir = args.output_dir + "/" + (args.conditioning if not args.baseline else "baseline") + ("_aug" if args.aug else "") # custom output directory based on arguments
     if not exists(args.output_dir):
         makedirs(args.output_dir)
     CHECKPOINTS_DIR = f"{args.output_dir}/checkpoints" # models will be stored in the output directory
@@ -164,8 +164,7 @@ if __name__ == "__main__":
 
     # start a new wandb run to track the script
     current_datetime = datetime.datetime.now().strftime("%-m/%-d/%y;%-H:%M")
-    run_name = basename(args.output_dir) + ("-aug" if args.aug else "")
-    run = wandb.init(config = vars(args), resume = args.resume, project = "ExpressionNet-Train", group = dirname(args.output_dir), name = run_name) # set project title, configure with hyperparameters
+    run = wandb.init(config = vars(args), resume = args.resume, project = "ExpressionNet-Train", group = dirname(args.output_dir), name = basename(args.output_dir)) # set project title, configure with hyperparameters
 
     ##################################################
 
@@ -259,7 +258,7 @@ if __name__ == "__main__":
         previous_loss_csv = pd.read_csv(filepath_or_buffer = loss_output_filepath, sep = ",", header = 0, index_col = False) # read in previous loss values
         for partition in PARTITIONS[:2]:
             min_loss[partition] = float(previous_loss_csv[f"{partition}_loss"].min(axis = 0)) # get minimum loss by extracting the minimum
-        step = int(previous_loss_csv["step"].max(axis = 0)) # update step
+        step = int(previous_loss_csv["step"].tolist()[-1]) # update step
         del previous_loss_csv
     if args.early_stopping:
         count_early_stopping = 0

@@ -2,18 +2,9 @@
 # Phillip Long
 # November 27, 2023
 
-# Evaluate a neural network.
+# Evaluate a model same as the MMT paper.
 
-# python /home/pnlong/model_musescore/evaluate.py
-
-# Absolute positional embedding (APE):
-# python /home/pnlong/mmt/evaluate.py -d sod -o /data2/pnlong/mmt/exp/sod/ape -ns 100 -g 0
-
-# Relative positional embedding (RPE):
-# python /home/pnlong/mmt/evaluate.py -d sod -o /data2/pnlong/mmt/exp/sod/rpe -ns 100 -g 0
-
-# No positional embedding (NPE):
-# python /home/pnlong/mmt/evaluate.py -d sod -o /data2/pnlong/mmt/exp/sod/npe -ns 100 -g 0
+# python /home/pnlong/model_musescore/evaluate_mmt.py
 
 
 # IMPORTS
@@ -40,6 +31,7 @@ import representation
 import encode
 import decode
 import utils
+from train import PARTITIONS
 
 ##################################################
 
@@ -119,12 +111,12 @@ if __name__ == "__main__":
     args = parse_args()
 
     # set up the logger
-    logging.basicConfig(level = logging.INFO, format = "%(message)s", handlers = [logging.FileHandler(filename = f"{args.output_dir}/evaluate.log", mode = "a"), logging.StreamHandler(stream = sys.stdout)])
+    logging.basicConfig(level = logging.INFO, format = "%(message)s", handlers = [logging.FileHandler(filename = f"{args.output_dir}/evaluate.mmt.log", mode = "a"), logging.StreamHandler(stream = sys.stdout)])
 
     # log command called and arguments, save arguments
     logging.info(f"Running command: python {' '.join(sys.argv)}")
     logging.info(f"Using arguments:\n{pprint.pformat(vars(args))}")
-    args_output_filepath = f"{args.output_dir}/evaluate-args.json"
+    args_output_filepath = f"{args.output_dir}/evaluate_args.mmt.json"
     logging.info(f"Saved arguments to {args_output_filepath}")
     utils.save_args(filepath = args_output_filepath, args = args)
     del args_output_filepath
@@ -136,16 +128,18 @@ if __name__ == "__main__":
     ##################################################
 
     # load training configurations
-    train_args_filepath = f"{args.output_dir}/train-args.json"
+    train_args_filepath = f"{args.output_dir}/train_args.json"
     logging.info(f"Loading training arguments from: {train_args_filepath}")
     train_args = utils.load_json(filepath = train_args_filepath)
     logging.info(f"Using loaded arguments:\n{pprint.pformat(train_args)}")
     del train_args_filepath
 
     # make sure the output directory exists
-    EVAL_DIR = f"{args.output_dir}/eval"
-    if not exists(args.output_dir): makedirs(args.output_dir) # create output_dir if necessary
-    if not exists(EVAL_DIR): mkdir(EVAL_DIR) # create eval_dir if necessary
+    EVAL_DIR = f"{args.output_dir}/eval_mmt"
+    if not exists(args.output_dir):
+        makedirs(args.output_dir) # create output_dir if necessary
+    if not exists(EVAL_DIR):
+        mkdir(EVAL_DIR) # create eval_dir if necessary
     for key in ("truth", "unconditioned"):
         key_base_dir = f"{EVAL_DIR}/{key}"
         if not exists(key_base_dir): mkdir(key_base_dir) # create base_dir if necessary
@@ -185,7 +179,7 @@ if __name__ == "__main__":
     # load the checkpoint
     CHECKPOINT_DIR = f"{args.output_dir}/checkpoints"
     if args.model_steps is None:
-        checkpoint_filepath = f"{CHECKPOINT_DIR}/best_model.pth"
+        checkpoint_filepath = f"{CHECKPOINT_DIR}/best_model.{PARTITIONS[1]}.pth"
     else:
         checkpoint_filepath = f"{CHECKPOINT_DIR}/model_{args.model_steps}.pth"
     model.load_state_dict(state_dict = torch.load(f = checkpoint_filepath, map_location = device))

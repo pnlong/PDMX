@@ -16,7 +16,7 @@ data_dir="${base_dir}/data"
 paths_train="${data_dir}/train.txt"
 paths_valid="${data_dir}/valid.txt"
 encoding="${base_dir}/encoding.json"
-output_dir="${data_dir}/train"
+output_dir="${data_dir}"
 batch_size=8
 gpu=3
 
