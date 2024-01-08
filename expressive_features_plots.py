@@ -23,6 +23,7 @@ from typing import Tuple
 import numpy as np
 import argparse
 import logging
+from parse_mscz import TIME_IN_SECONDS_COLUMN_NAME
 from parse_mscz_plots import OUTPUT_DIR, OUTPUT_RESOLUTION_DPI
 from read_mscz.music import DIVIDE_BY_ZERO_CONSTANT
 from utils import rep
@@ -43,7 +44,7 @@ LINE_COMBINATIONS = tuple((color, linestyle) for color in LINE_COLORS for linest
 
 # columns of data tables
 DENSITY_COLUMNS = ["path", "time_steps", "seconds", "bars", "beats"]
-FEATURE_TYPES_SUMMARY_COLUMNS = ["path", "type", "count"]
+FEATURE_TYPES_SUMMARY_COLUMNS = ["path", "type", "size"]
 SPARSITY_SUCCESSIVE_SUFFIX = "_successive"
 SPARSITY_COLUMNS = ["path", "type", "feature", "time_steps", "seconds", "beats", "fraction"]
 SPARSITY_COLUMNS += [column + SPARSITY_SUCCESSIVE_SUFFIX for column in SPARSITY_COLUMNS[SPARSITY_COLUMNS.index("time_steps"):]]
@@ -63,6 +64,22 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("-j", "--jobs", type = int, default = int(multiprocessing.cpu_count() / 4), help = "Number of Jobs")
     return parser.parse_args(args = args, namespace = namespace)
 
+##################################################
+
+
+# HELPER FUNCTION FOR INFO EXTRACTION
+##################################################
+# helper function to calculate difference between successive rows
+def calculate_difference_between_successive_entries(df: pd.DataFrame, columns: list) -> pd.DataFrame:
+    df = df.sort_values(by = columns[0]) # sort values
+    df_values = df[columns] # store values of columns
+    for column in columns: # for every column in columns
+        df[column] = rep(x = np.nan, times = len(df)) # set columns' values to None
+    df_indicies = df.index
+    for i in range(len(df_indicies) - 1): # loop through entries
+        for column in columns: # calculate for each column
+            df.at[df_indicies[i], column] = df_values.at[df_indicies[i + 1], column] - df_values.at[df_indicies[i], column] # calculate differences
+    return df
 ##################################################
 
 
@@ -91,19 +108,9 @@ def extract_information(path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataF
     
     # extract expressive features dataframe
     expressive_features = unpickled.pop("expressive_features")
-    
-    # if there are just a single key signature and/or time signature, remove that to get true number of expressive features
-    # def clear_irrelevant_expressive_features(expressive_features: pd.DataFrame, query: str):
-    #     queried = expressive_features[expressive_features["type"] == query].sort_values("time")
-    #     if len(queried) == 1:
-    #         return expressive_features.drop(index = queried.index[0])
-    #     else:
-    #         return expressive_features
-    # expressive_features = clear_irrelevant_expressive_features(expressive_features = expressive_features, query = "TimeSignature")
-    # expressive_features = clear_irrelevant_expressive_features(expressive_features = expressive_features, query = "KeySignature")
 
     # wrange expressive features
-    expressive_features["type"] = expressive_features["type"].apply(lambda ef_type: ef_type.replace("Spanner", ""))
+    expressive_features["type"] = expressive_features["type"].apply(lambda expressive_feature_type: expressive_feature_type.replace("Spanner", ""))
 
     ##################################################
 
@@ -114,7 +121,7 @@ def extract_information(path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataF
     density = {time_unit: (song_length_in_time_unit / len(expressive_features)) for time_unit, song_length_in_time_unit in unpickled["track_length"].items()} # time unit per expressive feature
     density["path"] = path
     density = pd.DataFrame(data = [density], columns = DENSITY_COLUMNS)
-    density.to_csv(path_or_buf = PLOT_DATA_OUTPUT_FILEPATHS[list(PLOT_DATA_OUTPUT_FILEPATHS.keys())[0]], sep = ",", na_rep = "NA", header = False, index = False, mode = "a")
+    density.to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[0], sep = ",", na_rep = "NA", header = False, index = False, mode = "a")
 
     ##################################################
 
@@ -122,11 +129,10 @@ def extract_information(path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataF
     # SUMMARIZE TYPES OF TEXT/FEATURES PRESENT
     ##################################################
 
-    feature_types_summary = expressive_features[["type", "feature"]].groupby(by = "type").size() # group by type
-    feature_types_summary = feature_types_summary.reset_index().rename(columns = {0: "count"}) # rename columns
+    feature_types_summary = expressive_features[["type", "value"]].groupby(by = "type").size().reset_index(drop = False).rename(columns = {0: FEATURE_TYPES_SUMMARY_COLUMNS[-1]}) # group by type
     feature_types_summary["path"] = rep(x = path, times = len(feature_types_summary))
-    feature_types_summary = feature_types_summary[FEATURE_TYPES_SUMMARY_COLUMNS]
-    feature_types_summary.to_csv(path_or_buf = PLOT_DATA_OUTPUT_FILEPATHS[list(PLOT_DATA_OUTPUT_FILEPATHS.keys())[1]], sep = ",", na_rep = "NA", header = False, index = False, mode = "a")
+    feature_types_summary = feature_types_summary[FEATURE_TYPES_SUMMARY_COLUMNS] # ensure we have just the columns we need
+    feature_types_summary.to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[1], sep = ",", na_rep = "NA", header = False, index = False, mode = "a")
 
     ##################################################
 
@@ -138,26 +144,14 @@ def extract_information(path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataF
     successive_distance_columns = [distance_column + SPARSITY_SUCCESSIVE_SUFFIX for distance_column in distance_columns]
 
     # add some columns, set up for calculation of distance
-    sparsity = expressive_features[["type", "feature", "time", "time_seconds"]]
-    sparsity = sparsity.rename(columns = {"time": "time_steps", "time_seconds": "seconds"})
+    sparsity = expressive_features[["type", "value", "time", TIME_IN_SECONDS_COLUMN_NAME]]
+    sparsity = sparsity.rename(columns = {"time": "time_steps", TIME_IN_SECONDS_COLUMN_NAME: "seconds"})
     sparsity["path"] = rep(x = path, times = len(sparsity))
     sparsity["beats"] = sparsity["time_steps"] / unpickled["resolution"]
     sparsity["fraction"] = sparsity["time_steps"] / (unpickled["track_length"]["time_steps"] + DIVIDE_BY_ZERO_CONSTANT)
     for successive_distance_column, distance_column in zip(successive_distance_columns, distance_columns): # add successive times columns
         sparsity[successive_distance_column] = sparsity[distance_column]
     sparsity = sparsity[SPARSITY_COLUMNS].sort_values("time_steps") # sort by increasing times
-
-    # helper function to calculate difference between successive rows
-    def calculate_difference_between_successive_entries(df: pd.DataFrame, columns: list) -> pd.DataFrame:
-        df = df.sort_values(by = columns[0]) # sort values
-        df_values = df[columns] # store values of columns
-        for column in columns: # for every column in columns
-            df[column] = rep(x = np.nan, times = len(df)) # set columns' values to None
-        df_indicies = df.index
-        for i in range(len(df_indicies) - 1): # loop through entries
-            for column in columns: # calculate for each column
-                df.at[df_indicies[i], column] = df_values.at[df_indicies[i + 1], column] - df_values.at[df_indicies[i], column] # calculate differences
-        return df
 
     # calculate distances
     sparsity = calculate_difference_between_successive_entries(df = sparsity, columns = distance_columns)
@@ -167,7 +161,7 @@ def extract_information(path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataF
         distance_for_expressive_feature_type = calculate_difference_between_successive_entries(df = sparsity[sparsity["type"] == expressive_feature_type], columns = successive_distance_columns) # calculate sparsity for certain feature type
         distance = pd.concat(objs = (distance, distance_for_expressive_feature_type), axis = 0, ignore_index = False) # append to overall distance
     distance = distance.sort_index(axis = 0) # sort by index (return to original index)
-    distance.to_csv(path_or_buf = PLOT_DATA_OUTPUT_FILEPATHS[list(PLOT_DATA_OUTPUT_FILEPATHS.keys())[2]], sep = ",", na_rep = "NA", header = False, index = False, mode = "a")
+    distance.to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[2], sep = ",", na_rep = "NA", header = False, index = False, mode = "a")
 
     ##################################################
     
@@ -236,16 +230,16 @@ def make_feature_summary_plot(output_filepath: str) -> list:
     feature_summary = pd.read_csv(filepath_or_buffer = PLOT_DATA_OUTPUT_FILEPATHS["feature_types_summary"], sep = ",", header = 0, index_col = False).drop(columns = "path")
     # feature_summary = feature_summary[feature_summary["type"] != "TimeSignature"] # exclude time signatures
     feature_summary = {
-        plot_types[0]: feature_summary.groupby(by = "type").sum().reset_index().rename(columns = {"index": "type"}).sort_values(by = "count"),
-        plot_types[1]: feature_summary.groupby(by = "type").mean().reset_index().rename(columns = {"index": "type"}).sort_values(by = "count"),
-        plot_types[2]: feature_summary.groupby(by = "type").median().reset_index().rename(columns = {"index": "type"}).sort_values(by = "count")
+        plot_types[0]: feature_summary.groupby(by = "type").sum().reset_index().rename(columns = {"index": "type"}).sort_values(by = "size"),
+        plot_types[1]: feature_summary.groupby(by = "type").mean().reset_index().rename(columns = {"index": "type"}).sort_values(by = "size"),
+        plot_types[2]: feature_summary.groupby(by = "type").median().reset_index().rename(columns = {"index": "type"}).sort_values(by = "size")
         }
-    # feature_summary[plot_types[0]]["count"] = feature_summary[plot_types[0]]["count"].apply(lambda count: np.log10(count + DIVIDE_BY_ZERO_CONSTANT)) # apply log scale to total count
+    # feature_summary[plot_types[0]]["size"] = feature_summary[plot_types[0]]["size"].apply(lambda count: np.log10(count + DIVIDE_BY_ZERO_CONSTANT)) # apply log scale to total count
 
     # create plot
     for i, plot_type in enumerate(plot_types):
         axes[plot_type].xaxis.grid(True)
-        axes[plot_type].barh(y = feature_summary[plot_type]["type"], width = feature_summary[plot_type]["count"], color = COLORS[i], edgecolor = "0")
+        axes[plot_type].barh(y = feature_summary[plot_type]["type"], width = feature_summary[plot_type]["size"], color = COLORS[i], edgecolor = "0")
         axes[plot_type].set_title(f"{plot_type.title()}")
         axes[plot_type].ticklabel_format(axis = "x", style = "scientific", scilimits = (-1, 3))
         if i == 0: # if the left most plot

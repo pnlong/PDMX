@@ -296,11 +296,12 @@ def make_tracks_plot(output_filepath: str):
     fig, axes = plt.subplot_mosaic(mosaic = [["box", "hist", "hist"]], constrained_layout = True, figsize = (12, 8))
     fig.suptitle("Number of Tracks per MuseScore File", fontweight = "bold")
 
-    tracks_data = data_by["path"]["n_tracks"] # data_by["track"][data_by["track"]["is_valid"]].groupby(by = "path").size().tolist()
+    tracks_data = data_by["path"][data_by["path"]["is_valid"]]["n_tracks"].tolist() # data_by["track"][data_by["track"]["is_valid"]].groupby(by = "path").size().tolist()
     upper_limit_of_interest = 50
 
     # boxplot
     axes["box"].boxplot(x = tracks_data, vert = True, showfliers = False)
+    # axes["box"].violinplot(dataset = [tracks_data], vert = True, showextrema = False, quantiles = [[0.25, 0.5, 0.75]])
     # axes["box"].set_ylim(bottom = 0, top = upper_limit_of_interest)
     axes["box"].set_xlabel("")
     axes["box"].xaxis.set_ticks(ticks = [], labels = [])

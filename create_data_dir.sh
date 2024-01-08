@@ -12,12 +12,12 @@
 data_dir="/data2/pnlong/musescore/data" # default value for data_dir
 zach_dir="/data2/zachary/musescore/data"
 base_dir="$(echo ${zach_dir} | cut -d'/' -f2)"
-usage="Usage: $(basename ${0}) [-f] (the directory in which to create the directory structure)"
+usage="Usage: $(basename ${0}) [-d] (the directory in which to create the directory structure)"
 
 # parse command line arguments
-while getopts ':f:h' opt; do
+while getopts ':d:h' opt; do
   case "${opt}" in
-    f)
+    d)
       data_dir="${OPTARG}"
       ;;
     h)
