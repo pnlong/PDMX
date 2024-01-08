@@ -260,6 +260,7 @@ if __name__ == "__main__":
             for partition in PARTITIONS[:2]:
                 min_loss[partition] = float(previous_loss_csv[f"{partition}_loss"].min(axis = 0)) # get minimum loss by extracting the minimum
             step = int(previous_loss_csv["step"].tolist()[-1]) # update step
+            print(f"Current Step: {step}")
         del previous_loss_csv
     if args.early_stopping:
         count_early_stopping = 0
