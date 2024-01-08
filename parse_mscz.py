@@ -67,7 +67,7 @@ def parse_args(args = None, namespace = None):
 
 def scrape_lyrics(lyrics: List[Lyric]) -> pd.DataFrame:
     lyrics_encoded = [(lyric.time, "Lyric", lyric.lyric) for lyric in lyrics]
-    return pd.DataFrame(data = lyrics_encoded, columns = EXPRESSIVE_FEATURE_COLUMNS)
+    return pd.DataFrame(data = lyrics_encoded, columns = EXPRESSIVE_FEATURE_COLUMNS[:1] + EXPRESSIVE_FEATURE_COLUMNS[2:])
 
 ##################################################
 
