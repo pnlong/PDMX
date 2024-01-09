@@ -164,7 +164,7 @@ if __name__ == "__main__":
 
     # start a new wandb run to track the script
     current_datetime = datetime.datetime.now().strftime("%-m/%-d/%y;%-H:%M")
-    run = wandb.init(config = vars(args), resume = args.resume and (not log_hyperparameters), project = "ExpressionNet-Train", group = dirname(args.output_dir), name = basename(args.output_dir)) # set project title, configure with hyperparameters
+    run = wandb.init(config = vars(args), resume = not log_hyperparameters, project = "ExpressionNet-Train", group = dirname(args.output_dir), name = basename(args.output_dir), id = basename(args.output_dir)) # set project title, configure with hyperparameters
 
     ##################################################
 
@@ -211,7 +211,7 @@ if __name__ == "__main__":
         model.load_state_dict(torch.load(f = best_model_filepath[PARTITIONS[1]]))
 
     # summarize the model
-    if model_previously_created:
+    if not model_previously_created:
         n_parameters = sum(p.numel() for p in model.parameters())
         n_parameters_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
         logging.info(f"Number of parameters: {n_parameters}")
