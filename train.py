@@ -33,7 +33,7 @@ import torch.utils.data
 from typing import Dict
 from tqdm import tqdm
 import wandb
-# import datetime # for creating wandb run names linked to time of run
+import datetime # for creating wandb run names linked to time of run
 
 from dataset import MusicDataset
 import music_x_transformers
@@ -101,7 +101,7 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("--lr_decay_multiplier", default = 0.1, type = float, help = "Learning rate multiplier at the end")
     parser.add_argument("--grad_norm_clip", default = 1.0, type = float, help = "Gradient norm clipping")
     # others
-    parser.add_argument("-r", "--resume", action = "store_true", help = "Whether or not to resume training from most recently-trained step")
+    parser.add_argument("-r", "--resume", default = "", type = str, help = "Provide the wandb run name/id to resume a run")
     parser.add_argument("-g", "--gpu", default = -1, type = int, help = "GPU number")
     parser.add_argument("-j", "--jobs", default = 4, type = int, help = "Number of workers for data loading")
     return parser.parse_args(args = args, namespace = namespace)
@@ -146,6 +146,8 @@ if __name__ == "__main__":
         raise ValueError("Invalid --paths_train argument. File does not exist.")
     if not exists(args.paths_valid):
         raise ValueError("Invalid --paths_valid argument. File does not exist.")
+    run_name = args.resume # get runname
+    args.resume = bool(args.resume) # convert to boolean value
     
     # get the specified device
     device = torch.device(f"cuda:{abs(args.gpu)}" if (torch.cuda.is_available() and args.gpu != -1) else "cpu")
@@ -215,8 +217,10 @@ if __name__ == "__main__":
             print(logging_output.read())
 
     # start a new wandb run to track the script
-    # current_datetime = datetime.datetime.now().strftime("%-m/%-d/%y;%-H:%M")
-    run = wandb.init(config = dict(vars(args), **{"n_parameters": n_parameters, "n_parameters_trainable": n_parameters_trainable}), resume = not log_hyperparameters, project = "ExpressionNet-Train", group = dirname(args.output_dir), name = basename(args.output_dir), id = basename(args.output_dir)) # set project title, configure with hyperparameters
+    if run_name == "":
+        current_datetime = datetime.datetime.now().strftime("%m%d%y%H%M")
+        run_name = f"{basename(args.output_dir)}-{current_datetime}"
+    run = wandb.init(config = dict(vars(args), **{"n_parameters": n_parameters, "n_parameters_trainable": n_parameters_trainable}), resume = not log_hyperparameters, project = "ExpressionNet-Train", group = dirname(args.output_dir), name = run_name, id = run_name) # set project title, configure with hyperparameters
 
     # load previous model and summarize if needed
     best_model_filepath = {partition: f"{CHECKPOINTS_DIR}/best_model.{partition}.pth" for partition in RELEVANT_PARTITIONS}
@@ -253,9 +257,9 @@ if __name__ == "__main__":
     def generate_note_expressive_mask(seq: torch.tensor) -> Dict[str, torch.tensor]:
         """Generate both a note and expressive-feature mask over a sequence, return as a dictionary using MASKS as keys."""
         mask = {
-                MASKS[0]: torch.ones_like(input = seq[:, 1:, 0]), # no mask
-                MASKS[1]: torch.logical_or(input = torch.eq(input = seq[:, 1:, 0], other = encoding["type_code_map"]["note"] * torch.ones(size = (seq.shape[0], seq.shape[1] - 1))), other = torch.eq(input = seq[:, 1:, 0], other = encoding["type_code_map"]["grace-note"] * torch.ones(size = (seq.shape[0], seq.shape[1] - 1)))), # mask_note is true if the type is a note
-                MASKS[2]: torch.eq(input = seq[:, 1:, 0], other = encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING] * torch.ones(size = (seq.shape[0], seq.shape[1] - 1))) # mask_expressive is true if the type is an expressive feature
+                MASKS[0]: torch.ones_like(input = seq[:, 1:, 0]).to(device), # no mask
+                MASKS[1]: torch.logical_or(input = torch.eq(input = seq[:, 1:, 0], other = encoding["type_code_map"]["note"] * torch.ones(size = (seq.shape[0], seq.shape[1] - 1)).to(device)), other = torch.eq(input = seq[:, 1:, 0], other = encoding["type_code_map"]["grace-note"] * torch.ones(size = (seq.shape[0], seq.shape[1] - 1)).to(device))), # mask_note is true if the type is a note
+                MASKS[2]: torch.eq(input = seq[:, 1:, 0], other = encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING] * torch.ones(size = (seq.shape[0], seq.shape[1] - 1)).to(device)) # mask_expressive is true if the type is an expressive feature
             }
         return mask
 
@@ -321,7 +325,7 @@ if __name__ == "__main__":
     while step < args.steps:
 
         # to store loss/accuracy values
-        performance = {metric: {partition: dict() for partition in RELEVANT_PARTITIONS} for metric in PERFORMANCE_METRICS}
+        performance = {metric: {partition: {mask_type: {field: 0.0 for field in full_fields} for mask_type in MASKS} for partition in RELEVANT_PARTITIONS} for metric in PERFORMANCE_METRICS}
 
         # TRAIN
         ##################################################
@@ -351,7 +355,7 @@ if __name__ == "__main__":
             if args.conditional: # loss is only based on notes
                 loss_batch = losses_batch[masks[MASKS[1]], :] # mask to notes only
                 loss_batch = torch.mean(input = loss_batch, dim = list(range(len(loss_batch.shape) - 1)))
-                loss_batch = torch.sum(input = loss_batch, dim = None).item()
+                loss_batch = torch.sum(input = loss_batch, dim = None)
 
             # update parameters according to loss
             loss_batch.backward() # calculate gradients
@@ -360,7 +364,7 @@ if __name__ == "__main__":
             scheduler.step() # update scheduler
 
             # compute the moving average of the loss
-            recent_losses.append(loss_batch)
+            recent_losses.append(float(loss_batch))
             if len(recent_losses) > 10:
                 del recent_losses[0]
             loss_batch = np.mean(a = recent_losses, axis = 0)
