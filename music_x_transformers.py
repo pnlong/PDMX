@@ -390,7 +390,7 @@ class MusicAutoregressiveWrapper(nn.Module):
     # FORWARD PASS
     ##################################################
 
-    def forward(self, x: torch.tensor, return_list: bool = False, **kwargs):
+    def forward(self, x: torch.tensor, return_list: bool = False, reduce: bool = True, return_output: bool = False, **kwargs):
 
         # create subsets of x
         xi = x[:, :-1]
@@ -404,13 +404,21 @@ class MusicAutoregressiveWrapper(nn.Module):
 
         # create output
         output = self.net(xi, **kwargs)
-        losses = [F.cross_entropy(input = output[i].transpose(1, 2), target = xo[..., i], ignore_index = self.ignore_index) for i in range(len(output))] # calculate losses
-        loss = sum(losses) # loss is the sum of losses
+        losses = [F.cross_entropy(input = output[i].transpose(1, 2), target = xo[..., i], ignore_index = self.ignore_index, reduction = "none") for i in range(len(output))] # calculate losses
+        losses = torch.cat(tensors = [torch.unsqueeze(input = losses_dimension, dim = -1) for losses_dimension in losses], dim = -1) # combine list of losses into a matrix
+        loss_by_field = torch.mean(input = losses, dim = list(range(len(losses.shape) - 1))) # calculate mean for each field, the field is the last dimension, so mean over all but the last dimension
+        loss = torch.sum(input = loss_by_field, dim = None).item() # singular loss value (sum of the average losses for each field)
+        if reduce:
+            losses = loss_by_field
+        del loss_by_field
 
         # return the losses or just loss
-        if return_list:
+        if return_output:
+            return loss, losses, output
+        elif return_list:
             return loss, losses
-        return loss
+        else:
+            return loss
 
     ##################################################
 

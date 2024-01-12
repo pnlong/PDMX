@@ -13,7 +13,7 @@ import json
 import pathlib
 import warnings
 from os.path import exists
-from typing import Union, List, Tuple
+from typing import Union, List, Tuple, Collection
 
 import numpy as np
 
@@ -48,6 +48,9 @@ def unique(l: Union[List, Tuple]) -> list:
     """Returns the unique values from a list while retaining order."""
     return list(dict.fromkeys(list(l)))
 
+# get the product of a list
+def product(l: Collection) -> float:
+    return np.prod(a = np.array(object = l), axis = 0)
 ##################################################
 
 

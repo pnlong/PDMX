@@ -24,15 +24,16 @@ import logging
 from os import makedirs, mkdir
 from os.path import exists, basename, dirname
 import pprint
-import shutil
+# import shutil # for copying files
 import sys
 import numpy as np
 import pandas as pd
 import torch
 import torch.utils.data
+from typing import Dict
 from tqdm import tqdm
 import wandb
-import datetime
+# import datetime # for creating wandb run names linked to time of run
 
 from dataset import MusicDataset
 import music_x_transformers
@@ -47,9 +48,15 @@ import utils
 ##################################################
 
 DATA_DIR = "/data2/pnlong/musescore/data"
+ALL_STRING = "total"
 PARTITIONS = ("train", "valid", "test")
-PATHS_TRAIN = f"{DATA_DIR}/{PARTITIONS[0]}.txt"
-PATHS_VALID = f"{DATA_DIR}/{PARTITIONS[1]}.txt"
+RELEVANT_PARTITIONS = PARTITIONS[:2]
+MASKS = (ALL_STRING, "note", "expressive") # for determining loss in notes vs expressive features
+PERFORMANCE_METRICS = ("loss", "accuracy")
+PERFORMANCE_OUTPUT_COLUNS = ["step", "metric", "partition", "mask", "field", "value"]
+NA_VALUE = "NA"
+PATHS_TRAIN = f"{DATA_DIR}/{RELEVANT_PARTITIONS[0]}.txt"
+PATHS_VALID = f"{DATA_DIR}/{RELEVANT_PARTITIONS[1]}.txt"
 OUTPUT_DIR = "/data2/pnlong/musescore/data"
 ENCODING_FILEPATH = "/data2/pnlong/musescore/encoding.json"
 
@@ -82,6 +89,7 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("--dropout", default = 0.2, type = float, help = "Dropout rate")
     parser.add_argument("--abs_pos_emb", action = argparse.BooleanOptionalAction, default = True, help = "Whether to use absolute positional embedding")
     parser.add_argument("--rel_pos_emb", action = argparse.BooleanOptionalAction, default = False, help = "Whether to use relative positional embedding")
+    parser.add_argument("--conditional", action = "store_true", help = "Do we want to train in a purely conditional way (i.e. masking out the loss on expressive-feature tokens)?")
     # training
     parser.add_argument("--steps", default = 200000, type = int, help = "Number of steps")
     parser.add_argument("--valid_steps", default = 1000, type = int, help = "Validation frequency")
@@ -127,7 +135,7 @@ def get_lr_multiplier(step: int, warmup_steps: int, decay_end_steps: int, decay_
 
 if __name__ == "__main__":
 
-    # CONSTANTS
+    # LOAD UP MODEL
     ##################################################
 
     # parse the command-line arguments
@@ -138,7 +146,51 @@ if __name__ == "__main__":
         raise ValueError("Invalid --paths_train argument. File does not exist.")
     if not exists(args.paths_valid):
         raise ValueError("Invalid --paths_valid argument. File does not exist.")
-    args.output_dir = args.output_dir + "/" + (args.conditioning if not args.baseline else "baseline") + ("_aug" if args.aug else "") # custom output directory based on arguments
+    
+    # get the specified device
+    device = torch.device(f"cuda:{abs(args.gpu)}" if (torch.cuda.is_available() and args.gpu != -1) else "cpu")
+    print(f"Using device: {device}")
+
+    # load the encoding
+    encoding = representation.load_encoding(filepath = args.encoding) if exists(args.encoding) else representation.get_encoding()
+
+    # create the dataset and data loader
+    print(f"Creating the data loader...")
+    dataset = {
+        RELEVANT_PARTITIONS[0]: MusicDataset(paths = args.paths_train, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, is_baseline = args.baseline, max_seq_len = args.max_seq_len, max_beat = args.max_beat, use_augmentation = args.aug),
+        RELEVANT_PARTITIONS[1]: MusicDataset(paths = args.paths_valid, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, is_baseline = args.baseline, max_seq_len = args.max_seq_len, max_beat = args.max_beat, use_augmentation = args.aug)
+        }
+    data_loader = {
+        RELEVANT_PARTITIONS[0]: torch.utils.data.DataLoader(dataset = dataset[RELEVANT_PARTITIONS[0]], batch_size = args.batch_size, shuffle = True, num_workers = args.jobs, collate_fn = MusicDataset.collate),
+        RELEVANT_PARTITIONS[1]: torch.utils.data.DataLoader(dataset = dataset[RELEVANT_PARTITIONS[1]], batch_size = args.batch_size, shuffle = True, num_workers = args.jobs, collate_fn = MusicDataset.collate)
+    }
+
+    # create the model
+    print(f"Creating model...")
+    model = music_x_transformers.MusicXTransformer(
+        dim = args.dim,
+        encoding = encoding,
+        depth = args.layers,
+        heads = args.heads,
+        max_seq_len = args.max_seq_len,
+        max_beat = args.max_beat,
+        rotary_pos_emb = args.rel_pos_emb,
+        use_abs_pos_emb = args.abs_pos_emb,
+        embedding_dropout = args.dropout,
+        attention_dropout = args.dropout,
+        ff_dropout = args.dropout,
+    ).to(device)
+    n_parameters = sum(p.numel() for p in model.parameters()) # statistics
+    n_parameters_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad) # statistics (model size)
+
+    # determine the output directory based on arguments
+    if args.abs_pos_emb:
+        positional_embedding = "ape"
+    elif args.rel_pos_emb:
+        positional_embedding = "rpe"
+    else:
+        positional_embedding = "npe"
+    args.output_dir = args.output_dir + "/" + (args.conditioning if not args.baseline else "baseline") + ("_conditional" if args.conditional else "") + ("_aug" if args.aug else "") + f"_{positional_embedding}_{int(n_parameters_trainable / 1e+6)}M" # custom output directory based on arguments
     if not exists(args.output_dir):
         makedirs(args.output_dir)
     CHECKPOINTS_DIR = f"{args.output_dir}/checkpoints" # models will be stored in the output directory
@@ -163,87 +215,79 @@ if __name__ == "__main__":
             print(logging_output.read())
 
     # start a new wandb run to track the script
-    current_datetime = datetime.datetime.now().strftime("%-m/%-d/%y;%-H:%M")
-    run = wandb.init(config = vars(args), resume = not log_hyperparameters, project = "ExpressionNet-Train", group = dirname(args.output_dir), name = basename(args.output_dir), id = basename(args.output_dir)) # set project title, configure with hyperparameters
+    # current_datetime = datetime.datetime.now().strftime("%-m/%-d/%y;%-H:%M")
+    run = wandb.init(config = dict(vars(args), **{"n_parameters": n_parameters, "n_parameters_trainable": n_parameters_trainable}), resume = not log_hyperparameters, project = "ExpressionNet-Train", group = dirname(args.output_dir), name = basename(args.output_dir), id = basename(args.output_dir)) # set project title, configure with hyperparameters
 
-    ##################################################
-
-
-    # SET UP TRAINING (LOAD DATASET, DATA LOADERS)
-    ##################################################
-
-    # get the specified device
-    device = torch.device(f"cuda:{abs(args.gpu)}" if (torch.cuda.is_available() and args.gpu != -1) else "cpu")
-    logging.info(f"Using device: {device}")
-
-    # load the encoding
-    encoding = representation.load_encoding(filepath = args.encoding) if exists(args.encoding) else representation.get_encoding()
-
-    # create the dataset and data loader
-    logging.info(f"Creating the data loader...")
-    dataset = {
-        PARTITIONS[0]: MusicDataset(paths = args.paths_train, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, is_baseline = args.baseline, max_seq_len = args.max_seq_len, max_beat = args.max_beat, use_augmentation = args.aug),
-        PARTITIONS[1]: MusicDataset(paths = args.paths_valid, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, is_baseline = args.baseline, max_seq_len = args.max_seq_len, max_beat = args.max_beat, use_augmentation = args.aug)
-        }
-    data_loader = {
-        PARTITIONS[0]: torch.utils.data.DataLoader(dataset = dataset[PARTITIONS[0]], batch_size = args.batch_size, shuffle = True, num_workers = args.jobs, collate_fn = MusicDataset.collate),
-        PARTITIONS[1]: torch.utils.data.DataLoader(dataset = dataset[PARTITIONS[1]], batch_size = args.batch_size, shuffle = True, num_workers = args.jobs, collate_fn = MusicDataset.collate)
-    }
-
-    # create the model
-    logging.info(f"Creating model...")
-    model = music_x_transformers.MusicXTransformer(
-        dim = args.dim,
-        encoding = encoding,
-        depth = args.layers,
-        heads = args.heads,
-        max_seq_len = args.max_seq_len,
-        max_beat = args.max_beat,
-        rotary_pos_emb = args.rel_pos_emb,
-        use_abs_pos_emb = args.abs_pos_emb,
-        embedding_dropout = args.dropout,
-        attention_dropout = args.dropout,
-        ff_dropout = args.dropout,
-    ).to(device)
-    best_model_filepath = {partition: f"{CHECKPOINTS_DIR}/best_model.{partition}.pth" for partition in PARTITIONS[:2]}
+    # load previous model and summarize if needed
+    best_model_filepath = {partition: f"{CHECKPOINTS_DIR}/best_model.{partition}.pth" for partition in RELEVANT_PARTITIONS}
     model_previously_created = args.resume and all(exists(filepath) for filepath in best_model_filepath.values())
     if model_previously_created:
-        model.load_state_dict(torch.load(f = best_model_filepath[PARTITIONS[1]]))
-
-    # summarize the model
-    if not model_previously_created:
-        n_parameters = sum(p.numel() for p in model.parameters())
-        n_parameters_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        model.load_state_dict(torch.load(f = best_model_filepath[RELEVANT_PARTITIONS[1]]))
+    else:
         logging.info(f"Number of parameters: {n_parameters}")
         logging.info(f"Number of trainable parameters: {n_parameters_trainable}")
-        wandb.log({"n_parameters": n_parameters, "n_parameters_trainable": n_parameters_trainable})
     
     # create the optimizer
     optimizer = torch.optim.Adam(params = model.parameters(), lr = args.learning_rate)
-    best_optimizer_filepath = {partition: f"{CHECKPOINTS_DIR}/best_optimizer.{partition}.pth" for partition in PARTITIONS[:2]}
+    best_optimizer_filepath = {partition: f"{CHECKPOINTS_DIR}/best_optimizer.{partition}.pth" for partition in RELEVANT_PARTITIONS}
     if args.resume and all(exists(filepath) for filepath in best_optimizer_filepath.values()):
-        optimizer.load_state_dict(torch.load(f = best_optimizer_filepath[PARTITIONS[1]]))
+        optimizer.load_state_dict(torch.load(f = best_optimizer_filepath[RELEVANT_PARTITIONS[1]]))
 
     # create the scheduler
-    scheduler = torch.optim.lr_scheduler.LambdaLR(
-        optimizer = optimizer,
-        lr_lambda = lambda step: get_lr_multiplier(
-            step = step,
-            warmup_steps = args.lr_warmup_steps,
-            decay_end_steps = args.lr_decay_steps,
-            decay_end_multiplier = args.lr_decay_multiplier
-        )
-    )
-    best_scheduler_filepath = {partition: f"{CHECKPOINTS_DIR}/best_scheduler.{partition}.pth" for partition in PARTITIONS[:2]}
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer = optimizer, lr_lambda = lambda step: get_lr_multiplier(step = step, warmup_steps = args.lr_warmup_steps, decay_end_steps = args.lr_decay_steps, decay_end_multiplier = args.lr_decay_multiplier))
+    best_scheduler_filepath = {partition: f"{CHECKPOINTS_DIR}/best_scheduler.{partition}.pth" for partition in RELEVANT_PARTITIONS}
     if args.resume and all(exists(filepath) for filepath in best_scheduler_filepath.values()):
-        scheduler.load_state_dict(torch.load(f = best_scheduler_filepath[PARTITIONS[1]]))
+        scheduler.load_state_dict(torch.load(f = best_scheduler_filepath[RELEVANT_PARTITIONS[1]]))
+    
+    ##################################################
+            
+    
+    # HELPER FUNCTIONS FOR TRAINING
+    ##################################################
+        
+    def get_accuracies(model_output: torch.tensor, expected: torch.tensor) -> torch.tensor:
+        """Get the matrix of accuracies for correctly predicted tokens."""
+        predicted = torch.cat(tensors = [torch.argmax(input = output_field, dim = -1, keepdim = True) for output_field in model_output], dim = -1) # convert model output into a matrix of (greedy) predictions
+        return torch.eq(input = predicted, other = expected) # compare predicted to expected values
+    
+    def generate_note_expressive_mask(seq: torch.tensor) -> Dict[str, torch.tensor]:
+        """Generate both a note and expressive-feature mask over a sequence, return as a dictionary using MASKS as keys."""
+        mask = {
+                MASKS[0]: torch.ones_like(input = seq[:, 1:, 0]), # no mask
+                MASKS[1]: torch.logical_or(input = torch.eq(input = seq[:, 1:, 0], other = encoding["type_code_map"]["note"] * torch.ones(size = (seq.shape[0], seq.shape[1] - 1))), other = torch.eq(input = seq[:, 1:, 0], other = encoding["type_code_map"]["grace-note"] * torch.ones(size = (seq.shape[0], seq.shape[1] - 1)))), # mask_note is true if the type is a note
+                MASKS[2]: torch.eq(input = seq[:, 1:, 0], other = encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING] * torch.ones(size = (seq.shape[0], seq.shape[1] - 1))) # mask_expressive is true if the type is an expressive feature
+            }
+        return mask
 
-    # create a file to record losses
-    loss_output_filepath = f"{args.output_dir}/loss.csv"
-    loss_columns_must_be_written = not (exists(loss_output_filepath) and args.resume) # whether or not to write loss column names
-    with open(loss_output_filepath, "a" if args.resume else "w") as loss_csv: # open loss file
-        if loss_columns_must_be_written: # if column names need to be written
-            loss_csv.write(f"step,{PARTITIONS[0]}_loss,{PARTITIONS[1]}_loss," + ",".join(map(lambda dimension: f"{dimension}_loss", encoding["dimensions"])) + "\n")
+    def calculate_loss_statistics(losses: torch.tensor, mask: torch.tensor = None) -> Dict[str, float]:
+        """Calculate total loss and loss per field."""
+
+        # apply mask
+        losses = losses[mask, :]
+
+        # loss by field
+        losses_field = torch.mean(input = losses, dim = list(range(len(losses.shape) - 1)))
+
+        # loss
+        loss = torch.sum(input = losses_field, dim = None).item()
+
+        # return dictionary with total loss, then the loss by field
+        return dict({ALL_STRING: loss}, **dict(zip(encoding["dimensions"], losses_field)))
+    
+    def calculate_accuracy_statistics(accuracies: torch.tensor, mask: torch.tensor = None) -> Dict[str, float]:
+        """Calculate total accuracy and accuracy per field."""
+
+        # apply mask
+        accuracies = accuracies[mask, :]
+
+        # accuracy by field
+        accuracies_field = torch.sum(input = accuracies, dim = list(range(len(accuracies.shape) - 1)))
+
+        # accuracy
+        accuracy = torch.sum(input = torch.all(input = accuracies, dim = -1), dim = None).item()
+
+        # return dictionary with total accuracy, then the accuracy by field
+        return dict({ALL_STRING: accuracy}, **dict(zip(encoding["dimensions"], accuracies_field)))
 
     ##################################################
 
@@ -251,26 +295,33 @@ if __name__ == "__main__":
     # TRAINING PROCESS
     ##################################################
 
+    # create a file to record performance metrics
+    output_filepath = f"{args.output_dir}/performance.csv"
+    performance_columns_must_be_written = not (exists(output_filepath) and args.resume) # whether or not to write column names
+    if performance_columns_must_be_written: # if column names need to be written
+        pd.DataFrame(columns = PERFORMANCE_OUTPUT_COLUNS).to_csv(path_or_buf = output_filepath, sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w")
+    full_fields = [ALL_STRING] + list(encoding["dimensions"]) # list of fields plus the total loss/accuracy metric
+
     # initialize variables
     step = 0
-    min_loss = {partition: float("inf") for partition in PARTITIONS[:2]}
-    if not loss_columns_must_be_written:
-        previous_loss_csv = pd.read_csv(filepath_or_buffer = loss_output_filepath, sep = ",", header = 0, index_col = False) # read in previous loss values
-        if len(previous_loss_csv) > 0:
-            for partition in PARTITIONS[:2]:
-                min_loss[partition] = float(previous_loss_csv[f"{partition}_loss"].min(axis = 0)) # get minimum loss by extracting the minimum
-            step = int(previous_loss_csv["step"].tolist()[-1]) # update step
+    min_loss = {partition: float("inf") for partition in RELEVANT_PARTITIONS}
+    if not performance_columns_must_be_written:
+        previous_performance = pd.read_csv(filepath_or_buffer = output_filepath, sep = ",", na_rep = NA_VALUE, header = 0, index_col = False) # read in previous performance values
+        if len(previous_performance) > 0:
+            for partition in RELEVANT_PARTITIONS:
+                min_loss[partition] = float(previous_performance[(previous_performance["metric"] == PERFORMANCE_METRICS[0]) & (previous_performance["partition"] == partition) & (previous_performance["mask"] == ALL_STRING) & (previous_performance["field"] == ALL_STRING)]["value"].min(axis = 0)) # get minimum loss
+            step = int(previous_performance["step"].max(axis = 0)) # update step
             print(f"Current Step: {step}")
-        del previous_loss_csv
+        del previous_performance
     if args.early_stopping:
         count_early_stopping = 0
 
     # iterate for the specified number of steps
-    train_iterator = iter(data_loader[PARTITIONS[0]])
+    train_iterator = iter(data_loader[RELEVANT_PARTITIONS[0]])
     while step < args.steps:
 
-        # to store loss values
-        loss = {partition: float("inf") for partition in PARTITIONS[:2]}
+        # to store loss/accuracy values
+        performance = {metric: {partition: dict() for partition in RELEVANT_PARTITIONS} for metric in PERFORMANCE_METRICS}
 
         # TRAIN
         ##################################################
@@ -278,6 +329,7 @@ if __name__ == "__main__":
         logging.info(f"Training...")
 
         model.train()
+        count, count_token = 0, {mask_type: 0 for mask_type in MASKS}
         recent_losses = []
         for batch in (progress_bar := tqdm(iterable = range(args.valid_steps), desc = "Training")):
 
@@ -285,36 +337,75 @@ if __name__ == "__main__":
             try:
                 batch = next(train_iterator)
             except (StopIteration):
-                train_iterator = iter(data_loader[PARTITIONS[0]]) # reinitialize dataset iterator
+                train_iterator = iter(data_loader[RELEVANT_PARTITIONS[0]]) # reinitialize dataset iterator
                 batch = next(train_iterator)
 
             # get input and output pair
             seq = batch["seq"].to(device)
             mask = batch["mask"].to(device)
 
-            # update the model parameters
+            # calculate loss for the batch
             optimizer.zero_grad()
-            loss_batch = model(seq = seq, mask = mask) ############## ERROR
-            loss_batch.backward()
+            loss_batch, losses_batch, output_batch = model(seq = seq, mask = mask, return_list = True, reduce = False, return_output = True) # reduce = False so that we have loss at each token
+            masks = generate_note_expressive_mask(seq = seq) # determine mask for notes vs expressive features
+            if args.conditional: # loss is only based on notes
+                loss_batch = losses_batch[masks[MASKS[1]], :] # mask to notes only
+                loss_batch = torch.mean(input = loss_batch, dim = list(range(len(loss_batch.shape) - 1)))
+                loss_batch = torch.sum(input = loss_batch, dim = None).item()
+
+            # update parameters according to loss
+            loss_batch.backward() # calculate gradients
             torch.nn.utils.clip_grad_norm_(parameters = model.parameters(), max_norm = args.grad_norm_clip)
-            optimizer.step()
-            scheduler.step()
+            optimizer.step() # update parameters
+            scheduler.step() # update scheduler
 
             # compute the moving average of the loss
-            recent_losses.append(float(loss_batch))
+            recent_losses.append(loss_batch)
             if len(recent_losses) > 10:
                 del recent_losses[0]
-            loss[PARTITIONS[0]] = np.mean(a = recent_losses, axis = 0)
-            progress_bar.set_postfix(loss = f"{loss[PARTITIONS[0]]:8.4f}")
+            loss_batch = np.mean(a = recent_losses, axis = 0)
+            
+            # calculate accuracy
+            accuracies_batch = get_accuracies(model_output = output_batch, expected = seq[:, 1:, :])
+            accuracy_batch = torch.sum(input = torch.all(input = accuracies_batch, dim = -1), dim = None).item() / utils.product(l = accuracies_batch.shape[:-1])
+            
+            # set progress bar
+            progress_bar.set_postfix(loss = f"{loss_batch:8.4f}", accuracy = f"{100 * accuracy_batch:5.2f}%")
 
-            # log training loss for wandb
-            wandb.log({f"{PARTITIONS[0]}/loss": loss[PARTITIONS[0]]}, step = step)
+            # log training loss/accuracy for wandb
+            wandb.log({f"{RELEVANT_PARTITIONS[0]}/{PERFORMANCE_METRICS[0]}": loss_batch, f"{RELEVANT_PARTITIONS[0]}/{PERFORMANCE_METRICS[1]}": accuracy_batch}, step = step)
+
+            # update counts
+            count += len(batch)
+            for mask_type in MASKS:
+                count_token[mask_type] += torch.sum(input = masks[mask_type], dim = None).item()
+
+            # calculate losses and accuracy for different facets
+            performance_batch = {
+                PERFORMANCE_METRICS[0]: {mask_type: calculate_loss_statistics(losses = losses_batch, mask = mask_) for mask_type, mask_ in masks.items()},
+                PERFORMANCE_METRICS[1]: {mask_type: calculate_accuracy_statistics(accuracies = accuracies_batch, mask = mask_) for mask_type, mask_ in masks.items()}
+                }
+            for metric in PERFORMANCE_METRICS:
+                for mask_type in MASKS:
+                    for field in full_fields:
+                        performance[metric][RELEVANT_PARTITIONS[0]][mask_type][field] += performance_batch[metric][mask_type][field]
 
             # increment step
             step += 1
 
         # release GPU memory right away
-        del seq, mask
+        del seq, mask, masks, loss_batch, losses_batch, output_batch, accuracies_batch
+
+        # compute average loss/accuracy across batches
+        for mask_type in MASKS:
+            for field in full_fields:
+                performance[PERFORMANCE_METRICS[0]][RELEVANT_PARTITIONS[0]][mask_type][field] /= count # loss
+                performance[PERFORMANCE_METRICS[1]][RELEVANT_PARTITIONS[0]][mask_type][field] /= count_token[mask_type] # accuracy
+
+        # log train info for wandb
+        for metric in PERFORMANCE_METRICS:
+            for mask_type in MASKS:
+                wandb.log({f"{RELEVANT_PARTITIONS[0]}/{metric}/{mask_type}/{field}": value for field, value in performance[metric][RELEVANT_PARTITIONS[0]][mask_type].items()}, step = step)
 
         ##################################################
 
@@ -327,38 +418,45 @@ if __name__ == "__main__":
         model.eval()
         with torch.no_grad():
 
-            total_loss, count = 0, 0
-            total_losses = [0] * len(encoding["dimensions"])
-            for batch in tqdm(iterable = data_loader[PARTITIONS[1]], desc = "Validating"):
+            count, count_token = 0, {mask_type: 0 for mask_type in MASKS}
+            for batch in tqdm(iterable = data_loader[RELEVANT_PARTITIONS[1]], desc = "Validating"):
 
                 # get input and output pair
                 seq = batch["seq"].to(device)
                 mask = batch["mask"].to(device)
 
                 # pass through the model
-                loss_batch, losses_batch = model(seq = seq, return_list = True, mask = mask)
+                loss_batch, losses_batch, output_batch = model(seq = seq, mask = mask, return_list = True, reduce = False, return_output = True)
+                accuracies_batch = get_accuracies(model_output = output_batch, expected = seq[:, 1:, :])
+                masks = generate_note_expressive_mask(seq = seq) # determine mask for notes vs expressive features
 
-                # accumulate validation loss
-                count += len(batch)
-                total_loss += len(batch) * float(loss_batch)
-                for index in range(len(encoding["dimensions"])):
-                    total_losses[index] += float(losses_batch[index])
+                # calculate losses and accuracy for different facets
+                performance_batch = {
+                    PERFORMANCE_METRICS[0]: {mask_type: calculate_loss_statistics(losses = losses_batch, mask = mask_) for mask_type, mask_ in masks.items()},
+                    PERFORMANCE_METRICS[1]: {mask_type: calculate_accuracy_statistics(accuracies = accuracies_batch, mask = mask_) for mask_type, mask_ in masks.items()}
+                    }
+                for metric in PERFORMANCE_METRICS:
+                    for mask_type in MASKS:
+                        for field in full_fields:
+                            performance[metric][RELEVANT_PARTITIONS[1]][mask_type][field] += performance_batch[metric][mask_type][field]
+                
+        # release GPU memory right away
+        del seq, mask, masks, loss_batch, losses_batch, output_batch, accuracies_batch
         
-        # get loss
-        loss[PARTITIONS[1]] = total_loss / count
-        individual_losses = {dimension: (loss_by_dimension / count) for dimension, loss_by_dimension in zip(encoding["dimensions"], total_losses)}
+        # compute average loss/accuracy across batches
+        for mask_type in MASKS:
+            for field in full_fields:
+                performance[PERFORMANCE_METRICS[0]][RELEVANT_PARTITIONS[1]][mask_type][field] /= count # loss
+                performance[PERFORMANCE_METRICS[1]][RELEVANT_PARTITIONS[1]][mask_type][field] /= count_token[mask_type] # accuracy
 
         # output statistics
-        logging.info(f"Validation loss: {loss[PARTITIONS[1]]:.4f}")
-        logging.info(f"Individual losses: type = {individual_losses['type']:.4f}, beat: {individual_losses['beat']:.4f}, position: {individual_losses['position']:.4f}, value: {individual_losses['value']:.4f}, duration: {individual_losses['duration']:.4f}, instrument: {individual_losses['instrument']:.4f}")
+        logging.info(f"Validation loss: {performance[PERFORMANCE_METRICS[0]][RELEVANT_PARTITIONS[1]][ALL_STRING][ALL_STRING]:.4f}")
+        logging.info("Individual losses: " + ", ".join((f"{field} = {value:.4f}" for field, value in performance[PERFORMANCE_METRICS[0]][RELEVANT_PARTITIONS[1]][ALL_STRING].items())))
 
         # log validation info for wandb
-        wandb.log({f"{PARTITIONS[1]}/loss": loss[PARTITIONS[1]]}, step = step)
-        for dimension, loss_val in individual_losses.items():
-            wandb.log({f"{PARTITIONS[1]}/loss_{dimension}": loss_val}, step = step)
-
-        # release GPU memory right away
-        del seq, mask
+        for metric in PERFORMANCE_METRICS:
+            for mask_type in MASKS:
+                wandb.log({f"{RELEVANT_PARTITIONS[1]}/{metric}/{mask_type}/{field}": value for field, value in performance[metric][RELEVANT_PARTITIONS[1]][mask_type].items()}, step = step)
 
         ##################################################
 
@@ -366,15 +464,21 @@ if __name__ == "__main__":
         # RECORD LOSS, SAVE MODEL
         ##################################################
 
-        # write losses to file
-        with open(loss_output_filepath, "a") as loss_csv:
-            loss_csv.write(f"{step},{loss[PARTITIONS[0]]},{loss[PARTITIONS[1]]}," + ",".join(map(str, individual_losses)) + "\n")
+        # write output to file
+        output = []
+        for metric in PERFORMANCE_METRICS:
+            for partition in RELEVANT_PARTITIONS:
+                for mask_type in MASKS:
+                    for field in full_fields:
+                        output.append(dict(zip(PERFORMANCE_OUTPUT_COLUNS, (step, metric, partition, mask_type, field, performance[metric][partition][mask_type][field]))))
+        output = pd.DataFrame(data = output, columns = PERFORMANCE_OUTPUT_COLUNS)
+        output.to_csv(path_or_buf = output_filepath, sep = ",", na_rep = NA_VALUE, header = False, index = False, mode = "a")
 
         # see whether or not to save
         is_an_improvement = False # whether or not the loss has improved
-        for partition in PARTITIONS[:2]:
-            if loss[partition] < min_loss[partition]:
-                min_loss[partition] = loss[partition]
+        for partition in RELEVANT_PARTITIONS:
+            if performance[PERFORMANCE_METRICS[0]][partition] < min_loss[partition]:
+                min_loss[partition] = performance[PERFORMANCE_METRICS[0]][partition]
                 logging.info(f"Best {partition}_loss so far!") # log paths to which states were saved
                 torch.save(obj = model.state_dict(), f = best_model_filepath[partition]) # save the model
                 torch.save(obj = optimizer.state_dict(), f = best_optimizer_filepath[partition]) # save the optimizer state
@@ -399,8 +503,8 @@ if __name__ == "__main__":
     ##################################################
 
     # log minimum validation loss
-    logging.info(f"Minimum validation loss achieved: {min_loss[PARTITIONS[1]]}")
-    wandb.log({f"min_{PARTITIONS[1]}_loss": min_loss[PARTITIONS[1]]})
+    logging.info(f"Minimum validation loss achieved: {min_loss[RELEVANT_PARTITIONS[1]]}")
+    wandb.log({f"min_{RELEVANT_PARTITIONS[1]}_loss": min_loss[RELEVANT_PARTITIONS[1]]})
 
     # finish the wandb run
     wandb.finish()

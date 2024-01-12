@@ -45,7 +45,7 @@ assert DIMENSIONS[0] == "type"
 ##################################################
 
 EXPRESSIVE_FEATURE_TYPE_STRING = "expressive-feature"
-TYPE_CODE_MAP = {key: val for val, key in enumerate(("start-of-song", "instrument", "start-of-notes", EXPRESSIVE_FEATURE_TYPE_STRING, "grace-note", "note", "end-of-song"))}
+TYPE_CODE_MAP = {type_: code for code, type_ in enumerate(("start-of-song", "instrument", "start-of-notes", EXPRESSIVE_FEATURE_TYPE_STRING, "grace-note", "note", "end-of-song"))}
 CODE_TYPE_MAP = utils.inverse_dict(TYPE_CODE_MAP)
 
 ##################################################
