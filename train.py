@@ -310,7 +310,7 @@ if __name__ == "__main__":
     step = 0
     min_loss = {partition: float("inf") for partition in RELEVANT_PARTITIONS}
     if not performance_columns_must_be_written:
-        previous_performance = pd.read_csv(filepath_or_buffer = output_filepath, sep = ",", na_rep = NA_VALUE, header = 0, index_col = False) # read in previous performance values
+        previous_performance = pd.read_csv(filepath_or_buffer = output_filepath, sep = ",", na_values = NA_VALUE, header = 0, index_col = False) # read in previous performance values
         if len(previous_performance) > 0:
             for partition in RELEVANT_PARTITIONS:
                 min_loss[partition] = float(previous_performance[(previous_performance["metric"] == PERFORMANCE_METRICS[0]) & (previous_performance["partition"] == partition) & (previous_performance["mask"] == ALL_STRING) & (previous_performance["field"] == ALL_STRING)]["value"].min(axis = 0)) # get minimum loss
