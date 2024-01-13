@@ -404,7 +404,7 @@ if __name__ == "__main__":
         for mask_type in MASKS:
             for field in full_fields:
                 performance[PERFORMANCE_METRICS[0]][RELEVANT_PARTITIONS[0]][mask_type][field] /= count # loss
-                performance[PERFORMANCE_METRICS[1]][RELEVANT_PARTITIONS[0]][mask_type][field] /= count_token[mask_type] # accuracy
+                performance[PERFORMANCE_METRICS[1]][RELEVANT_PARTITIONS[0]][mask_type][field] /= count_token[mask_type] if count_token[mask_type] != 0 else 1 # accuracy
 
         # log train info for wandb
         for metric in PERFORMANCE_METRICS:
@@ -451,7 +451,7 @@ if __name__ == "__main__":
         for mask_type in MASKS:
             for field in full_fields:
                 performance[PERFORMANCE_METRICS[0]][RELEVANT_PARTITIONS[1]][mask_type][field] /= count # loss
-                performance[PERFORMANCE_METRICS[1]][RELEVANT_PARTITIONS[1]][mask_type][field] /= count_token[mask_type] # accuracy
+                performance[PERFORMANCE_METRICS[1]][RELEVANT_PARTITIONS[1]][mask_type][field] /= count_token[mask_type] if count_token[mask_type] != 0 else 1 # accuracy
 
         # output statistics
         logging.info(f"Validation loss: {performance[PERFORMANCE_METRICS[0]][RELEVANT_PARTITIONS[1]][ALL_STRING][ALL_STRING]:.4f}")
