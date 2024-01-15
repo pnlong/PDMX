@@ -21,7 +21,7 @@
 
 import argparse
 import logging
-from os import makedirs, mkdir
+from os import makedirs, mkdir, environ
 from os.path import exists, basename, dirname
 import pprint
 # import shutil # for copying files
@@ -59,6 +59,10 @@ PATHS_TRAIN = f"{DATA_DIR}/{RELEVANT_PARTITIONS[0]}.txt"
 PATHS_VALID = f"{DATA_DIR}/{RELEVANT_PARTITIONS[1]}.txt"
 OUTPUT_DIR = "/data2/pnlong/musescore/data"
 ENCODING_FILEPATH = "/data2/pnlong/musescore/encoding.json"
+
+# environment constants
+# environ["CUDA_LAUNCH_BLOCKING"] = "1" # to ignore https://github.com/facebookresearch/detectron2/issues/2837 error (device-side assert triggered)
+environ["WANDB_SILENT"] = "true" # to silence wandb outputs
 
 ##################################################
 
@@ -228,8 +232,8 @@ if __name__ == "__main__":
     if model_previously_created:
         model.load_state_dict(torch.load(f = best_model_filepath[RELEVANT_PARTITIONS[1]]))
     else:
-        logging.info(f"Number of parameters: {n_parameters}")
-        logging.info(f"Number of trainable parameters: {n_parameters_trainable}")
+        logging.info(f"Number of parameters: {n_parameters:,}")
+        logging.info(f"Number of trainable parameters: {n_parameters_trainable:,}")
     
     # create the optimizer
     optimizer = torch.optim.Adam(params = model.parameters(), lr = args.learning_rate)
@@ -267,13 +271,16 @@ if __name__ == "__main__":
         """Calculate total loss and loss per field."""
 
         # apply mask
-        losses = losses[mask, :]
+        if losses.shape[0] > 1: # when the batch size isn't 1
+            losses = losses[mask, :] # just perform a normal masking operation
+        else: # to avoid IndexError: index 1 is out of bounds for dimension 0 with size 1
+            losses = torch.unsqueeze(input = losses.squeeze(dim = 0)[mask.squeeze(dim = 0), :], dim = 0) # do some squeezing and unsqueezing
 
         # loss by field
-        losses_field = torch.mean(input = losses, dim = list(range(len(losses.shape) - 1)))
+        losses_field = torch.mean(input = losses, dim = list(range(len(losses.shape) - 1))).nan_to_num(nan = 0.0).tolist() # replace nan with 0 to ease future calculations
 
         # loss
-        loss = torch.sum(input = losses_field, dim = None).item()
+        loss = sum(losses_field)
 
         # return dictionary with total loss, then the loss by field
         return dict({ALL_STRING: loss}, **dict(zip(encoding["dimensions"], losses_field)))
@@ -282,10 +289,13 @@ if __name__ == "__main__":
         """Calculate total accuracy and accuracy per field."""
 
         # apply mask
-        accuracies = accuracies[mask, :]
+        if accuracies.shape[0] > 1: # when the batch size isn't 1
+            accuracies = accuracies[mask, :] # just perform a normal masking operation
+        else: # to avoid IndexError: index 1 is out of bounds for dimension 0 with size 1
+            accuracies = torch.unsqueeze(input = accuracies.squeeze(dim = 0)[mask.squeeze(dim = 0), :], dim = 0) # do some squeezing and unsqueezing
 
         # accuracy by field
-        accuracies_field = torch.sum(input = accuracies, dim = list(range(len(accuracies.shape) - 1)))
+        accuracies_field = torch.sum(input = accuracies, dim = list(range(len(accuracies.shape) - 1))).nan_to_num(nan = 0.0).tolist() # replace nan with 0 to ease future calculations
 
         # accuracy
         accuracy = torch.sum(input = torch.all(input = accuracies, dim = -1), dim = None).item()
@@ -334,7 +344,8 @@ if __name__ == "__main__":
 
         model.train()
         count, count_token = 0, {mask_type: 0 for mask_type in MASKS}
-        recent_losses = []
+        recent_metrics = {PERFORMANCE_METRICS[0]: np.empty(shape = (0,)),
+                          PERFORMANCE_METRICS[1]: np.empty(shape = (0, 2))}
         for batch in (progress_bar := tqdm(iterable = range(args.valid_steps), desc = "Training")):
 
             # get next batch
@@ -351,6 +362,7 @@ if __name__ == "__main__":
             # calculate loss for the batch
             optimizer.zero_grad()
             loss_batch, losses_batch, output_batch = model(seq = seq, mask = mask, return_list = True, reduce = False, return_output = True) # reduce = False so that we have loss at each token
+            accuracies_batch = get_accuracies(model_output = output_batch, expected = seq[:, 1:, :]) # calculate accuracy
             masks = generate_note_expressive_mask(seq = seq) # determine mask for notes vs expressive features
             if args.conditional: # loss is only based on notes
                 loss_batch = losses_batch[masks[MASKS[1]], :] # mask to notes only
@@ -364,15 +376,19 @@ if __name__ == "__main__":
             scheduler.step() # update scheduler
 
             # compute the moving average of the loss
-            recent_losses.append(float(loss_batch))
-            if len(recent_losses) > 10:
-                del recent_losses[0]
-            loss_batch = np.mean(a = recent_losses, axis = 0)
+            recent_metrics[PERFORMANCE_METRICS[0]] = np.append(arr = recent_metrics[PERFORMANCE_METRICS[0]], values = [float(loss_batch)], axis = 0) # float(loss_batch) because it has a gradient attribute
+            if len(recent_metrics[PERFORMANCE_METRICS[0]]) > 10:
+                recent_metrics[PERFORMANCE_METRICS[0]] = np.delete(arr = recent_metrics[PERFORMANCE_METRICS[0]], obj = 0, axis = 0)
+            loss_batch = np.mean(a = recent_metrics[PERFORMANCE_METRICS[0]], axis = 0)
             
-            # calculate accuracy
-            accuracies_batch = get_accuracies(model_output = output_batch, expected = seq[:, 1:, :])
-            accuracy_batch = torch.sum(input = torch.all(input = accuracies_batch, dim = -1), dim = None).item() / utils.product(l = accuracies_batch.shape[:-1])
-            
+            # compute the moving average of the accuracy
+            accuracy_batch = np.array(object = (torch.sum(input = torch.all(input = accuracies_batch, dim = -1), dim = None).item(), utils.product(l = accuracies_batch.shape[:-1])), dtype = np.float64) # accuracy_batch is a tuple with the number of correct and the number total
+            recent_metrics[PERFORMANCE_METRICS[1]] = np.append(arr = recent_metrics[PERFORMANCE_METRICS[1]], values = accuracy_batch.reshape((1, -1)), axis = 0)
+            if len(recent_metrics[PERFORMANCE_METRICS[1]]) > 10:
+                recent_metrics[PERFORMANCE_METRICS[1]] = np.delete(arr = recent_metrics[PERFORMANCE_METRICS[1]], obj = 0, axis = 0)
+            accuracy_batch = np.sum(a = recent_metrics[PERFORMANCE_METRICS[1]], axis = 0) # take sum across 10 most recent different batches
+            accuracy_batch = accuracy_batch[0] / accuracy_batch[1] # calculate accuracy
+
             # set progress bar
             progress_bar.set_postfix(loss = f"{loss_batch:8.4f}", accuracy = f"{100 * accuracy_batch:5.2f}%")
 
@@ -422,7 +438,7 @@ if __name__ == "__main__":
         model.eval()
         with torch.no_grad():
 
-            count, count_token = 0, {mask_type: 0 for mask_type in MASKS}
+            count, count_token = 0, {mask_type: 0 for mask_type in MASKS} # counts
             for batch in tqdm(iterable = data_loader[RELEVANT_PARTITIONS[1]], desc = "Validating"):
 
                 # get input and output pair
@@ -430,10 +446,19 @@ if __name__ == "__main__":
                 mask = batch["mask"].to(device)
 
                 # pass through the model
-                loss_batch, losses_batch, output_batch = model(seq = seq, mask = mask, return_list = True, reduce = False, return_output = True)
-                accuracies_batch = get_accuracies(model_output = output_batch, expected = seq[:, 1:, :])
+                loss_batch, losses_batch, output_batch = model(seq = seq, mask = mask, return_list = True, reduce = False, return_output = True) # reduce = False so that we have loss at each token
+                accuracies_batch = get_accuracies(model_output = output_batch, expected = seq[:, 1:, :]) # calculate accuracies
                 masks = generate_note_expressive_mask(seq = seq) # determine mask for notes vs expressive features
-
+                if args.conditional: # loss is only based on notes
+                    loss_batch = losses_batch[masks[MASKS[1]], :] # mask to notes only
+                    loss_batch = torch.mean(input = loss_batch, dim = list(range(len(loss_batch.shape) - 1)))
+                    loss_batch = torch.sum(input = loss_batch, dim = None)
+                
+                # update counts
+                count += len(batch)
+                for mask_type in MASKS:
+                    count_token[mask_type] += torch.sum(input = masks[mask_type], dim = None).item()
+                
                 # calculate losses and accuracy for different facets
                 performance_batch = {
                     PERFORMANCE_METRICS[0]: {mask_type: calculate_loss_statistics(losses = losses_batch, mask = mask_) for mask_type, mask_ in masks.items()},
@@ -481,8 +506,8 @@ if __name__ == "__main__":
         # see whether or not to save
         is_an_improvement = False # whether or not the loss has improved
         for partition in RELEVANT_PARTITIONS:
-            if performance[PERFORMANCE_METRICS[0]][partition] < min_loss[partition]:
-                min_loss[partition] = performance[PERFORMANCE_METRICS[0]][partition]
+            if performance[PERFORMANCE_METRICS[0]][partition][ALL_STRING][ALL_STRING] < min_loss[partition]:
+                min_loss[partition] = performance[PERFORMANCE_METRICS[0]][partition][ALL_STRING][ALL_STRING]
                 logging.info(f"Best {partition}_loss so far!") # log paths to which states were saved
                 torch.save(obj = model.state_dict(), f = best_model_filepath[partition]) # save the model
                 torch.save(obj = optimizer.state_dict(), f = best_optimizer_filepath[partition]) # save the optimizer state
