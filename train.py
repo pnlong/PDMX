@@ -260,10 +260,11 @@ if __name__ == "__main__":
     
     def generate_note_expressive_mask(seq: torch.tensor) -> Dict[str, torch.tensor]:
         """Generate both a note and expressive-feature mask over a sequence, return as a dictionary using MASKS as keys."""
+        ones_mask = torch.ones_like(input = seq[:, 1:, 0]).to(device)
         mask = {
-                MASKS[0]: torch.ones_like(input = seq[:, 1:, 0]).to(device), # no mask
-                MASKS[1]: torch.logical_or(input = torch.eq(input = seq[:, 1:, 0], other = encoding["type_code_map"]["note"] * torch.ones(size = (seq.shape[0], seq.shape[1] - 1)).to(device)), other = torch.eq(input = seq[:, 1:, 0], other = encoding["type_code_map"]["grace-note"] * torch.ones(size = (seq.shape[0], seq.shape[1] - 1)).to(device))), # mask_note is true if the type is a note
-                MASKS[2]: torch.eq(input = seq[:, 1:, 0], other = encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING] * torch.ones(size = (seq.shape[0], seq.shape[1] - 1)).to(device)) # mask_expressive is true if the type is an expressive feature
+                MASKS[0]: ones_mask.type(torch.bool), # no mask
+                MASKS[1]: torch.logical_or(input = torch.eq(input = seq[:, 1:, 0], other = encoding["type_code_map"]["note"] * ones_mask), other = torch.eq(input = seq[:, 1:, 0], other = encoding["type_code_map"]["grace-note"] * ones_mask)), # mask_note is true if the type is a note
+                MASKS[2]: torch.eq(input = seq[:, 1:, 0], other = encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING] * ones_mask) # mask_expressive is true if the type is an expressive feature
             }
         return mask
 
@@ -386,8 +387,8 @@ if __name__ == "__main__":
             recent_metrics[PERFORMANCE_METRICS[1]] = np.append(arr = recent_metrics[PERFORMANCE_METRICS[1]], values = accuracy_batch.reshape((1, -1)), axis = 0)
             if len(recent_metrics[PERFORMANCE_METRICS[1]]) > 10:
                 recent_metrics[PERFORMANCE_METRICS[1]] = np.delete(arr = recent_metrics[PERFORMANCE_METRICS[1]], obj = 0, axis = 0)
-            accuracy_batch = np.sum(a = recent_metrics[PERFORMANCE_METRICS[1]], axis = 0) # take sum across 10 most recent different batches
-            accuracy_batch = accuracy_batch[0] / accuracy_batch[1] # calculate accuracy
+            accuracy_batch = np.sum(a = recent_metrics[PERFORMANCE_METRICS[1]], axis = 0) # take sum across <=10 most recent different batches
+            accuracy_batch = accuracy_batch[0] / accuracy_batch[1] # calculate accuracy (total correct / total count)
 
             # set progress bar
             progress_bar.set_postfix(loss = f"{loss_batch:8.4f}", accuracy = f"{100 * accuracy_batch:5.2f}%")
@@ -420,7 +421,7 @@ if __name__ == "__main__":
         for mask_type in MASKS:
             for field in full_fields:
                 performance[PERFORMANCE_METRICS[0]][RELEVANT_PARTITIONS[0]][mask_type][field] /= count # loss
-                performance[PERFORMANCE_METRICS[1]][RELEVANT_PARTITIONS[0]][mask_type][field] /= count_token[mask_type] if count_token[mask_type] != 0 else 1 # accuracy
+                performance[PERFORMANCE_METRICS[1]][RELEVANT_PARTITIONS[0]][mask_type][field] /= (count_token[mask_type] if count_token[mask_type] > 0 else 1) # accuracy
 
         # log train info for wandb
         for metric in PERFORMANCE_METRICS:
@@ -476,7 +477,7 @@ if __name__ == "__main__":
         for mask_type in MASKS:
             for field in full_fields:
                 performance[PERFORMANCE_METRICS[0]][RELEVANT_PARTITIONS[1]][mask_type][field] /= count # loss
-                performance[PERFORMANCE_METRICS[1]][RELEVANT_PARTITIONS[1]][mask_type][field] /= count_token[mask_type] if count_token[mask_type] != 0 else 1 # accuracy
+                performance[PERFORMANCE_METRICS[1]][RELEVANT_PARTITIONS[1]][mask_type][field] /= (count_token[mask_type] if count_token[mask_type] > 0 else 1) # accuracy
 
         # output statistics
         logging.info(f"Validation loss: {performance[PERFORMANCE_METRICS[0]][RELEVANT_PARTITIONS[1]][ALL_STRING][ALL_STRING]:.4f}")
