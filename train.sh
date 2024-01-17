@@ -57,8 +57,7 @@ python ${software} --conditioning "anticipation" --aug --sigma 5 --paths_train $
 # CONDITIONAL ON NOTES
 ##################################################
 
-# baseline
-python ${software} --baseline --conditional --aug --paths_train ${paths_train} --paths_valid ${paths_valid} --encoding ${encoding} --output_dir ${output_dir} --batch_size ${batch_size} --steps ${steps} --dim ${dim} --layers ${layers} --heads ${heads} --gpu ${gpu}
+# baseline is not possible to be conditional, because it is just notes
 
 # sort-order
 python ${software} --conditioning "sort" --conditional --aug --paths_train ${paths_train} --paths_valid ${paths_valid} --encoding ${encoding} --output_dir ${output_dir} --batch_size ${batch_size} --steps ${steps} --dim ${dim} --layers ${layers} --heads ${heads} --gpu ${gpu}

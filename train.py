@@ -450,10 +450,7 @@ if __name__ == "__main__":
                 loss_batch, losses_batch, output_batch = model(seq = seq, mask = mask, return_list = True, reduce = False, return_output = True) # reduce = False so that we have loss at each token
                 accuracies_batch = get_accuracies(model_output = output_batch, expected = seq[:, 1:, :]) # calculate accuracies
                 masks = generate_note_expressive_mask(seq = seq) # determine mask for notes vs expressive features
-                if args.conditional: # loss is only based on notes
-                    loss_batch = losses_batch[masks[MASKS[1]], :] # mask to notes only
-                    loss_batch = torch.mean(input = loss_batch, dim = list(range(len(loss_batch.shape) - 1)))
-                    loss_batch = torch.sum(input = loss_batch, dim = None)
+                # no need for the conditional loss_batch because it is calculated later and not needed for backprop
                 
                 # update counts
                 count += len(batch)
@@ -480,8 +477,8 @@ if __name__ == "__main__":
                 performance[PERFORMANCE_METRICS[1]][RELEVANT_PARTITIONS[1]][mask_type][field] /= (count_token[mask_type] if count_token[mask_type] > 0 else 1) # accuracy
 
         # output statistics
-        logging.info(f"Validation loss: {performance[PERFORMANCE_METRICS[0]][RELEVANT_PARTITIONS[1]][ALL_STRING][ALL_STRING]:.4f}")
-        logging.info("Individual losses: " + ", ".join((f"{field} = {value:.4f}" for field, value in performance[PERFORMANCE_METRICS[0]][RELEVANT_PARTITIONS[1]][ALL_STRING].items())))
+        logging.info(f"Validation loss: {performance[PERFORMANCE_METRICS[0]][RELEVANT_PARTITIONS[1]][MASKS[1 if args.conditional else 0]][ALL_STRING]:.4f}")
+        logging.info("Individual losses: " + ", ".join((f"{field} = {value:.4f}" for field, value in performance[PERFORMANCE_METRICS[0]][RELEVANT_PARTITIONS[1]][MASKS[1 if args.conditional else 0]].items())))
 
         # log validation info for wandb
         for metric in PERFORMANCE_METRICS:
@@ -507,8 +504,9 @@ if __name__ == "__main__":
         # see whether or not to save
         is_an_improvement = False # whether or not the loss has improved
         for partition in RELEVANT_PARTITIONS:
-            if performance[PERFORMANCE_METRICS[0]][partition][ALL_STRING][ALL_STRING] < min_loss[partition]:
-                min_loss[partition] = performance[PERFORMANCE_METRICS[0]][partition][ALL_STRING][ALL_STRING]
+            partition_loss = performance[PERFORMANCE_METRICS[0]][partition][MASKS[1 if args.conditional else 0]][ALL_STRING]
+            if partition_loss < min_loss[partition]:
+                min_loss[partition] = partition_loss
                 logging.info(f"Best {partition}_loss so far!") # log paths to which states were saved
                 torch.save(obj = model.state_dict(), f = best_model_filepath[partition]) # save the model
                 torch.save(obj = optimizer.state_dict(), f = best_optimizer_filepath[partition]) # save the optimizer state
