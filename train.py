@@ -326,10 +326,12 @@ if __name__ == "__main__":
             for partition in RELEVANT_PARTITIONS:
                 min_loss[partition] = float(previous_performance[(previous_performance["metric"] == PERFORMANCE_METRICS[0]) & (previous_performance["partition"] == partition) & (previous_performance["mask"] == ALL_STRING) & (previous_performance["field"] == ALL_STRING)]["value"].min(axis = 0)) # get minimum loss
             step = int(previous_performance["step"].max(axis = 0)) # update step
-            print(f"Current Step: {step}")
         del previous_performance
     if args.early_stopping:
         count_early_stopping = 0
+
+    # print current step
+    print(f"Current Step: {step:,}")
 
     # iterate for the specified number of steps
     train_iterator = iter(data_loader[RELEVANT_PARTITIONS[0]])
