@@ -15,6 +15,7 @@
 software_dir="/home/pnlong/model_musescore"
 base_dir="/data2/pnlong/musescore"
 data_dir="${base_dir}/data"
+trained_models="${data_dir}/models.txt"
 paths_test="${data_dir}/test.txt"
 encoding="${base_dir}/encoding.json"
 output_dir="${data_dir}"
@@ -24,20 +25,12 @@ gpu=3
 ##################################################
 
 
-# EVALUATE SAME AS MMT
+# EVALUATE SAME AS MMT (BASELINE)
 ##################################################
 
-# variables
-software="${software_dir}/evaluate_baseline.py"
-
-# baseline
-python ${software} --paths ${paths_test} --encoding ${encoding} --output_dir "${output_dir}/baseline_aug" --n_samples ${n_samples} --gpu ${gpu}
-
-# sort-order
-
-# prefix
-
-# anticipation
+for model in $(cat "${trained_models}"); do
+    python ${software_dir}/evaluate_baseline.py --paths ${paths_test} --encoding ${encoding} --output_dir "${output_dir}/${model}" --n_samples ${n_samples} --gpu ${gpu}
+done
 
 ##################################################
 
