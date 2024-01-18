@@ -4,7 +4,7 @@
 
 # Evaluate a model same as the MMT paper.
 
-# python /home/pnlong/model_musescore/evaluate_mmt.py
+# python /home/pnlong/model_musescore/evaluate_baseline.py
 
 
 # IMPORTS

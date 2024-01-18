@@ -28,7 +28,7 @@ gpu=3
 ##################################################
 
 # variables
-software="${software_dir}/evaluate_mmt.py"
+software="${software_dir}/evaluate_baseline.py"
 
 # baseline
 python ${software} --paths ${paths_test} --encoding ${encoding} --output_dir "${output_dir}/baseline_aug" --n_samples ${n_samples} --gpu ${gpu}
