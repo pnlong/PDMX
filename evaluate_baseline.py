@@ -110,13 +110,18 @@ if __name__ == "__main__":
     # parse the command-line arguments
     args = parse_args()
 
+    # create eval_dir if necessary
+    EVAL_DIR = f"{args.output_dir}/eval_baseline"
+    if not exists(EVAL_DIR):
+        mkdir(EVAL_DIR)
+
     # set up the logger
-    logging.basicConfig(level = logging.INFO, format = "%(message)s", handlers = [logging.FileHandler(filename = f"{args.output_dir}/evaluate.mmt.log", mode = "a"), logging.StreamHandler(stream = sys.stdout)])
+    logging.basicConfig(level = logging.INFO, format = "%(message)s", handlers = [logging.FileHandler(filename = f"{EVAL_DIR}/evaluate.log", mode = "a"), logging.StreamHandler(stream = sys.stdout)])
 
     # log command called and arguments, save arguments
     logging.info(f"Running command: python {' '.join(sys.argv)}")
     logging.info(f"Using arguments:\n{pprint.pformat(vars(args))}")
-    args_output_filepath = f"{args.output_dir}/evaluate_args.mmt.json"
+    args_output_filepath = f"{EVAL_DIR}/evaluate_args.json"
     logging.info(f"Saved arguments to {args_output_filepath}")
     utils.save_args(filepath = args_output_filepath, args = args)
     del args_output_filepath
@@ -135,16 +140,13 @@ if __name__ == "__main__":
     del train_args_filepath
 
     # make sure the output directory exists
-    EVAL_DIR = f"{args.output_dir}/eval_mmt"
-    if not exists(args.output_dir):
-        makedirs(args.output_dir) # create output_dir if necessary
-    if not exists(EVAL_DIR):
-        mkdir(EVAL_DIR) # create eval_dir if necessary
     for key in ("truth", "unconditioned"):
         key_base_dir = f"{EVAL_DIR}/{key}"
-        if not exists(key_base_dir): mkdir(key_base_dir) # create base_dir if necessary
+        if not exists(key_base_dir):
+            mkdir(key_base_dir) # create base_dir if necessary
         for subdir in ("npy", "csv", "json"):
-            if not exists(key_base_dir_subdir := f"{key_base_dir}/{subdir}"): mkdir(key_base_dir_subdir) # create base_dir with subdir if necessary
+            if not exists(key_base_dir_subdir := f"{key_base_dir}/{subdir}"):
+                mkdir(key_base_dir_subdir) # create base_dir with subdir if necessary
         del subdir, key_base_dir_subdir
     del key, key_base_dir # clear up memory
 

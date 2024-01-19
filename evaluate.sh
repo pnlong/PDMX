@@ -25,47 +25,20 @@ gpu=3
 ##################################################
 
 
-# EVALUATE SAME AS MMT (BASELINE)
+# EVALUATE
 ##################################################
 
 for model in $(cat "${trained_models}"); do
+
+    # evalute same as mmt (baseline)
     python ${software_dir}/evaluate_baseline.py --paths ${paths_test} --encoding ${encoding} --output_dir "${output_dir}/${model}" --n_samples ${n_samples} --gpu ${gpu}
+    
+    # evaluate as a joint model
+    python ${software_dir}/evaluate_joint.py --paths ${paths_test} --encoding ${encoding} --output_dir "${output_dir}/${model}" --n_samples ${n_samples} --gpu ${gpu}
+    
+    # evaluate as a conditional model
+    python ${software_dir}/evaluate_conditional.py --paths ${paths_test} --encoding ${encoding} --output_dir "${output_dir}/${model}" --n_samples ${n_samples} --gpu ${gpu}
+
 done
-
-##################################################
-
-
-# EVALUATE AS A JOINT MODEL
-##################################################
-
-# variables
-software="${software_dir}/evaluate_joint.py"
-
-# baseline
-python ${software} --paths ${paths_test} --encoding ${encoding} --output_dir "${output_dir}/baseline_aug" --n_samples ${n_samples} --gpu ${gpu}
-
-# sort-order
-
-# prefix
-
-# anticipation
-
-##################################################
-
-
-# EVALUATE AS A CONDITIONAL MODEL
-##################################################
-
-# variables
-software="${software_dir}/evaluate_conditional.py"
-
-# baseline
-python ${software} --paths ${paths_test} --encoding ${encoding} --output_dir "${output_dir}/baseline_aug" --n_samples ${n_samples} --gpu ${gpu}
-
-# sort-order
-
-# prefix
-
-# anticipation
 
 ##################################################

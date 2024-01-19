@@ -110,13 +110,18 @@ if __name__ == "__main__":
     # parse the command-line arguments
     args = parse_args()
 
+    # create eval_dir if necessary
+    EVAL_DIR = f"{args.output_dir}/eval_conditional"
+    if not exists(args.output_dir):
+        makedirs(args.output_dir) # create output_dir if necessary
+
     # set up the logger
-    logging.basicConfig(level = logging.INFO, format = "%(message)s", handlers = [logging.FileHandler(filename = f"{args.output_dir}/evaluate.conditional.log", mode = "a"), logging.StreamHandler(stream = sys.stdout)])
+    logging.basicConfig(level = logging.INFO, format = "%(message)s", handlers = [logging.FileHandler(filename = f"{EVAL_DIR}/evaluate.log", mode = "a"), logging.StreamHandler(stream = sys.stdout)])
 
     # log command called and arguments, save arguments
     logging.info(f"Running command: python {' '.join(sys.argv)}")
     logging.info(f"Using arguments:\n{pprint.pformat(vars(args))}")
-    args_output_filepath = f"{args.output_dir}/evaluate_args.conditional.json"
+    args_output_filepath = f"{EVAL_DIR}/evaluate_args.json"
     logging.info(f"Saved arguments to {args_output_filepath}")
     utils.save_args(filepath = args_output_filepath, args = args)
     del args_output_filepath
@@ -135,9 +140,6 @@ if __name__ == "__main__":
     del train_args_filepath
 
     # make sure the output directory exists
-    EVAL_DIR = f"{args.output_dir}/eval_conditional"
-    if not exists(args.output_dir):
-        makedirs(args.output_dir) # create output_dir if necessary
     if not exists(EVAL_DIR):
         mkdir(EVAL_DIR) # create eval_dir if necessary
     for key in ("truth", "unconditioned"):
