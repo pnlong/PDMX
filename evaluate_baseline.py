@@ -15,7 +15,7 @@ import logging
 import pprint
 import sys
 from os.path import exists
-from os import makedirs, mkdir
+from os import mkdir
 from typing import Union
 from collections import defaultdict
 
@@ -216,7 +216,7 @@ if __name__ == "__main__":
             truth_np = batch["seq"].numpy()
 
             # add to results
-            result = evaluate(data = truth_np[0], encoding = encoding, stem = f"{i}_0", eval_dir = EVAL_DIR / "truth")
+            result = evaluate(data = truth_np[0], encoding = encoding, stem = f"{i}_0", eval_dir = f"{EVAL_DIR}/truth")
             results["truth"].append(result)
 
             ##################################################
@@ -240,7 +240,7 @@ if __name__ == "__main__":
             generated_seq = torch.cat(tensors = (tgt_start, generated), dim = 1).cpu().numpy()
 
             # add to results
-            result = evaluate(data = generated_seq[0], encoding = encoding, stem = f"{i}_0", eval_dir = EVAL_DIR / "unconditioned")
+            result = evaluate(data = generated_seq[0], encoding = encoding, stem = f"{i}_0", eval_dir = f"{EVAL_DIR}/unconditioned")
             results["unconditioned"].append(result)
 
             ##################################################

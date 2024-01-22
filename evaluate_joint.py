@@ -2,7 +2,7 @@
 # Phillip Long
 # January 7, 2024
 
-# Evaluate as a joint model (generating both notes and expressive features).
+# Evaluate as a joint model (generating notes and expressive features).
 
 # python /home/pnlong/model_musescore/evaluate_joint.py
 
@@ -15,7 +15,7 @@ import logging
 import pprint
 import sys
 from os.path import exists
-from os import makedirs, mkdir
+from os import mkdir
 from typing import Union
 from collections import defaultdict
 
@@ -112,8 +112,8 @@ if __name__ == "__main__":
 
     # create eval_dir if necessary
     EVAL_DIR = f"{args.output_dir}/eval_joint"
-    if not exists(args.output_dir):
-        makedirs(args.output_dir) # create output_dir if necessary
+    if not exists(EVAL_DIR):
+        mkdir(EVAL_DIR)
 
     # set up the logger
     logging.basicConfig(level = logging.INFO, format = "%(message)s", handlers = [logging.FileHandler(filename = f"{EVAL_DIR}/evaluate.log", mode = "a"), logging.StreamHandler(stream = sys.stdout)])
@@ -140,13 +140,13 @@ if __name__ == "__main__":
     del train_args_filepath
 
     # make sure the output directory exists
-    if not exists(EVAL_DIR):
-        mkdir(EVAL_DIR) # create eval_dir if necessary
     for key in ("truth", "unconditioned"):
         key_base_dir = f"{EVAL_DIR}/{key}"
-        if not exists(key_base_dir): mkdir(key_base_dir) # create base_dir if necessary
+        if not exists(key_base_dir):
+            mkdir(key_base_dir) # create base_dir if necessary
         for subdir in ("npy", "csv", "json"):
-            if not exists(key_base_dir_subdir := f"{key_base_dir}/{subdir}"): mkdir(key_base_dir_subdir) # create base_dir with subdir if necessary
+            if not exists(key_base_dir_subdir := f"{key_base_dir}/{subdir}"):
+                mkdir(key_base_dir_subdir) # create base_dir with subdir if necessary
         del subdir, key_base_dir_subdir
     del key, key_base_dir # clear up memory
 
@@ -216,7 +216,7 @@ if __name__ == "__main__":
             truth_np = batch["seq"].numpy()
 
             # add to results
-            result = evaluate(data = truth_np[0], encoding = encoding, stem = f"{i}_0", eval_dir = EVAL_DIR / "truth")
+            result = evaluate(data = truth_np[0], encoding = encoding, stem = f"{i}_0", eval_dir = f"{EVAL_DIR}/truth")
             results["truth"].append(result)
 
             ##################################################
@@ -240,7 +240,7 @@ if __name__ == "__main__":
             generated_seq = torch.cat(tensors = (tgt_start, generated), dim = 1).cpu().numpy()
 
             # add to results
-            result = evaluate(data = generated_seq[0], encoding = encoding, stem = f"{i}_0", eval_dir = EVAL_DIR / "unconditioned")
+            result = evaluate(data = generated_seq[0], encoding = encoding, stem = f"{i}_0", eval_dir = f"{EVAL_DIR}/unconditioned")
             results["unconditioned"].append(result)
 
             ##################################################

@@ -183,7 +183,7 @@ class MusicTransformerWrapper(nn.Module):
 def sample(logits: torch.tensor, kind: str, threshold: float, temperature: float, min_p_pow: float, min_p_ratio: float):
     """Sample from the logits with a specific sampling strategy."""
     if kind == "top_k":
-        probs = F.softmax(top_k(logits = logits, thres = threshold) / temperature, dim = -1)
+        probs = F.softmax(top_k(logits = logits, frac_num_tokens = threshold) / temperature, dim = -1)
     elif kind == "top_p":
         probs = F.softmax(top_p(logits = logits, thres = threshold) / temperature, dim = -1)
     elif kind == "top_a":
@@ -328,20 +328,21 @@ class MusicAutoregressiveWrapper(nn.Module):
             # iterate after each sample
             samples = [[s_type] for s_type in sample_type]
             for i, s_type in enumerate(sample_type):
+                sample_type_code = s_type.item()
 
                 # a start-of-song, end-of-song or start-of-notes code
-                if s_type in (self.sos_type_code, self.eos_type_code, self.son_type_code):
+                if sample_type_code in (self.sos_type_code, self.eos_type_code, self.son_type_code):
                     samples[i] += [torch.zeros_like(input = s_type)] * (len(logits) - 1)
 
                 # an instrument code
-                elif s_type == self.instrument_type_code:
+                elif sample_type_code == self.instrument_type_code:
                     samples[i] += [torch.zeros_like(input = s_type)] * (len(logits) - 2)
                     logits[instrument_dim][:, 0] = -float("inf")  # avoid none
                     sampled = sample(logits = logits[instrument_dim][i : i + 1], kind = filter_logits_fn[instrument_dim], threshold = filter_thres[instrument_dim], temperature = temperature[instrument_dim], min_p_pow = min_p_pow, min_p_ratio = min_p_ratio)[0]
                     samples[i].append(sampled)
 
                 # a value code
-                elif s_type in self.value_type_codes:
+                elif sample_type_code in self.value_type_codes:
                     for d in range(1, dim):
                         # enforce monotonicity
                         if monotonicity_dim is not None and d in monotonicity_dim:
@@ -354,7 +355,7 @@ class MusicAutoregressiveWrapper(nn.Module):
                         if monotonicity_dim is not None and d in monotonicity_dim:
                             current_values[d][i] = torch.max(input = current_values[d][i], other = sampled)[0]
                 else:
-                    raise ValueError(f"Unknown event type code: {s_type}")
+                    raise ValueError(f"Unknown event type code: {sample_type_code}")
 
             # wrangle output a bit
             stacked = torch.stack(tensors = [torch.cat(s).expand(1, -1) for s in samples], dim = 0)
@@ -367,8 +368,8 @@ class MusicAutoregressiveWrapper(nn.Module):
                 # mask out everything after the eos tokens
                 if is_eos_tokens.any(dim = 1).all():
                     for i, is_eos_token in enumerate(is_eos_tokens):
-                        i = torch.argmax(input = is_eos_token.byte())
-                        output[i, i + 1 :] = self.pad_value
+                        i = torch.argmax(input = is_eos_token.byte(), dim = None).item()
+                        output[:, i + 1:] = self.pad_value # pad after eos token
                     break
 
         # wrangle output
@@ -376,7 +377,7 @@ class MusicAutoregressiveWrapper(nn.Module):
         if n_dims == 1:
             output = output.squeeze(0)
 
-        # turn of training
+        # turn off training
         self.net.train(was_training)
 
         # either return just the output or attention as well

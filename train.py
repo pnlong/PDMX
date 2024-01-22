@@ -113,7 +113,7 @@ def parse_args(args = None, namespace = None):
 ##################################################
 
 
-# HELPER FUNCTIONS
+# HELPER FUNCTIONS FOR TRAINING
 ##################################################
 
 def get_lr_multiplier(step: int, warmup_steps: int, decay_end_steps: int, decay_end_multiplier: float) -> float:
@@ -130,6 +130,57 @@ def get_lr_multiplier(step: int, warmup_steps: int, decay_end_steps: int, decay_
         return decay_end_multiplier
     position = (step - warmup_steps) / (decay_end_steps - warmup_steps)
     return 1 - (1 - decay_end_multiplier) * position
+
+def get_accuracies(model_output: torch.tensor, expected: torch.tensor) -> torch.tensor:
+    """Get the matrix of accuracies for correctly predicted tokens."""
+    predicted = torch.cat(tensors = [torch.argmax(input = output_field, dim = -1, keepdim = True) for output_field in model_output], dim = -1) # convert model output into a matrix of (greedy) predictions
+    return torch.eq(input = predicted, other = expected) # compare predicted to expected values
+
+def generate_note_expressive_mask(seq: torch.tensor, encoding: dict = representation.get_encoding()) -> Dict[str, torch.tensor]:
+    """Generate both a note and expressive-feature mask over a sequence, return as a dictionary using MASKS as keys."""
+    ones_mask = torch.ones_like(input = seq[:, 1:, 0]).to(device)
+    mask = {
+            MASKS[0]: ones_mask.type(torch.bool), # no mask
+            MASKS[1]: torch.logical_or(input = torch.eq(input = seq[:, 1:, 0], other = encoding["type_code_map"]["note"] * ones_mask), other = torch.eq(input = seq[:, 1:, 0], other = encoding["type_code_map"]["grace-note"] * ones_mask)), # mask_note is true if the type is a note
+            MASKS[2]: torch.eq(input = seq[:, 1:, 0], other = encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING] * ones_mask) # mask_expressive is true if the type is an expressive feature
+        }
+    return mask
+
+def calculate_loss_statistics(losses: torch.tensor, mask: torch.tensor = None) -> Dict[str, float]:
+    """Calculate total loss and loss per field."""
+
+    # apply mask
+    if losses.shape[0] > 1: # when the batch size isn't 1
+        losses = losses[mask, :] # just perform a normal masking operation
+    else: # to avoid IndexError: index 1 is out of bounds for dimension 0 with size 1
+        losses = torch.unsqueeze(input = losses.squeeze(dim = 0)[mask.squeeze(dim = 0), :], dim = 0) # do some squeezing and unsqueezing
+
+    # loss by field
+    losses_field = torch.mean(input = losses, dim = list(range(len(losses.shape) - 1))).nan_to_num(nan = 0.0).tolist() # replace nan with 0 to ease future calculations
+
+    # loss
+    loss = sum(losses_field)
+
+    # return dictionary with total loss, then the loss by field
+    return dict({ALL_STRING: loss}, **dict(zip(encoding["dimensions"], losses_field)))
+
+def calculate_accuracy_statistics(accuracies: torch.tensor, mask: torch.tensor = None) -> Dict[str, float]:
+    """Calculate total accuracy and accuracy per field."""
+
+    # apply mask
+    if accuracies.shape[0] > 1: # when the batch size isn't 1
+        accuracies = accuracies[mask, :] # just perform a normal masking operation
+    else: # to avoid IndexError: index 1 is out of bounds for dimension 0 with size 1
+        accuracies = torch.unsqueeze(input = accuracies.squeeze(dim = 0)[mask.squeeze(dim = 0), :], dim = 0) # do some squeezing and unsqueezing
+
+    # accuracy by field
+    accuracies_field = torch.sum(input = accuracies, dim = list(range(len(accuracies.shape) - 1))).nan_to_num(nan = 0.0).tolist() # replace nan with 0 to ease future calculations
+
+    # accuracy
+    accuracy = torch.sum(input = torch.all(input = accuracies, dim = -1), dim = None).item()
+
+    # return dictionary with total accuracy, then the accuracy by field
+    return dict({ALL_STRING: accuracy}, **dict(zip(encoding["dimensions"], accuracies_field)))
 
 ##################################################
 
@@ -248,63 +299,6 @@ if __name__ == "__main__":
         scheduler.load_state_dict(torch.load(f = best_scheduler_filepath[RELEVANT_PARTITIONS[1]]))
     
     ##################################################
-            
-    
-    # HELPER FUNCTIONS FOR TRAINING
-    ##################################################
-        
-    def get_accuracies(model_output: torch.tensor, expected: torch.tensor) -> torch.tensor:
-        """Get the matrix of accuracies for correctly predicted tokens."""
-        predicted = torch.cat(tensors = [torch.argmax(input = output_field, dim = -1, keepdim = True) for output_field in model_output], dim = -1) # convert model output into a matrix of (greedy) predictions
-        return torch.eq(input = predicted, other = expected) # compare predicted to expected values
-    
-    def generate_note_expressive_mask(seq: torch.tensor) -> Dict[str, torch.tensor]:
-        """Generate both a note and expressive-feature mask over a sequence, return as a dictionary using MASKS as keys."""
-        ones_mask = torch.ones_like(input = seq[:, 1:, 0]).to(device)
-        mask = {
-                MASKS[0]: ones_mask.type(torch.bool), # no mask
-                MASKS[1]: torch.logical_or(input = torch.eq(input = seq[:, 1:, 0], other = encoding["type_code_map"]["note"] * ones_mask), other = torch.eq(input = seq[:, 1:, 0], other = encoding["type_code_map"]["grace-note"] * ones_mask)), # mask_note is true if the type is a note
-                MASKS[2]: torch.eq(input = seq[:, 1:, 0], other = encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING] * ones_mask) # mask_expressive is true if the type is an expressive feature
-            }
-        return mask
-
-    def calculate_loss_statistics(losses: torch.tensor, mask: torch.tensor = None) -> Dict[str, float]:
-        """Calculate total loss and loss per field."""
-
-        # apply mask
-        if losses.shape[0] > 1: # when the batch size isn't 1
-            losses = losses[mask, :] # just perform a normal masking operation
-        else: # to avoid IndexError: index 1 is out of bounds for dimension 0 with size 1
-            losses = torch.unsqueeze(input = losses.squeeze(dim = 0)[mask.squeeze(dim = 0), :], dim = 0) # do some squeezing and unsqueezing
-
-        # loss by field
-        losses_field = torch.mean(input = losses, dim = list(range(len(losses.shape) - 1))).nan_to_num(nan = 0.0).tolist() # replace nan with 0 to ease future calculations
-
-        # loss
-        loss = sum(losses_field)
-
-        # return dictionary with total loss, then the loss by field
-        return dict({ALL_STRING: loss}, **dict(zip(encoding["dimensions"], losses_field)))
-    
-    def calculate_accuracy_statistics(accuracies: torch.tensor, mask: torch.tensor = None) -> Dict[str, float]:
-        """Calculate total accuracy and accuracy per field."""
-
-        # apply mask
-        if accuracies.shape[0] > 1: # when the batch size isn't 1
-            accuracies = accuracies[mask, :] # just perform a normal masking operation
-        else: # to avoid IndexError: index 1 is out of bounds for dimension 0 with size 1
-            accuracies = torch.unsqueeze(input = accuracies.squeeze(dim = 0)[mask.squeeze(dim = 0), :], dim = 0) # do some squeezing and unsqueezing
-
-        # accuracy by field
-        accuracies_field = torch.sum(input = accuracies, dim = list(range(len(accuracies.shape) - 1))).nan_to_num(nan = 0.0).tolist() # replace nan with 0 to ease future calculations
-
-        # accuracy
-        accuracy = torch.sum(input = torch.all(input = accuracies, dim = -1), dim = None).item()
-
-        # return dictionary with total accuracy, then the accuracy by field
-        return dict({ALL_STRING: accuracy}, **dict(zip(encoding["dimensions"], accuracies_field)))
-
-    ##################################################
 
 
     # TRAINING PROCESS
@@ -366,7 +360,7 @@ if __name__ == "__main__":
             optimizer.zero_grad()
             loss_batch, losses_batch, output_batch = model(seq = seq, mask = mask, return_list = True, reduce = False, return_output = True) # reduce = False so that we have loss at each token
             accuracies_batch = get_accuracies(model_output = output_batch, expected = seq[:, 1:, :]) # calculate accuracy
-            masks = generate_note_expressive_mask(seq = seq) # determine mask for notes vs expressive features
+            masks = generate_note_expressive_mask(seq = seq, encoding = encoding) # determine mask for notes vs expressive features
             if args.conditional: # loss is only based on notes
                 loss_batch = losses_batch[masks[MASKS[1]], :] # mask to notes only
                 loss_batch = torch.mean(input = loss_batch, dim = list(range(len(loss_batch.shape) - 1)))
@@ -451,7 +445,7 @@ if __name__ == "__main__":
                 # pass through the model
                 loss_batch, losses_batch, output_batch = model(seq = seq, mask = mask, return_list = True, reduce = False, return_output = True) # reduce = False so that we have loss at each token
                 accuracies_batch = get_accuracies(model_output = output_batch, expected = seq[:, 1:, :]) # calculate accuracies
-                masks = generate_note_expressive_mask(seq = seq) # determine mask for notes vs expressive features
+                masks = generate_note_expressive_mask(seq = seq, encoding = encoding) # determine mask for notes vs expressive features
                 # no need for the conditional loss_batch because it is calculated later and not needed for backprop
                 
                 # update counts
