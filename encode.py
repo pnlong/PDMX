@@ -522,25 +522,26 @@ def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_COND
         return instrument
     
     # encode the notes / expressive features
+    data = data[data[:, beat_dim] <= max_beat] # filter out max beat
     core_codes = np.zeros(shape = (data.shape[0], codes.shape[1]), dtype = ENCODING_ARRAY_TYPE)
     core_codes[:, 0] = list(map(lambda type_: type_code_map[str(type_)], data[:, 0])) # encode type column
-    core_codes[:, beat_dim] = list(map(lambda beat: beat_code_map[int(min(max_beat, max(0, beat)))], data[:, beat_dim])) # encode beat
-    core_codes[:, position_dim] = list(map(lambda position: position_code_map[int(min(encoding["resolution"], max(0, position)))], data[:, position_dim])) # encode position
+    core_codes[:, beat_dim] = list(map(lambda beat: beat_code_map[max(0, int(beat))], data[:, beat_dim])) # encode beat
+    core_codes[:, position_dim] = list(map(lambda position: position_code_map[min(encoding["resolution"], max(0, int(position)))], data[:, position_dim])) # encode position
     core_codes[:, value_dim] = list(map(value_code_mapper, data[:, value_dim])) # encode value column
-    core_codes[:, duration_dim] = list(map(lambda duration: duration_code_map[int(min(max_duration, max(0, duration)))], data[:, duration_dim])) # encode duration
+    core_codes[:, duration_dim] = list(map(lambda duration: duration_code_map[min(max_duration, max(0, int(duration)))], data[:, duration_dim])) # encode duration
     core_codes[:, instrument_dim] = list(map(program_instrument_mapper, data[:, instrument_dim])) # encode instrument column
-    core_codes = core_codes[core_codes[:, beat_dim] <= max_beat] # remove data if beat greater than max beat
+    core_codes = core_codes[core_codes[:, beat_dim] <= max_beat + 1] # remove data if beat greater than max beat
     core_codes = core_codes[core_codes[:, instrument_dim] >= 0] # skip unknown instruments
 
     # apply conditioning to core_codes
     if conditioning == CONDITIONINGS[0]: # sort-order
-        core_codes_with_time_steps = np.concatenate((core_codes, data[:, data.shape[1] - 2].reshape(data.shape[0], 1)), axis = 1) # add time steps column
+        core_codes_with_time_steps = np.concatenate((core_codes, data[:, data.shape[1] - 2].reshape(data.shape[0], 1)[:len(core_codes)]), axis = 1) # add time steps column
         time_steps_column = core_codes_with_time_steps.shape[1] - 1
         core_codes_with_time_steps = core_codes_with_time_steps[np.lexsort(keys = (core_codes_with_time_steps[:, 0], core_codes_with_time_steps[:, time_steps_column]), axis = 0)] # sort by time (time steps)
         core_codes = np.delete(arr = core_codes_with_time_steps, obj = time_steps_column, axis = 1).astype(ENCODING_ARRAY_TYPE) # remove time steps column
         del core_codes_with_time_steps, time_steps_column
     elif conditioning == CONDITIONINGS[1]: # prefix
-        core_codes_with_time_steps = np.concatenate((core_codes, data[:, data.shape[1] - 2].reshape(data.shape[0], 1)), axis = 1) # add time steps column
+        core_codes_with_time_steps = np.concatenate((core_codes, data[:, data.shape[1] - 2].reshape(data.shape[0], 1)[:len(core_codes)]), axis = 1) # add time steps column
         time_steps_column = core_codes_with_time_steps.shape[1] - 1
         expressive_feature_indicies = sorted(np.where(core_codes[:, 0] == type_code_map[representation.EXPRESSIVE_FEATURE_TYPE_STRING])[0]) # get indicies of expressive features
         expressive_features = core_codes_with_time_steps[expressive_feature_indicies] # extract expressive features

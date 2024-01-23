@@ -54,9 +54,6 @@ def decode_data(codes: np.array, encoding: dict = representation.get_encoding())
     duration_dim = encoding["dimensions"].index("duration")
     instrument_dim = encoding["dimensions"].index("instrument")
 
-    # make sure codes are sorted
-    codes = codes[np.lexsort(keys = (codes[:, 0], codes[:, position_dim], codes[:, beat_dim], codes[:, instrument_dim]), axis = 0)]
-
     # decode the codes into a sequence of data
     data = []
     for row in codes:
@@ -74,7 +71,7 @@ def decode_data(codes: np.array, encoding: dict = representation.get_encoding())
             data.append((event_type, beat, position, value, duration, program))
         else:
             raise ValueError("Unknown event type.")
-
+        
     return data
 
 

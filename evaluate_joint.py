@@ -14,24 +14,26 @@ import argparse
 import logging
 import pprint
 import sys
-from os.path import exists
+from os.path import exists, basename
 from os import mkdir
 from typing import Union
-from collections import defaultdict
+import math
 
 import muspy
 import numpy as np
+import pandas as pd
 import torch
 import torch.utils.data
 from tqdm import tqdm
 
+from read_mscz.music import BetterMusic
 import dataset
 import music_x_transformers
 import representation
 import encode
 import decode
 import utils
-from train import PARTITIONS
+from train import PARTITIONS, NA_VALUE
 
 ##################################################
 
@@ -43,6 +45,9 @@ DATA_DIR = "/data2/pnlong/musescore/data"
 PATHS = f"{DATA_DIR}/test.txt"
 ENCODING_FILEPATH = "/data2/pnlong/musescore/encoding.json"
 OUTPUT_DIR = "/data2/pnlong/musescore/data"
+EVAL_SUBSETS = ["truth", "unconditioned"]
+EVAL_METRICS = ["pitch_class_entropy", "scale_consistency", "groove_consistency"]
+OUTPUT_COLUMNS = ["i", "original_path", "is_truth", "stem",] + EVAL_METRICS
 
 ##################################################
 
@@ -65,6 +70,7 @@ def parse_args(args = None, namespace = None):
     # others
     parser.add_argument("-g", "--gpu", type = int, help = "GPU number")
     parser.add_argument("-j", "--jobs", default = 0, type = int, help = "Number of jobs")
+    parser.add_argument("-r", "--resume", action = "store_true", help = "Whether or not to resume evaluation from previous run")
     return parser.parse_args(args = args, namespace = namespace)
 ##################################################
 
@@ -84,16 +90,12 @@ def evaluate(data: Union[np.array, torch.tensor], encoding: dict, stem: str, eva
 
     # return a dictionary
     if len(music.tracks) == 0:
-        return {
-            "pitch_class_entropy": np.nan,
-            "scale_consistency": np.nan,
-            "groove_consistency": np.nan
-        }
+        return {eval_metric: np.nan for eval_metric in EVAL_METRICS}
     else:
         return {
-            "pitch_class_entropy": muspy.pitch_class_entropy(music = music),
-            "scale_consistency": muspy.scale_consistency(music = music),
-            "groove_consistency": muspy.groove_consistency(music = music, measure_resolution = 4 * music.resolution)
+            EVAL_METRICS[0]: pitch_class_entropy(music = music),
+            EVAL_METRICS[1]: scale_consistency(music = music),
+            EVAL_METRICS[2]: groove_consistency(music = music, measure_resolution = 4 * music.resolution)
         }
 
 ##################################################
@@ -140,7 +142,7 @@ if __name__ == "__main__":
     del train_args_filepath
 
     # make sure the output directory exists
-    for key in ("truth", "unconditioned"):
+    for key in EVAL_SUBSETS:
         key_base_dir = f"{EVAL_DIR}/{key}"
         if not exists(key_base_dir):
             mkdir(key_base_dir) # create base_dir if necessary
@@ -160,7 +162,7 @@ if __name__ == "__main__":
     # create the dataset and data loader
     logging.info(f"Creating the data loader...")
     test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = train_args["max_seq_len"])
-    test_data_loader = torch.utils.data.DataLoader(dataset = test_dataset, num_workers = args.jobs, collate_fn = dataset.MusicDataset.collate)
+    test_data_loader = torch.utils.data.DataLoader(dataset = test_dataset, num_workers = args.jobs, collate_fn = dataset.MusicDataset.collate, batch_size = 1, shuffle = False)
 
     # create the model
     logging.info(f"Creating the model...")
@@ -188,6 +190,19 @@ if __name__ == "__main__":
     logging.info(f"Loaded the model weights from: {checkpoint_filepath}")
     model.eval()
 
+    # to output evaluation metrics
+    output_filepath = f"{EVAL_DIR}/{basename(EVAL_DIR)}.csv"
+    output_columns_must_be_written = not (exists(output_filepath) and args.resume)
+    if output_columns_must_be_written: # if column names need to be written
+        pd.DataFrame(columns = OUTPUT_COLUMNS).to_csv(path_or_buf = output_filepath, sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w")
+    i_start = 0 # index from which to start evaluating
+    if not output_columns_must_be_written:
+        previous = pd.read_csv(filepath_or_buffer = output_filepath, sep = ",", na_values = NA_VALUE, header = 0, index_col = False) # load in previous values
+        if len(previous) > 0:
+            i_start = int(previous["i"].max(axis = 0)) + 1 # update start index
+            print(f"Resuming from index {i_start}.")
+        del previous
+    
     # get special tokens
     sos = encoding["type_code_map"]["start-of-song"]
     eos = encoding["type_code_map"]["end-of-song"]
@@ -198,16 +213,17 @@ if __name__ == "__main__":
     # EVALUATE
     ##################################################
 
-    # instantiate results and iterables
-    results = defaultdict(list)
+    # instantiate iterable
     test_iter = iter(test_data_loader)
 
     # iterate over the dataset
     with torch.no_grad():
-        for i in tqdm(iterable = range(len(test_data_loader) if args.n_samples is None else args.n_samples), desc = "Evaluating"):
+        for i in tqdm(iterable = range(i_start, len(test_data_loader) if args.n_samples is None else args.n_samples), desc = "Evaluating"):
 
             # get new batch
             batch = next(test_iter)
+            stem = f"{i}_0"
+            result = {eval_subset: None for eval_subset in EVAL_SUBSETS}
 
             # GROUND TRUTH
             ##################################################
@@ -216,8 +232,7 @@ if __name__ == "__main__":
             truth_np = batch["seq"].numpy()
 
             # add to results
-            result = evaluate(data = truth_np[0], encoding = encoding, stem = f"{i}_0", eval_dir = f"{EVAL_DIR}/truth")
-            results["truth"].append(result)
+            result[EVAL_SUBSETS[0]] = evaluate(data = truth_np[0], encoding = encoding, stem = stem, eval_dir = f"{EVAL_DIR}/{EVAL_SUBSETS[0]}")
 
             ##################################################
 
@@ -240,16 +255,27 @@ if __name__ == "__main__":
             generated_seq = torch.cat(tensors = (tgt_start, generated), dim = 1).cpu().numpy()
 
             # add to results
-            result = evaluate(data = generated_seq[0], encoding = encoding, stem = f"{i}_0", eval_dir = f"{EVAL_DIR}/unconditioned")
-            results["unconditioned"].append(result)
+            result[EVAL_SUBSETS[1]] = evaluate(data = generated_seq[0], encoding = encoding, stem = stem, eval_dir = f"{EVAL_DIR}/{EVAL_SUBSETS[1]}")
 
             ##################################################
 
-    # output statistics
-    for exp, result in results.items():
-        logging.info(f"{exp.upper()}:")
-        for key in result[0]:
-            logging.info(f"  - {key}: mean = {np.nanmean(a = [r[key] for r in result]):.4f}, std = {np.nanstd(a = [r[key]for r in result]):.4f}")
+            # OUTPUT STATISTICS
+            ##################################################
+
+            pd.DataFrame(data = [
+                [i, batch["path"][0], True, stem,] + list(result[EVAL_SUBSETS[0]].values()),
+                [i, batch["path"][0], False, stem,] + list(result[EVAL_SUBSETS[1]].values()),
+                ], columns = OUTPUT_COLUMNS).to_csv(path_or_buf = output_filepath, sep = ",", na_rep = NA_VALUE, header = False, index = False, mode = "a")
+            
+            ##################################################
+
+    # log statistics
+    results = pd.read_csv(filepath_or_buffer = output_filepath, sep = ",", na_values = NA_VALUE, header = 0, index_col = False) # load in previous values
+    for eval_subset in EVAL_SUBSETS:
+        logging.info(f"{eval_subset.upper()}:")
+        results_subset = results[results["subset"] == eval_subset]
+        for eval_metric in EVAL_METRICS:
+            logging.info(f"  - {eval_metric}: mean = {np.nanmean(a = results_subset[eval_metric], axis = 0):.4f}, std = {np.nanstd(a = results_subset[eval_metric], axis = 0):.4f}")
 
     ##################################################
 
