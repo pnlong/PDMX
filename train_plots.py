@@ -49,6 +49,12 @@ def parse_args(args = None, namespace = None):
 # HELPER FUNCTION THAT MAKES A PLOT
 ##################################################
 
+def make_model_name_fancy(model: str) -> str:
+    """Return a prettified version of the model name for legend."""
+    model_name = model.split("_")
+    model_name = model_name[0].title() + (", Conditional" if "conditional" in model else "") + ": " + model_name[-1]
+    return model_name
+
 def make_plot(partition: str, metric: str, mask: str, output_dir: str):
     """Make plot."""
 
@@ -64,16 +70,14 @@ def make_plot(partition: str, metric: str, mask: str, output_dir: str):
     for i, field in enumerate(fields):
         for j, model in enumerate(models):
             current_performance_subset = current_performance[(current_performance["field"] == field) & (current_performance["model"] == model)]
-            model_name = model.split("_")
-            model_name = model_name[0].title() + (", Conditional" if "conditional" in model else "") + ": " + model_name[-1]
+            model_name = make_model_name_fancy(model = model)
             axes[field].plot(current_performance_subset["step"], current_performance_subset["value"], label = model_name, color = expressive_features_plots.LINE_COLORS[j])
         if i % n_cols == 0: # if this is a leftmost plot, add y labels
             axes[field].set_ylabel(metric.title())
-        else: # is not a leftmost plot
-            axes[field].set_yticklabels([])
-        axes[field].get_yaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda count, _: f"{int(count):,}")) # add commas
+        # axes[field].get_yaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda count, _: f"{count:,.2f}")) # add commas, but this also causes decimals to get ruined
         if i >= n_cols: # if this is a bottom plot, add x labels
             axes[field].set_xlabel("Step")
+            axes[field].ticklabel_format(axis = "x", style = "scientific", scilimits = (0, 1))
         else: # is not a bottom plot
             # axes[field].set_xticks([]) # will keep xticks for now
             axes[field].set_xticklabels([])
@@ -81,9 +85,9 @@ def make_plot(partition: str, metric: str, mask: str, output_dir: str):
         axes[field].grid() # add gridlines
 
     # get legend
-    handles, labels = axes[models[0]].get_legend_handles_labels()
+    handles, labels = axes[fields[0]].get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
-    axes["legend"].legend(handles = by_label.values(), labels = by_label.keys(), loc = "center", fontsize = "medium", title_fontsize = "large", alignment = "center", ncol = 2, title = "Model", mode = "expand")
+    axes["legend"].legend(handles = by_label.values(), labels = by_label.keys(), loc = "center", fontsize = "small", title_fontsize = "medium", alignment = "center", ncol = 1, title = "Model", mode = "expand")
     axes["legend"].axis("off")
     
     # save image
@@ -104,23 +108,25 @@ if __name__ == "__main__":
 
     # get model names
     with open(args.models, "r") as models_output: # read in list of trained models
-        models = {model.strip() for model in models_output.readlines()} # use a set because better for `in` operations
+        models = [model.strip() for model in models_output.readlines()] # use a set because better for `in` operations
 
-    # create big data frame
-    PERFORMANCE_COLUMNS = ["model"] + train.PERFORMANCE_OUTPUT_COLUMNS
-    performance = pd.DataFrame(columns = PERFORMANCE_COLUMNS)
-    for model in models:
-        model_performance = pd.read_csv(filepath_or_buffer = f"{args.output_dir}/{model}", sep = ",", na_values = train.NA_VALUE, header = 0, index_col = False) # read in performance
-        model_performance["model"] = utils.rep(x = model, times = len(model_performance)) # add model column
-        model_performance = model_performance[PERFORMANCE_COLUMNS] # reorder columns
-        performance = pd.concat(objs = (performance, model_performance), axis = 0)
-    del model, model_performance # free up memory
+    # create/read in big data frame of performance
     performance_output_filepath = f"{args.output_dir}/performance.csv"
-    if not exists(performance_output_filepath): # save model if needed
+    if exists(performance_output_filepath):
+        performance = pd.read_csv(filepath_or_buffer = performance_output_filepath, sep = ",", na_values = train.NA_VALUE, header = 0, index_col = False) # read in full performance
+    else:
+        PERFORMANCE_COLUMNS = ["model"] + train.PERFORMANCE_OUTPUT_COLUMNS
+        performance = pd.DataFrame(columns = PERFORMANCE_COLUMNS)
+        for model in models:
+            model_performance = pd.read_csv(filepath_or_buffer = f"{args.output_dir}/{model}/performance.csv", sep = ",", na_values = train.NA_VALUE, header = 0, index_col = False) # read in performance
+            model_performance["model"] = utils.rep(x = model, times = len(model_performance)) # add model column
+            model_performance = model_performance[PERFORMANCE_COLUMNS] # reorder columns
+            performance = pd.concat(objs = (performance, model_performance), axis = 0)
+        del model, model_performance # free up memory
         performance.to_csv(path_or_buf = performance_output_filepath, sep = ",", na_rep = train.NA_VALUE, header = True, index = False, mode = "w")
 
     # get list of fields
-    fields = pd.unique(values = performance["field"])
+    fields = pd.unique(values = performance["field"]).tolist()
     
     ##################################################
         
