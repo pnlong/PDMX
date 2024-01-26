@@ -36,6 +36,7 @@ from utils import rep
 
 INPUT_FILEPATH = "/data2/pnlong/musescore/expressive_features/expressive_features.csv"
 FILE_OUTPUT_DIR = "/data2/pnlong/musescore/expressive_features"
+NA_VALUE = "NA"
 
 COLORS = ("#186F65", "#B5CB99", "#FCE09B", "#B2533E")
 LINE_COLORS = ("tab:blue", "tab:red", "tab:green", "tab:orange", "tab:purple", "tab:brown", "tab:pink", "tab:olive", "tab:cyan")
@@ -48,6 +49,8 @@ FEATURE_TYPES_SUMMARY_COLUMNS = ["path", "type", "size"]
 SPARSITY_SUCCESSIVE_SUFFIX = "_successive"
 SPARSITY_COLUMNS = ["path", "type", "value", "time_steps", "seconds", "beats", "fraction"]
 SPARSITY_COLUMNS += [column + SPARSITY_SUCCESSIVE_SUFFIX for column in SPARSITY_COLUMNS[SPARSITY_COLUMNS.index("time_steps"):]]
+DISTANCE_COLUMNS = SPARSITY_COLUMNS[SPARSITY_COLUMNS.index("time_steps"):SPARSITY_COLUMNS.index("time_steps" + SPARSITY_SUCCESSIVE_SUFFIX)]
+SUCCESSIVE_DISTANCE_COLUMNS = [distance_column + SPARSITY_SUCCESSIVE_SUFFIX for distance_column in DISTANCE_COLUMNS]
 
 ##################################################
 
@@ -71,6 +74,7 @@ def parse_args(args = None, namespace = None):
 ##################################################
 # helper function to calculate difference between successive rows
 def calculate_difference_between_successive_entries(df: pd.DataFrame, columns: list) -> pd.DataFrame:
+    """Calculates the difference between successive features."""
     df = df.copy().sort_values(by = columns[0]) # sort values
     df_values = df[columns] # store values of columns
     for column in columns: # for every column in columns
@@ -109,7 +113,7 @@ def extract_information(path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataF
     # extract expressive features dataframe
     expressive_features = unpickled.pop("expressive_features")
 
-    # wrange expressive features
+    # wrangle expressive features
     expressive_features["type"] = expressive_features["type"].apply(lambda expressive_feature_type: expressive_feature_type.replace("Spanner", ""))
 
     ##################################################
@@ -121,7 +125,7 @@ def extract_information(path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataF
     density = {time_unit: (song_length_in_time_unit / len(expressive_features)) for time_unit, song_length_in_time_unit in unpickled["track_length"].items()} # time unit per expressive feature
     density["path"] = path
     density = pd.DataFrame(data = [density], columns = DENSITY_COLUMNS)
-    density.to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[0], sep = ",", na_rep = "NA", header = False, index = False, mode = "a")
+    density.to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[0], sep = ",", na_rep = NA_VALUE, header = False, index = False, mode = "a")
 
     ##################################################
 
@@ -132,7 +136,7 @@ def extract_information(path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataF
     feature_types_summary = expressive_features[["type", "value"]].groupby(by = "type").size().reset_index(drop = False).rename(columns = {0: FEATURE_TYPES_SUMMARY_COLUMNS[-1]}) # group by type
     feature_types_summary["path"] = rep(x = path, times = len(feature_types_summary))
     feature_types_summary = feature_types_summary[FEATURE_TYPES_SUMMARY_COLUMNS] # ensure we have just the columns we need
-    feature_types_summary.to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[1], sep = ",", na_rep = "NA", header = False, index = False, mode = "a")
+    feature_types_summary.to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[1], sep = ",", na_rep = NA_VALUE, header = False, index = False, mode = "a")
 
     ##################################################
 
@@ -140,28 +144,25 @@ def extract_information(path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataF
     # RELATIVE DISTANCE BETWEEN SUCCESSIVE MARKINGS
     ##################################################
 
-    distance_columns = SPARSITY_COLUMNS[SPARSITY_COLUMNS.index("time_steps"):SPARSITY_COLUMNS.index("time_steps" + SPARSITY_SUCCESSIVE_SUFFIX)]
-    successive_distance_columns = [distance_column + SPARSITY_SUCCESSIVE_SUFFIX for distance_column in distance_columns]
-
     # add some columns, set up for calculation of distance
     sparsity = expressive_features[["type", "value", "time", TIME_IN_SECONDS_COLUMN_NAME]]
     sparsity = sparsity.rename(columns = {"time": "time_steps", TIME_IN_SECONDS_COLUMN_NAME: "seconds"})
     sparsity["path"] = rep(x = path, times = len(sparsity))
     sparsity["beats"] = sparsity["time_steps"] / unpickled["resolution"]
     sparsity["fraction"] = sparsity["time_steps"] / (unpickled["track_length"]["time_steps"] + DIVIDE_BY_ZERO_CONSTANT)
-    for successive_distance_column, distance_column in zip(successive_distance_columns, distance_columns): # add successive times columns
+    for successive_distance_column, distance_column in zip(SUCCESSIVE_DISTANCE_COLUMNS, DISTANCE_COLUMNS): # add successive times columns
         sparsity[successive_distance_column] = sparsity[distance_column]
     sparsity = sparsity[SPARSITY_COLUMNS].sort_values("time_steps").reset_index(drop = True) # sort by increasing times
 
     # calculate distances
-    sparsity = calculate_difference_between_successive_entries(df = sparsity, columns = distance_columns)
+    sparsity = calculate_difference_between_successive_entries(df = sparsity, columns = DISTANCE_COLUMNS)
     expressive_feature_types = pd.unique(expressive_features["type"]) # get types of expressive features
     distance = pd.DataFrame(columns = SPARSITY_COLUMNS)
     for expressive_feature_type in expressive_feature_types: # get distances between successive features of the same type
-        distance_for_expressive_feature_type = calculate_difference_between_successive_entries(df = sparsity[sparsity["type"] == expressive_feature_type], columns = successive_distance_columns) # calculate sparsity for certain feature type
+        distance_for_expressive_feature_type = calculate_difference_between_successive_entries(df = sparsity[sparsity["type"] == expressive_feature_type], columns = SUCCESSIVE_DISTANCE_COLUMNS) # calculate sparsity for certain feature type
         distance = pd.concat(objs = (distance, distance_for_expressive_feature_type), axis = 0, ignore_index = False) # append to overall distance
     distance = distance.sort_index(axis = 0) # sort by index (return to original index)
-    distance.to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[2], sep = ",", na_rep = "NA", header = False, index = False, mode = "a")
+    distance.to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[2], sep = ",", na_rep = NA_VALUE, header = False, index = False, mode = "a")
 
     ##################################################
     
@@ -227,7 +228,7 @@ def make_feature_summary_plot(output_filepath: str) -> list:
     fig.suptitle("Summary of Present Expressive Features", fontweight = "bold")
 
     # load in table
-    feature_summary = pd.read_csv(filepath_or_buffer = PLOT_DATA_OUTPUT_FILEPATHS["feature_types_summary"], sep = ",", header = 0, index_col = False).drop(columns = "path")
+    feature_summary = pd.read_csv(filepath_or_buffer = PLOT_DATA_OUTPUT_FILEPATHS["summary"], sep = ",", header = 0, index_col = False).drop(columns = "path")
     # feature_summary = feature_summary[feature_summary["type"] != "TimeSignature"] # exclude time signatures
     feature_summary = {
         plot_types[0]: feature_summary.groupby(by = "type").sum().reset_index().rename(columns = {"index": "type"}).sort_values(by = "size"),
@@ -483,7 +484,7 @@ if __name__ == "__main__":
         makedirs(args.output_dir)
 
     # output filepaths for data used in plots
-    PLOT_DATA_OUTPUT_FILEPATHS = {plot_type : f"{args.file_output_dir}/{plot_type}.csv" for plot_type in ("density", "feature_types_summary", "sparsity")}
+    PLOT_DATA_OUTPUT_FILEPATHS = {plot_type : f"{args.file_output_dir}/{plot_type}.csv" for plot_type in ("density", "summary", "sparsity")}
 
     # set up logging
     logging.basicConfig(level = logging.INFO, format = "%(message)s")
@@ -504,9 +505,9 @@ if __name__ == "__main__":
         data = data[data["is_valid"] & data["is_public_domain"] & (data["n_expressive_features"] > 0) & (data["expressive_features"].apply(lambda expressive_features_path: exists(str(expressive_features_path))))]
 
         # create column names
-        pd.DataFrame(columns = DENSITY_COLUMNS).to_csv(path_or_buf = PLOT_DATA_OUTPUT_FILEPATHS[list(PLOT_DATA_OUTPUT_FILEPATHS.keys())[0]], sep = ",", na_rep = "NA", header = True, index = False, mode = "w") # density
-        pd.DataFrame(columns = FEATURE_TYPES_SUMMARY_COLUMNS).to_csv(path_or_buf = PLOT_DATA_OUTPUT_FILEPATHS[list(PLOT_DATA_OUTPUT_FILEPATHS.keys())[1]], sep = ",", na_rep = "NA", header = True, index = False, mode = "w") # features summary
-        pd.DataFrame(columns = SPARSITY_COLUMNS).to_csv(path_or_buf = PLOT_DATA_OUTPUT_FILEPATHS[list(PLOT_DATA_OUTPUT_FILEPATHS.keys())[2]], sep = ",", na_rep = "NA", header = True, index = False, mode = "w") # sparsity
+        pd.DataFrame(columns = DENSITY_COLUMNS).to_csv(path_or_buf = PLOT_DATA_OUTPUT_FILEPATHS[list(PLOT_DATA_OUTPUT_FILEPATHS.keys())[0]], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # density
+        pd.DataFrame(columns = FEATURE_TYPES_SUMMARY_COLUMNS).to_csv(path_or_buf = PLOT_DATA_OUTPUT_FILEPATHS[list(PLOT_DATA_OUTPUT_FILEPATHS.keys())[1]], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # features summary
+        pd.DataFrame(columns = SPARSITY_COLUMNS).to_csv(path_or_buf = PLOT_DATA_OUTPUT_FILEPATHS[list(PLOT_DATA_OUTPUT_FILEPATHS.keys())[2]], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # sparsity
 
         # parse through data with multiprocessing
         logging.info(f"N_PATHS = {len(data)}") # print number of paths to process
@@ -525,7 +526,7 @@ if __name__ == "__main__":
     # CREATE PLOTS
     ##################################################
 
-    plot_output_filepaths = [f"{args.output_dir}/{plot_type}.png" for plot_type in ("density", "feature_types", "sparsity")]
+    plot_output_filepaths = [f"{args.output_dir}/{plot_type}.png" for plot_type in ("density", "summary", "sparsity")]
     _ = make_density_plot(output_filepath = plot_output_filepaths[0])
     expressive_feature_types = make_feature_summary_plot(output_filepath = plot_output_filepaths[1])
     _ = make_sparsity_plot(output_filepath_prefix = plot_output_filepaths[2].split(".")[0], expressive_feature_types = expressive_feature_types[::-1])

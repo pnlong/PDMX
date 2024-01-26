@@ -19,7 +19,7 @@ trained_models="${data_dir}/models.txt"
 paths_test="${data_dir}/test.txt"
 encoding="${base_dir}/encoding.json"
 output_dir="${data_dir}"
-n_samples=8
+n_samples=2000
 gpu=3
 
 ##################################################
@@ -34,7 +34,7 @@ for model in $(cat "${trained_models}"); do
     python ${software_dir}/evaluate_baseline.py --paths ${paths_test} --encoding ${encoding} --output_dir "${output_dir}/${model}" --n_samples ${n_samples} --gpu ${gpu}
     
     # evaluate as a joint model
-    python ${software_dir}/evaluate_joint.py --paths ${paths_test} --encoding ${encoding} --output_dir "${output_dir}/${model}" --n_samples ${n_samples} --gpu ${gpu}
+    python ${software_dir}/evaluate_expressive.py --paths ${paths_test} --encoding ${encoding} --output_dir "${output_dir}/${model}" --n_samples ${n_samples} --gpu ${gpu}
     
     # evaluate as a conditional model
     python ${software_dir}/evaluate_conditional.py --paths ${paths_test} --encoding ${encoding} --output_dir "${output_dir}/${model}" --n_samples ${n_samples} --gpu ${gpu}

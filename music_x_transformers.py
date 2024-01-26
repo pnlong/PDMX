@@ -24,6 +24,7 @@ from x_transformers.autoregressive_wrapper import (exists, top_a, top_k, top_p)
 from x_transformers.x_transformers import (AbsolutePositionalEmbedding, AttentionLayers, Decoder, TokenEmbedding, always, default, exists)
 
 import representation
+import utils
 
 ##################################################
 
@@ -166,8 +167,8 @@ class MusicTransformerWrapper(nn.Module):
 
         # if returning attention
         if return_attn:
-            attention_maps = list(map(lambda t: t.post_softmax_attention, intermediates.attention_intermediates))
-            return output, attention_maps
+            attn_maps = list(map(lambda t: t.post_softmax_attn, intermediates.attn_intermediates))
+            return output, attn_maps
 
         # otherwise, return output
         return output
@@ -220,7 +221,11 @@ class MusicAutoregressiveWrapper(nn.Module):
         self.eos_type_code = encoding["type_code_map"]["end-of-song"]
         self.son_type_code = encoding["type_code_map"]["start-of-notes"]
         self.instrument_type_code = encoding["type_code_map"]["instrument"]
-        self.value_type_codes = {encoding["type_code_map"]["note"], encoding["type_code_map"]["grace-note"], encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING]}
+        self.expressive_feature_type_code = encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING]
+        self.value_type_codes = {encoding["type_code_map"]["note"], encoding["type_code_map"]["grace-note"], self.expressive_feature_type_code}
+
+        # for masking out expressive features
+        self.expressive_feature_value_codes = utils.rep(x = False, times = 129) + utils.rep(x = True, times = len(encoding["value_code_map"]) - 129)
 
         # get the dimension indices
         self.dimensions = {dimension: i for i, dimension in enumerate(encoding["dimensions"])}
@@ -245,6 +250,7 @@ class MusicAutoregressiveWrapper(nn.Module):
         min_p_ratio: float = 0.02,
         monotonicity_dim: Union[int, List[int]] = None,
         return_attn: bool = False,
+        notes_only: bool = False,
         **kwargs,
     ):
         
@@ -289,23 +295,23 @@ class MusicAutoregressiveWrapper(nn.Module):
         output = start_tokens
         mask = kwargs.pop("mask", None)
         if mask is None:
-            mask = torch.ones(size = (output.shape[0], output.shape[1]), dtype = torch.bool, device = output.device)
+            mask = torch.ones(size = output.shape[:2], dtype = torch.bool, device = output.device)
 
         # deal with current values
         current_values = {d: torch.max(input = start_tokens[:, :, d], dim = 1)[0] for d in monotonicity_dim} if monotonicity_dim is not None else None
 
         # loop through seq
+        value_dim = self.dimensions["value"]
         instrument_dim = self.dimensions["instrument"] # get index of instrument
-        type_dim = self.dimensions["type"] # get index of type
         for _ in range(seq_len):
 
             # get current x and mask
             x = output[:, -self.max_seq_len :]
             mask = mask[:, -self.max_seq_len :]
 
-            # get logits (and perhaps attention)
+            # get logits (and perhaps attn)
             if return_attn:
-                logits, attention = self.net(x, mask = mask, return_attn = True, **kwargs)
+                logits, attn = self.net(x, mask = mask, return_attn = True, **kwargs)
                 logits = [logit[:, -1, :] for logit in logits]
             else:
                 logits = [logit[:, -1, :] for logit in self.net(x, mask = mask, return_attn = False, **kwargs)]
@@ -316,7 +322,7 @@ class MusicAutoregressiveWrapper(nn.Module):
                     logits[0][i, :v] = -float("inf")
 
             # filter out sos token
-            logits[0][type_dim, 0] = -float("inf")
+            logits[0][0, 0] = -float("inf")
 
             # sample from the logits
             sample_type = sample(logits = logits[0], kind = filter_logits_fn[0], threshold = filter_thres[0], temperature = temperature[0], min_p_pow = min_p_pow, min_p_ratio = min_p_ratio)
@@ -343,12 +349,15 @@ class MusicAutoregressiveWrapper(nn.Module):
 
                 # a value code
                 elif sample_type_code in self.value_type_codes:
+                    if notes_only: # don't allow for sampling of expressive features
+                        logits[0][:, self.expressive_feature_type_code] = -float("inf") # don't allow for the expressive feature type
+                        logits[value_dim][:, self.expressive_feature_value_codes] = -float("inf") # don't allow for expressive feature values
                     for d in range(1, dim):
                         # enforce monotonicity
                         if monotonicity_dim is not None and d in monotonicity_dim:
                             logits[d][i, : current_values[d][i]] = -float("inf")
                         # sample from the logits
-                        logits[d][:, 0] = -float("inf")  # avoid none
+                        logits[d][:, 0] = -float("inf") # avoid none
                         sampled = sample(logits = logits[d][i : i + 1], kind = filter_logits_fn[d], threshold = filter_thres[d], temperature = temperature[d], min_p_pow = min_p_pow, min_p_ratio = min_p_ratio)[0]
                         samples[i].append(sampled)
                         # update current values
@@ -380,9 +389,9 @@ class MusicAutoregressiveWrapper(nn.Module):
         # turn off training
         self.net.train(was_training)
 
-        # either return just the output or attention as well
+        # either return just the output or attn as well
         if return_attn:
-            return output, attention
+            return output, attn
         return output
 
     ##################################################
@@ -499,7 +508,7 @@ if __name__ == "__main__":
         rel_pos_bias = True, # relative positional bias
         rotary_pos_emb = True, # rotary positional encoding
         emb_dropout = 0.1,
-        attention_dropout = 0.1,
+        attn_dropout = 0.1,
         ff_dropout = 0.1,
     )
 

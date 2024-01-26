@@ -21,7 +21,7 @@ from time import perf_counter, strftime, gmtime
 import multiprocessing
 import argparse
 import logging
-from copy import copy
+from copy import deepcopy
 import json
 import pickle
 from read_mscz.read_mscz import read_musescore, get_musescore_version
@@ -43,7 +43,6 @@ EXPRESSIVE_FEATURE_COLUMNS = ["time", TIME_IN_SECONDS_COLUMN_NAME, "type", "valu
 OUTPUT_COLUMNS = ["path", "track", "expressive_features", "metadata", "version", "is_public_domain", "is_valid", "n_expressive_features", "n_expressive_features_with_lyrics"]
 OUTPUT_COLUMNS_BY_PATH = ["path", "metadata", "version", "is_public_domain", "is_valid", "n_tracks", "n_expressive_features", "n_expressive_features_with_lyrics"]
 ERROR_COLUMNS = ["path", "error_type", "error_message"]
-NA_STRING = "NA"
 N_EXPRESSIVE_FEATURES_TO_STORE_THRESHOLD = 2
 ##################################################
 
@@ -182,7 +181,7 @@ def extract_expressive_features(path: str, path_output_prefix: str):
             n_tracks += 1
         
         # create BetterMusic object with just one track (we are not doing multitrack)
-        track_music = copy(x = music)
+        track_music = deepcopy(x = music)
         track_music.tracks = [track,]
 
         # extract data

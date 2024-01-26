@@ -24,7 +24,7 @@ encoding="${base_dir}/encoding.json"
 output_dir="${data_dir}"
 
 # constants
-batch_size=8 # decrease if gpu memory consumption is too high
+batch_size=4 # decrease if gpu memory consumption is too high
 gpu=3 # gpu number
 steps=80000 # in my experience >70000 is sufficient to train
 
