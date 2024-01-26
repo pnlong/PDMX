@@ -54,7 +54,7 @@ PARTITIONS = ("train", "valid", "test")
 RELEVANT_PARTITIONS = PARTITIONS[:2]
 MASKS = (ALL_STRING, "note", "expressive") # for determining loss in notes vs expressive features
 PERFORMANCE_METRICS = ("loss", "accuracy")
-PERFORMANCE_OUTPUT_COLUNS = ["step", "metric", "partition", "mask", "field", "value"]
+PERFORMANCE_OUTPUT_COLUMNS = ["step", "metric", "partition", "mask", "field", "value"]
 NA_VALUE = "NA"
 PATHS_TRAIN = f"{DATA_DIR}/{RELEVANT_PARTITIONS[0]}.txt"
 PATHS_VALID = f"{DATA_DIR}/{RELEVANT_PARTITIONS[1]}.txt"
@@ -309,7 +309,7 @@ if __name__ == "__main__":
     output_filepath = f"{args.output_dir}/performance.csv"
     performance_columns_must_be_written = not (exists(output_filepath) and args.resume) # whether or not to write column names
     if performance_columns_must_be_written: # if column names need to be written
-        pd.DataFrame(columns = PERFORMANCE_OUTPUT_COLUNS).to_csv(path_or_buf = output_filepath, sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w")
+        pd.DataFrame(columns = PERFORMANCE_OUTPUT_COLUMNS).to_csv(path_or_buf = output_filepath, sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w")
     full_fields = [ALL_STRING] + list(encoding["dimensions"]) # list of fields plus the total loss/accuracy metric
 
     # initialize variables
@@ -494,8 +494,8 @@ if __name__ == "__main__":
             for partition in RELEVANT_PARTITIONS:
                 for mask_type in MASKS:
                     for field in full_fields:
-                        output.append(dict(zip(PERFORMANCE_OUTPUT_COLUNS, (step, metric, partition, mask_type, field, performance[metric][partition][mask_type][field]))))
-        output = pd.DataFrame(data = output, columns = PERFORMANCE_OUTPUT_COLUNS)
+                        output.append(dict(zip(PERFORMANCE_OUTPUT_COLUMNS, (step, metric, partition, mask_type, field, performance[metric][partition][mask_type][field]))))
+        output = pd.DataFrame(data = output, columns = PERFORMANCE_OUTPUT_COLUMNS)
         output.to_csv(path_or_buf = output_filepath, sep = ",", na_rep = NA_VALUE, header = False, index = False, mode = "a")
 
         # see whether or not to save

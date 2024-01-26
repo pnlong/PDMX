@@ -327,12 +327,12 @@ if __name__ == "__main__":
     ##################################################
                 
     # make sure the plots directory exists
-    plot_dir = f"{EVAL_DIR}/plots"
-    if not exists(plot_dir):
-        mkdir(plot_dir)
+    plots_dir = f"{EVAL_DIR}/plots"
+    if not exists(plots_dir):
+        mkdir(plots_dir)
 
     # make plots    
-    plot_output_filepaths = [f"{plot_dir}/{plot_type}.png" for plot_type in PLOT_DATA_OUTPUT_FILEPATHS.keys()]
+    plot_output_filepaths = [f"{plots_dir}/{plot_type}.png" for plot_type in PLOT_DATA_OUTPUT_FILEPATHS.keys()]
     _ = expressive_features_plots.make_density_plot(output_filepath = plot_output_filepaths[0])
     expressive_feature_types = expressive_features_plots.make_feature_summary_plot(output_filepath = plot_output_filepaths[1])
     _ = expressive_features_plots.make_sparsity_plot(output_filepath_prefix = plot_output_filepaths[2].split(".")[0], expressive_feature_types = expressive_feature_types[::-1])
