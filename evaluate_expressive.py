@@ -34,6 +34,7 @@ import utils
 import parse_mscz
 import expressive_features_plots
 from train import PARTITIONS, NA_VALUE, DEFAULT_MAX_SEQ_LEN
+from evaluate_baseline import TRUTH_DIR_STEM
 
 ##################################################
 
@@ -45,6 +46,8 @@ DATA_DIR = "/data2/pnlong/musescore/data"
 PATHS = f"{DATA_DIR}/test.txt"
 ENCODING_FILEPATH = "/data2/pnlong/musescore/encoding.json"
 OUTPUT_DIR = "/data2/pnlong/musescore/data"
+EVAL_STEM = "eval_expressive"
+PLOT_TYPES = ("n_expressive_features", "density", "summary", "sparsity", "perplexity")
 
 DISTANCE_COLUMNS = expressive_features_plots.SPARSITY_COLUMNS[expressive_features_plots.SPARSITY_COLUMNS.index("time_steps"):expressive_features_plots.SPARSITY_COLUMNS.index("time_steps" + expressive_features_plots.SPARSITY_SUCCESSIVE_SUFFIX)]
 SUCCESSIVE_DISTANCE_COLUMNS = [distance_column + expressive_features_plots.SPARSITY_SUCCESSIVE_SUFFIX for distance_column in DISTANCE_COLUMNS]
@@ -95,25 +98,29 @@ def evaluate(data: Union[np.array, torch.tensor], encoding: dict, stem: str, eva
     # extract data
     data = encode.extract_data(music = music, use_implied_duration = False, include_annotation_class_name = True) # duration doesn't matter for our purposes here
     data = data[data[:, 0] == representation.EXPRESSIVE_FEATURE_TYPE_STRING] # filter down to just expressive features
-    data = pd.DataFrame(data = data[:, [representation.DIMENSIONS.index("time"), data.shape[1] - 1, representation.DIMENSIONS.index("value")]], columns = parse_mscz.EXPRESSIVE_FEATURE_COLUMNS[:1] + parse_mscz.EXPRESSIVE_FEATURE_COLUMNS[2:]) # create pandas data frame
+    expressive_features = pd.DataFrame(data = data[:, [representation.DIMENSIONS.index("time"), data.shape[1] - 1, representation.DIMENSIONS.index("value")]], columns = parse_mscz.EXPRESSIVE_FEATURE_COLUMNS[:1] + parse_mscz.EXPRESSIVE_FEATURE_COLUMNS[2:]) # create pandas data frame
+    del data
     expressive_features[parse_mscz.TIME_IN_SECONDS_COLUMN_NAME] = expressive_features["time"].apply(lambda time: music.metrical_time_to_absolute_time(time_steps = time)) # add time in seconds column
     expressive_features = expressive_features[parse_mscz.EXPRESSIVE_FEATURE_COLUMNS] # reorder columns
     expressive_features["type"] = expressive_features["type"].apply(lambda expressive_feature_type: expressive_feature_type.replace("Spanner", ""))
 
+    # number of expressive features
+    pd.DataFrame(data = [dict(zip(N_EXPRESSIVE_FEATURES_COLUMNS, (stem, len(expressive_features))))], columns = N_EXPRESSIVE_FEATURES_COLUMNS).to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[0], sep = ",", na_rep = NA_VALUE, header = False, index = False, mode = "a") # output
+
     # density
     density = {
-        "time_steps": music.song_length / len(expressive_features),
-        "seconds": music.metrical_time_to_absolute_time(time_steps = music.song_length) / len(expressive_features)
+        "time_steps": (music.song_length / len(expressive_features)) if len(expressive_features) != 0 else 0,
+        "seconds": (music.metrical_time_to_absolute_time(time_steps = music.song_length) / len(expressive_features)) if len(expressive_features) != 0 else 0
         } # time unit per expressive feature
     density["path"] = stem
     density = pd.DataFrame(data = [density], columns = expressive_features_plots.DENSITY_COLUMNS)
-    density.to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[0], sep = ",", na_rep = NA_VALUE, header = False, index = False, mode = "a") # output
+    density.to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[1], sep = ",", na_rep = NA_VALUE, header = False, index = False, mode = "a") # output
 
     # feature types summary
     feature_types_summary = expressive_features[["type", "value"]].groupby(by = "type").size().reset_index(drop = False).rename(columns = {0: expressive_features_plots.FEATURE_TYPES_SUMMARY_COLUMNS[-1]}) # group by type
     feature_types_summary["path"] = utils.rep(x = stem, times = len(feature_types_summary))
     feature_types_summary = feature_types_summary[expressive_features_plots.FEATURE_TYPES_SUMMARY_COLUMNS] # ensure we have just the columns we need
-    feature_types_summary.to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[1], sep = ",", na_rep = NA_VALUE, header = False, index = False, mode = "a") # output
+    feature_types_summary.to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[2], sep = ",", na_rep = NA_VALUE, header = False, index = False, mode = "a") # output
 
     # distance/sparsity, add some columns, set up for calculation of distance
     sparsity = expressive_features[["type", "value", "time", parse_mscz.TIME_IN_SECONDS_COLUMN_NAME]]
@@ -131,7 +138,7 @@ def evaluate(data: Union[np.array, torch.tensor], encoding: dict, stem: str, eva
         distance_for_expressive_feature_type = expressive_features_plots.calculate_difference_between_successive_entries(df = sparsity[sparsity["type"] == expressive_feature_type], columns = SUCCESSIVE_DISTANCE_COLUMNS) # calculate sparsity for certain feature type
         distance = pd.concat(objs = (distance, distance_for_expressive_feature_type), axis = 0, ignore_index = False) # append to overall distance
     distance = distance.sort_index(axis = 0) # sort by index (return to original index)
-    distance.to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[2], sep = ",", na_rep = NA_VALUE, header = False, index = False, mode = "a") # output
+    distance.to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[3], sep = ",", na_rep = NA_VALUE, header = False, index = False, mode = "a") # output
 
 ##################################################
 
@@ -139,17 +146,19 @@ def evaluate(data: Union[np.array, torch.tensor], encoding: dict, stem: str, eva
 # PERPLEXITY
 ##################################################
 
-def perplexity(predicted: np.array, expected: np.array, stem: str):
+def perplexity(logits: torch.tensor, expected: torch.tensor, stem: str):
     """Calculate perplexity. Outputs values to csv."""
 
-    losses = cross_entropy(input = predicted, target = expected, reduction = "none") # calculate losses
+    n_tokens = min(logits[0].shape[1], expected.shape[1]) # to cut off any extra tokens that can throw off cross entropy loss function
+    losses = [cross_entropy(input = logits[i][:, :n_tokens, :].transpose(1, 2).type(torch.float), target = expected[:, :n_tokens, i].type(torch.long), ignore_index = music_x_transformers.DEFAULT_IGNORE_INDEX, reduction = "none") for i in range(len(logits))] # calculate losses
+    losses = torch.cat(tensors = [torch.unsqueeze(input = losses_dimension, dim = -1) for losses_dimension in losses], dim = -1).squeeze(dim = 0) # combine list of losses into a matrix
     perplexities = torch.exp(input = losses) # calculate perplexities
-    perplexities_total = torch.sum(input = losses, dim = 1).exp() # calculate perplexity per event
+    perplexities_total = torch.sum(input = losses, dim = 1).exp().unsqueeze(dim = -1) # calculate perplexity per event
     perplexities = torch.cat(tensors = (perplexities, perplexities_total), dim = 1) # make into a single matrix
     perplexities = pd.DataFrame(data = perplexities, columns = PERPLEXITY_COLUMNS[1:]) # convert to dataframe
     perplexities["path"] = utils.rep(x = stem, times = len(perplexities)) # add path column
     perplexities = perplexities[PERPLEXITY_COLUMNS] # reorder columns
-    perplexities.to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[3], sep = ",", na_rep = NA_VALUE, header = False, index = False, mode = "a") # output
+    perplexities.to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[4], sep = ",", na_rep = NA_VALUE, header = False, index = False, mode = "a") # output
 
 ##################################################
 
@@ -165,7 +174,7 @@ if __name__ == "__main__":
     args = parse_args()
 
     # create eval_dir if necessary
-    EVAL_DIR = (f"{dirname(args.paths)}/eval_truth" if args.truth else args.output_dir) + "/eval_expressive"
+    EVAL_DIR = (f"{dirname(args.paths)}/{TRUTH_DIR_STEM}" if args.truth else args.output_dir) + f"/{EVAL_STEM}"
     if not exists(EVAL_DIR):
         makedirs(EVAL_DIR)
     # make sure the output directory exists
@@ -175,19 +184,22 @@ if __name__ == "__main__":
 
     # load the encoding
     encoding = representation.load_encoding(filepath = args.encoding) if exists(args.encoding) else representation.get_encoding()
+    beat_dim = encoding["dimensions"].index("beat") # for filtering max beat
 
-    # determine perplexity columns
+    # determine columns
+    N_EXPRESSIVE_FEATURES_COLUMNS = ["path", "n"]
     if not args.truth:
         PERPLEXITY_COLUMNS = ["path"] + [f"ppl_{field}" for field in ["total"] + encoding["dimensions"]]
 
     # output filepaths for data used in plots
-    PLOT_DATA_OUTPUT_FILEPATHS = {plot_type : f"{EVAL_DIR}/eval_{plot_type}.csv" for plot_type in ("density", "summary", "sparsity", "perplexity")}
-    if not any(exists(path) for path in tuple(PLOT_DATA_OUTPUT_FILEPATHS.values())[:3]):
-        pd.DataFrame(columns = expressive_features_plots.DENSITY_COLUMNS).to_csv(path_or_buf = PLOT_DATA_OUTPUT_FILEPATHS[list(PLOT_DATA_OUTPUT_FILEPATHS.keys())[0]], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # density
-        pd.DataFrame(columns = expressive_features_plots.FEATURE_TYPES_SUMMARY_COLUMNS).to_csv(path_or_buf = PLOT_DATA_OUTPUT_FILEPATHS[list(PLOT_DATA_OUTPUT_FILEPATHS.keys())[1]], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # features summary
-        pd.DataFrame(columns = expressive_features_plots.SPARSITY_COLUMNS).to_csv(path_or_buf = PLOT_DATA_OUTPUT_FILEPATHS[list(PLOT_DATA_OUTPUT_FILEPATHS.keys())[2]], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # sparsity
+    PLOT_DATA_OUTPUT_FILEPATHS = {plot_type : f"{EVAL_DIR}/eval_{plot_type}.csv" for plot_type in PLOT_TYPES}
+    if not any(exists(path) for path in tuple(PLOT_DATA_OUTPUT_FILEPATHS.values())[:4]):
+        pd.DataFrame(columns = N_EXPRESSIVE_FEATURES_COLUMNS).to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[0], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # n expressive features
+        pd.DataFrame(columns = expressive_features_plots.DENSITY_COLUMNS).to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[1], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # density
+        pd.DataFrame(columns = expressive_features_plots.FEATURE_TYPES_SUMMARY_COLUMNS).to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[2], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # features summary
+        pd.DataFrame(columns = expressive_features_plots.SPARSITY_COLUMNS).to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[3], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # sparsity
         if not args.truth:
-            pd.DataFrame(columns = PERPLEXITY_COLUMNS).to_csv(path_or_buf = PLOT_DATA_OUTPUT_FILEPATHS[list(PLOT_DATA_OUTPUT_FILEPATHS.keys())[3]], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # sparsity
+            pd.DataFrame(columns = PERPLEXITY_COLUMNS).to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[4], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # sparsity
 
     # set up the logger
     logging.basicConfig(level = logging.INFO, format = "%(message)s", handlers = [logging.FileHandler(filename = f"{EVAL_DIR}/evaluate.log", mode = "a"), logging.StreamHandler(stream = sys.stdout)])
@@ -232,13 +244,14 @@ if __name__ == "__main__":
 
         # create the model
         logging.info(f"Creating the model...")
+        max_beat = train_args["max_beat"]
         model = music_x_transformers.MusicXTransformer(
             dim = train_args["dim"],
             encoding = encoding,
             depth = train_args["layers"],
             heads = train_args["heads"],
             max_seq_len = train_args["max_seq_len"],
-            max_beat = train_args["max_beat"],
+            max_beat = max_beat,
             rotary_pos_emb = train_args["rel_pos_emb"],
             use_abs_pos_emb = train_args["abs_pos_emb"],
             emb_dropout = train_args["dropout"],
@@ -284,7 +297,7 @@ if __name__ == "__main__":
                 ##################################################
 
                 # get ground truth
-                truth = batch["seq"].unsqueeze(dim = 0).numpy()
+                truth = batch["seq"].squeeze(dim = 0).numpy()
 
                 # evaluate
                 evaluate(data = truth, encoding = encoding, stem = stem, eval_dir = eval_output_dir)
@@ -300,7 +313,7 @@ if __name__ == "__main__":
                 prefix = torch.tensor(data = [sos] + ([0] * (len(encoding["dimensions"]) - 1)), dtype = torch.long, device = device).reshape(1, 1, len(encoding["dimensions"]))
 
                 # generate new samples
-                generated = model.generate(
+                generated, logits = model.generate(
                     seq_in = prefix,
                     seq_len = args.seq_len,
                     eos_token = eos,
@@ -308,15 +321,18 @@ if __name__ == "__main__":
                     filter_logits_fn = args.filter,
                     filter_thres = args.filter_threshold,
                     monotonicity_dim = ("type", "beat"),
+                    return_logits = True,
                     notes_only = False
                 )
-                generated = torch.cat(tensors = (prefix, generated), dim = 1).unsqueeze(dim = 0).cpu()
+                generated = torch.cat(tensors = (prefix, generated), dim = 1).cpu().squeeze(dim = 0).numpy()
+                logits = [dim.cpu() for dim in logits]
 
                 # evaluate
-                evaluate(data = generated.numpy(), encoding = encoding, stem = stem, eval_dir = eval_output_dir)
+                evaluate(data = generated, encoding = encoding, stem = stem, eval_dir = eval_output_dir)
 
                 # calculate perplexity
-                perplexity(predicted = generated, expected = batch["seq"], stem = stem)
+                expected = batch["seq"][batch["seq"][:, :, beat_dim] <= max_beat].unsqueeze(dim = 0)[:, 1:, :].cpu() # make sure truth values abide by max_beat defined in training
+                perplexity(logits = logits, expected = expected, stem = stem)
 
                 ##################################################
 
@@ -325,21 +341,10 @@ if __name__ == "__main__":
 
     # MAKE PLOTS
     ##################################################
-                
-    # make sure the plots directory exists
-    plots_dir = f"{EVAL_DIR}/plots"
-    if not exists(plots_dir):
-        mkdir(plots_dir)
-
-    # make plots    
-    plot_output_filepaths = [f"{plots_dir}/{plot_type}.png" for plot_type in PLOT_DATA_OUTPUT_FILEPATHS.keys()]
-    _ = expressive_features_plots.make_density_plot(output_filepath = plot_output_filepaths[0])
-    expressive_feature_types = expressive_features_plots.make_feature_summary_plot(output_filepath = plot_output_filepaths[1])
-    _ = expressive_features_plots.make_sparsity_plot(output_filepath_prefix = plot_output_filepaths[2].split(".")[0], expressive_feature_types = expressive_feature_types[::-1])
 
     # output perplexity if available
     if not args.truth:
-        perplexities = pd.read_csv(filepath_or_buffer = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[3], sep = ",", na_values = NA_VALUE, header = 0, index_col = False) # load in previous values
+        perplexities = pd.read_csv(filepath_or_buffer = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[4], sep = ",", na_values = NA_VALUE, header = 0, index_col = False) # load in previous values
         logging.info("PERPLEXITY:")
         for field in perplexities.columns[1:]:
             logging.info(f"  - {field.replace('ppl_', '').title()}: mean = {np.nanmean(a = perplexities[field], axis = 0):.4f}, std = {np.nanstd(a = perplexities[field], axis = 0):.4f}")

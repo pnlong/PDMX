@@ -89,6 +89,8 @@ def reconstruct(data: np.array, resolution: int, encoding: dict = representation
     # append the notes
     ongoing_articulation_chunks = {track_index: {} for track_index in range(len(programs))}
     for event_type, beat, position, value, duration, program in data:
+        if any(field is None for field in (beat, position, duration, program)): # skip if invalid
+            continue
         track_index = programs.index(program) # get track index
         time = (beat * resolution) + ((position / encoding["resolution"]) * resolution) # get time in time steps
         duration = (resolution / encoding["resolution"]) * duration # get duration in time steps
@@ -100,7 +102,10 @@ def reconstruct(data: np.array, resolution: int, encoding: dict = representation
                 else: # duration is over, delete this chunk, since it is no longer ongoing
                     del ongoing_articulation_chunks[track_index][ongoing_articulation_chunk]
         elif event_type == representation.EXPRESSIVE_FEATURE_TYPE_STRING:
-            expressive_feature_type = representation.EXPRESSIVE_FEATURE_TYPE_MAP[value]
+            if value in representation.EXPRESSIVE_FEATURE_TYPE_MAP.keys(): # as to not cause a KeyError
+                expressive_feature_type = representation.EXPRESSIVE_FEATURE_TYPE_MAP[value]
+            else:
+                continue
             match expressive_feature_type:
                 case "Barline":
                     if value == representation.DEFAULT_EXPRESSIVE_FEATURE_VALUES["Barline"]:

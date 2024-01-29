@@ -215,20 +215,6 @@ def make_public_domain_plot(output_filepath: str):
 
 legend_values = [f"{collection_type} {tp}" for tp in ("Tracks", "Paths") for collection_type in ("All", "Public Domain")] # ['All Tracks', 'Public Domain Tracks', 'All Paths', 'Public Domain Paths']
 
-def _make_percentile_plot(axes: plt.Axes, df: pd.DataFrame):
-
-    for i, legend_value in enumerate(legend_values):
-        df_sub = df[df["type"] == legend_value]
-        axes["log"].plot(df_sub["percentile"], df_sub["log"], label = legend_value, color = LINE_COLORS[i % 2], linestyle = "solid" if i < 2 else "dashed")
-    
-    axes["log"].set_xlabel("Percentile (%)")
-    axes["log"].set_ylabel("Number of Expressive Features")
-    logticks = list(range(int(min(df["log"])), int(max(df["log"])) + 1, 2))
-    axes["log"].set_yticks(logticks)
-    axes["log"].set_yticklabels(["$10^{" + str(logtick) + "}$" if logtick != 0 else "1" for logtick in logticks])
-    axes["log"].legend(ncol = 2)
-    axes["log"].grid()
-
 def make_percentile_plot(output_filepath: str):
 
     # get percentiles
@@ -247,7 +233,16 @@ def make_percentile_plot(output_filepath: str):
     fig.suptitle("Number of Expressive Features in MuseScore Data", fontweight = "bold")
 
     # make plots
-    _make_percentile_plot(axes = axes, df = df)
+    for i, legend_value in enumerate(legend_values):
+        df_sub = df[df["type"] == legend_value]
+        axes["log"].plot(df_sub["percentile"], df_sub["log"], label = legend_value, color = LINE_COLORS[i % 2], linestyle = "solid" if i < 2 else "dashed")
+    axes["log"].set_xlabel("Percentile (%)")
+    axes["log"].set_ylabel("Number of Expressive Features")
+    logticks = list(range(int(min(df["log"])), int(max(df["log"])) + 1, 2))
+    axes["log"].set_yticks(logticks)
+    axes["log"].set_yticklabels(["$10^{" + str(logtick) + "}$" if logtick != 0 else "1" for logtick in logticks])
+    axes["log"].legend(ncol = 2)
+    axes["log"].grid()
 
     # save image
     fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI) # save image

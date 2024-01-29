@@ -336,6 +336,7 @@ DURATION_CODE_MAP[None] = 0
 CODE_DURATION_MAP = {
     i + 1: duration for i, duration in enumerate(KNOWN_DURATIONS)
 }
+CODE_DURATION_MAP[0] = None
 
 ##################################################
 

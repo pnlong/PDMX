@@ -63,17 +63,20 @@ def make_plot(partition: str, metric: str, mask: str, output_dir: str):
     # create figure
     n_cols = 4
     fig, axes = plt.subplot_mosaic(mosaic = [fields[:n_cols], fields[n_cols:] + ["legend"]], constrained_layout = True, figsize = (12, 8))
-    figure_title = partition.title() + ("ing" if partition == "train" else "ation") + " " + metric.title() + (f"for {mask.title()}s" if mask != train.ALL_STRING else "")
+    figure_title = partition.title() + ("ing" if partition == "train" else "ation") + " " + metric.title() + (f" for {mask.title()}s" if mask != train.ALL_STRING else "")
     fig.suptitle(figure_title, fontweight = "bold")
 
     # plot values
     for i, field in enumerate(fields):
         for j, model in enumerate(models):
             current_performance_subset = current_performance[(current_performance["field"] == field) & (current_performance["model"] == model)]
-            model_name = make_model_name_fancy(model = model)
-            axes[field].plot(current_performance_subset["step"], current_performance_subset["value"], label = model_name, color = expressive_features_plots.LINE_COLORS[j])
+            axes[field].plot(current_performance_subset["step"], current_performance_subset["value"], label = model, color = expressive_features_plots.LINE_COLORS[j])
         if i % n_cols == 0: # if this is a leftmost plot, add y labels
             axes[field].set_ylabel(metric.title())
+        elif (i % n_cols != 0) and ("acc" in metric): # if this is a non left most plot and it is for accuracy
+            axes[field].set_yticklabels([])
+        if "acc" in metric: # make sure accuracy scales from 0 to 1
+            axes[field].set_ylim(0, 1)
         # axes[field].get_yaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda count, _: f"{count:,.2f}")) # add commas, but this also causes decimals to get ruined
         if i >= n_cols: # if this is a bottom plot, add x labels
             axes[field].set_xlabel("Step")
@@ -87,7 +90,7 @@ def make_plot(partition: str, metric: str, mask: str, output_dir: str):
     # get legend
     handles, labels = axes[fields[0]].get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
-    axes["legend"].legend(handles = by_label.values(), labels = by_label.keys(), loc = "center", fontsize = "small", title_fontsize = "medium", alignment = "center", ncol = 1, title = "Model", mode = "expand")
+    axes["legend"].legend(handles = by_label.values(), labels = list(map(make_model_name_fancy, by_label.keys())), loc = "center", fontsize = "small", title_fontsize = "medium", alignment = "center", ncol = 1, title = "Model", mode = "expand")
     axes["legend"].axis("off")
     
     # save image

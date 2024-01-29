@@ -31,6 +31,7 @@ import encode
 import decode
 import utils
 from train import PARTITIONS, NA_VALUE, DEFAULT_MAX_SEQ_LEN
+from evaluate_baseline import TRUTH_DIR_STEM
 
 ##################################################
 
@@ -40,6 +41,7 @@ from train import PARTITIONS, NA_VALUE, DEFAULT_MAX_SEQ_LEN
 
 DATA_DIR = "/data2/pnlong/musescore/data"
 PATHS = f"{DATA_DIR}/test.txt"
+EVAL_STEM = "eval_conditional"
 ENCODING_FILEPATH = "/data2/pnlong/musescore/encoding.json"
 OUTPUT_DIR = "/data2/pnlong/musescore/data"
 EVAL_METRICS = ["pitch_class_entropy", "scale_consistency", "groove_consistency"]
@@ -115,7 +117,7 @@ if __name__ == "__main__":
     args = parse_args()
 
     # create eval_dir if necessary
-    EVAL_DIR = (f"{dirname(args.paths)}/eval_truth" if args.truth else args.output_dir) + "/eval_baseline"
+    EVAL_DIR = (f"{dirname(args.paths)}/{TRUTH_DIR_STEM}" if args.truth else args.output_dir) + f"/{EVAL_STEM}"
     if not exists(EVAL_DIR):
         makedirs(EVAL_DIR)
     # make sure the output directory exists

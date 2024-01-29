@@ -29,6 +29,14 @@ import utils
 ##################################################
 
 
+# CONSTANTS
+##################################################
+
+DEFAULT_IGNORE_INDEX = -100
+
+##################################################
+
+
 # MUSIC TRANSFORMER WRAPPER CLASS
 ##################################################
 
@@ -207,7 +215,7 @@ class MusicAutoregressiveWrapper(nn.Module):
     # INTIALIZER
     ##################################################
 
-    def __init__(self, net: MusicTransformerWrapper, encoding: dict, ignore_index: int = -100, pad_value: int = 0):
+    def __init__(self, net: MusicTransformerWrapper, encoding: dict, ignore_index: int = DEFAULT_IGNORE_INDEX, pad_value: int = 0):
         
         # intialize some fields
         super().__init__()
@@ -250,6 +258,7 @@ class MusicAutoregressiveWrapper(nn.Module):
         min_p_ratio: float = 0.02,
         monotonicity_dim: Union[int, List[int]] = None,
         return_attn: bool = False,
+        return_logits: bool = False,
         notes_only: bool = False,
         **kwargs,
     ):
@@ -300,6 +309,10 @@ class MusicAutoregressiveWrapper(nn.Module):
         # deal with current values
         current_values = {d: torch.max(input = start_tokens[:, :, d], dim = 1)[0] for d in monotonicity_dim} if monotonicity_dim is not None else None
 
+        # logits to return
+        if return_logits:
+            logits_to_return = [[] for _ in range(dim)]
+
         # loop through seq
         value_dim = self.dimensions["value"]
         instrument_dim = self.dimensions["instrument"] # get index of instrument
@@ -311,13 +324,18 @@ class MusicAutoregressiveWrapper(nn.Module):
 
             # get logits (and perhaps attn)
             if return_attn:
-                logits, attn = self.net(x, mask = mask, return_attn = True, **kwargs)
+                logits, attn = self.net(x = x, mask = mask, return_attn = True, **kwargs)
                 logits = [logit[:, -1, :] for logit in logits]
             else:
                 logits = [logit[:, -1, :] for logit in self.net(x, mask = mask, return_attn = False, **kwargs)]
+            
+            # add to return logits if necessary
+            if return_logits:
+                for i in range(dim):
+                    logits_to_return[i].append(logits[i])
 
             # enforce monotonicity
-            if monotonicity_dim is not None and 0 in monotonicity_dim:
+            if (monotonicity_dim is not None) and (0 in monotonicity_dim):
                 for i, v in enumerate(current_values[0]):
                     logits[0][i, :v] = -float("inf")
 
@@ -328,8 +346,12 @@ class MusicAutoregressiveWrapper(nn.Module):
             sample_type = sample(logits = logits[0], kind = filter_logits_fn[0], threshold = filter_thres[0], temperature = temperature[0], min_p_pow = min_p_pow, min_p_ratio = min_p_ratio)
 
             # update current values
-            if monotonicity_dim is not None and 0 in monotonicity_dim:
+            if (monotonicity_dim is not None) and (0 in monotonicity_dim):
                 current_values[0] = torch.maximum(input = current_values[0], other = sample_type.reshape(-1))
+
+            if notes_only: # don't allow for sampling of expressive features
+                logits[0][:, self.expressive_feature_type_code] = -float("inf") # don't allow for the expressive feature type
+                logits[value_dim][:, self.expressive_feature_value_codes] = -float("inf") # don't allow for expressive feature values
 
             # iterate after each sample
             samples = [[s_type] for s_type in sample_type]
@@ -337,31 +359,28 @@ class MusicAutoregressiveWrapper(nn.Module):
                 sample_type_code = s_type.item()
 
                 # a start-of-song, end-of-song or start-of-notes code
-                if sample_type_code in (self.sos_type_code, self.eos_type_code, self.son_type_code):
+                if sample_type_code in {self.sos_type_code, self.eos_type_code, self.son_type_code}:
                     samples[i] += [torch.zeros_like(input = s_type)] * (len(logits) - 1)
 
                 # an instrument code
                 elif sample_type_code == self.instrument_type_code:
                     samples[i] += [torch.zeros_like(input = s_type)] * (len(logits) - 2)
-                    logits[instrument_dim][:, 0] = -float("inf")  # avoid none
+                    logits[instrument_dim][:, 0] = -float("inf") # avoid none
                     sampled = sample(logits = logits[instrument_dim][i : i + 1], kind = filter_logits_fn[instrument_dim], threshold = filter_thres[instrument_dim], temperature = temperature[instrument_dim], min_p_pow = min_p_pow, min_p_ratio = min_p_ratio)[0]
                     samples[i].append(sampled)
 
                 # a value code
                 elif sample_type_code in self.value_type_codes:
-                    if notes_only: # don't allow for sampling of expressive features
-                        logits[0][:, self.expressive_feature_type_code] = -float("inf") # don't allow for the expressive feature type
-                        logits[value_dim][:, self.expressive_feature_value_codes] = -float("inf") # don't allow for expressive feature values
                     for d in range(1, dim):
                         # enforce monotonicity
-                        if monotonicity_dim is not None and d in monotonicity_dim:
+                        if (monotonicity_dim is not None) and (d in monotonicity_dim):
                             logits[d][i, : current_values[d][i]] = -float("inf")
                         # sample from the logits
                         logits[d][:, 0] = -float("inf") # avoid none
                         sampled = sample(logits = logits[d][i : i + 1], kind = filter_logits_fn[d], threshold = filter_thres[d], temperature = temperature[d], min_p_pow = min_p_pow, min_p_ratio = min_p_ratio)[0]
                         samples[i].append(sampled)
                         # update current values
-                        if monotonicity_dim is not None and d in monotonicity_dim:
+                        if (monotonicity_dim is not None) and (d in monotonicity_dim):
                             current_values[d][i] = torch.max(input = current_values[d][i], other = sampled)[0]
                 else:
                     raise ValueError(f"Unknown event type code: {sample_type_code}")
@@ -389,7 +408,10 @@ class MusicAutoregressiveWrapper(nn.Module):
         # turn off training
         self.net.train(was_training)
 
-        # either return just the output or attn as well
+        # either return just the output or attn/logits as well
+        if return_logits:
+            logits_to_return = [torch.cat(tensors = logits_to_return[i], dim = 0).unsqueeze(dim = 0) for i in range(dim)]
+            return output, logits_to_return
         if return_attn:
             return output, attn
         return output

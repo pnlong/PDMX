@@ -28,16 +28,24 @@ gpu=3
 # EVALUATE
 ##################################################
 
+printf "==================================================\n\n   Truth\n\n==================================================\n"
+
+# python ${software_dir}/evaluate_baseline.py --paths ${paths_test} --encoding ${encoding} --n_samples ${n_samples} --truth --gpu ${gpu}
+# python ${software_dir}/evaluate_expressive.py --paths ${paths_test} --encoding ${encoding} --n_samples ${n_samples} --truth --gpu ${gpu}
+# python ${software_dir}/evaluate_conditional.py --paths ${paths_test} --encoding ${encoding} --n_samples ${n_samples} --truth --gpu ${gpu}
+
 for model in $(cat "${trained_models}"); do
 
+    printf "==================================================\n\n   ${model}\n\n==================================================\n"
+
     # evalute same as mmt (baseline)
-    python ${software_dir}/evaluate_baseline.py --paths ${paths_test} --encoding ${encoding} --output_dir "${output_dir}/${model}" --n_samples ${n_samples} --gpu ${gpu}
+    # python ${software_dir}/evaluate_baseline.py --paths ${paths_test} --encoding ${encoding} --output_dir "${output_dir}/${model}" --n_samples ${n_samples} --gpu ${gpu}
     
-    # evaluate as a joint model
+    # evaluate for the distribution of expressive features
     python ${software_dir}/evaluate_expressive.py --paths ${paths_test} --encoding ${encoding} --output_dir "${output_dir}/${model}" --n_samples ${n_samples} --gpu ${gpu}
     
     # evaluate as a conditional model
-    python ${software_dir}/evaluate_conditional.py --paths ${paths_test} --encoding ${encoding} --output_dir "${output_dir}/${model}" --n_samples ${n_samples} --gpu ${gpu}
+    # python ${software_dir}/evaluate_conditional.py --paths ${paths_test} --encoding ${encoding} --output_dir "${output_dir}/${model}" --n_samples ${n_samples} --gpu ${gpu}
 
 done
 
