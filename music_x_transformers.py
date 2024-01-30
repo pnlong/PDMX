@@ -425,17 +425,17 @@ class MusicAutoregressiveWrapper(nn.Module):
     def forward(self, x: torch.tensor, return_list: bool = False, reduce: bool = True, return_output: bool = False, **kwargs):
 
         # create subsets of x
-        xi = x[:, :-1]
-        xo = x[:, 1:]
+        xi = x[:, :-1] # input
+        xo = x[:, 1:] # expected output
 
         # help auto-solve a frequent area of confusion around input masks in auto-regressive, if user supplies a mask that is only off by one from the source seq, resolve it for them
         mask = kwargs.get("mask", None)
-        if mask is not None and mask.shape[1] == x.shape[1]:
+        if (mask is not None) and (mask.shape[1] == x.shape[1]):
             mask = mask[:, :-1]
             kwargs["mask"] = mask
 
         # create output
-        output = self.net(xi, **kwargs)
+        output = self.net(x = xi, **kwargs)
         losses = [F.cross_entropy(input = output[i].transpose(1, 2), target = xo[..., i], ignore_index = self.ignore_index, reduction = "none") for i in range(len(output))] # calculate losses
         losses = torch.cat(tensors = [torch.unsqueeze(input = losses_dimension, dim = -1) for losses_dimension in losses], dim = -1) # combine list of losses into a matrix
         loss_by_field = torch.mean(input = losses, dim = list(range(len(losses.shape) - 1))) # calculate mean for each field, the field is the last dimension, so mean over all but the last dimension

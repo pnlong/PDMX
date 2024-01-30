@@ -50,6 +50,7 @@ import utils
 DATA_DIR = "/data2/pnlong/musescore/data"
 ALL_STRING = "total"
 DEFAULT_MAX_SEQ_LEN = 1024
+DEFAULT_MAX_BEAT = 256
 PARTITIONS = ("train", "valid", "test")
 RELEVANT_PARTITIONS = PARTITIONS[:2]
 MASKS = (ALL_STRING, "note", "expressive") # for determining loss in notes vs expressive features
@@ -87,7 +88,7 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("--baseline", action = "store_true", help = "Whether or not this is training the baseline model. The baseline ignores all expressive features.")
     # model
     parser.add_argument("--max_seq_len", default = DEFAULT_MAX_SEQ_LEN, type = int, help = "Maximum sequence length")
-    parser.add_argument("--max_beat", default = 256, type = int, help = "Maximum number of beats")
+    parser.add_argument("--max_beat", default = DEFAULT_MAX_BEAT, type = int, help = "Maximum number of beats")
     parser.add_argument("--dim", default = 512, type = int, help = "Model dimension")
     parser.add_argument("-l", "--layers", default = 6, type = int, help = "Number of layers")
     parser.add_argument("--heads", default = 8, type = int, help = "Number of attention heads")

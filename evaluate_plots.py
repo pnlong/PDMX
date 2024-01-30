@@ -15,6 +15,7 @@ from os.path import exists
 from os import mkdir
 import pickle
 from tqdm import tqdm
+import math
 
 import pandas as pd
 import numpy as np
@@ -25,7 +26,7 @@ import utils
 import train
 import expressive_features_plots
 from train_plots import make_model_name_fancy
-import evaluate_baseline, evaluate_expressive, evaluate_conditional
+import evaluate_baseline, evaluate
 from read_mscz.music import DIVIDE_BY_ZERO_CONSTANT
 
 ##################################################
@@ -134,7 +135,7 @@ def make_n_expressive_features_plot(n_expressive_features: pd.DataFrame, output_
     axes["legend"].axis("off")
 
     # save image
-    fig.savefig(f"{output_dir}/{evaluate_expressive.PLOT_TYPES[0]}.png", dpi = expressive_features_plots.OUTPUT_RESOLUTION_DPI) # save image
+    fig.savefig(f"{output_dir}/{evaluate.PLOT_TYPES[0]}.png", dpi = expressive_features_plots.OUTPUT_RESOLUTION_DPI) # save image
 
     # clear up some memory
     del n_expressive_features
@@ -183,7 +184,7 @@ def make_density_plot(density: pd.DataFrame, output_dir: str) -> None:
     axes["legend"].axis("off")
 
     # save image
-    fig.savefig(f"{output_dir}/{evaluate_expressive.PLOT_TYPES[1]}.png", dpi = expressive_features_plots.OUTPUT_RESOLUTION_DPI) # save image
+    fig.savefig(f"{output_dir}/{evaluate.PLOT_TYPES[1]}.png", dpi = expressive_features_plots.OUTPUT_RESOLUTION_DPI) # save image
 
     # clear up memory
     del density
@@ -238,7 +239,7 @@ def make_summary_plot(summary: pd.DataFrame, output_dir: str, apply_log: bool = 
     axes["legend"].axis("off")
 
     # save image
-    fig.savefig(f"{output_dir}/{evaluate_expressive.PLOT_TYPES[2]}.png", dpi = expressive_features_plots.OUTPUT_RESOLUTION_DPI) # save image
+    fig.savefig(f"{output_dir}/{evaluate.PLOT_TYPES[2]}.png", dpi = expressive_features_plots.OUTPUT_RESOLUTION_DPI) # save image
 
     # clear up some memory
     del summary
@@ -255,7 +256,7 @@ def make_sparsity_plot(sparsity: pd.DataFrame, output_dir: str, expressive_featu
     relevant_time_units_suffix = [relevant_time_unit + expressive_features_plots.SPARSITY_SUCCESSIVE_SUFFIX for relevant_time_unit in relevant_time_units]
     plot_types = ["total", "mean", "median"]
     plot_type = plot_types[1] # which plot type to display
-    output_filepaths = [f"{output_dir}/{evaluate_expressive.PLOT_TYPES[3]}.{suffix}.png" for suffix in ("percentiles", "histograms", "percentiles2")]
+    output_filepaths = [f"{output_dir}/{evaluate.PLOT_TYPES[3]}.{suffix}.png" for suffix in ("percentiles", "histograms", "percentiles2")]
 
     # we have distances between successive expressive features in time_steps, beats, seconds, and as a fraction of the length of the song
     # sparsity = sparsity.drop(index = sparsity.index[-1]) # last row is None, since there is no successive expressive features, so drop it
@@ -266,7 +267,7 @@ def make_sparsity_plot(sparsity: pd.DataFrame, output_dir: str, expressive_featu
     expressive_feature_types.insert(0, all_features_type_name) # add a plot for all expressive features
     step = 0.001
     percentiles = np.arange(start = 0, stop = 100 + step, step = step)
-    pickle_output = f"{output_dir}/{evaluate_expressive.PLOT_TYPES[3]}_percentiles.pickle"
+    pickle_output = f"{output_dir}/{evaluate.PLOT_TYPES[3]}_percentiles.pickle"
     if not exists(pickle_output):
 
         # helper function to calculate various percentiles
@@ -514,40 +515,46 @@ if __name__ == "__main__":
 
     # n expressive features
     n_expressive_features = combine_data_tables(models = models_with_truth,
-                                                output_filepath = f"{args.output_dir}/{evaluate_expressive.EVAL_STEM}.{evaluate_expressive.PLOT_TYPES[0]}.csv",
-                                                stem = f"{evaluate_expressive.EVAL_STEM}/eval_{evaluate_expressive.PLOT_TYPES[0]}")
+                                                output_filepath = f"{args.output_dir}/{evaluate.EVAL_STEM}.{evaluate.PLOT_TYPES[0]}.csv",
+                                                stem = f"{evaluate.EVAL_STEM}/eval_{evaluate.PLOT_TYPES[0]}")
     _ = make_n_expressive_features_plot(n_expressive_features = n_expressive_features, output_dir = plots_dir)
     del n_expressive_features
 
     # density
     density = combine_data_tables(models = models_with_truth,
-                                  output_filepath = f"{args.output_dir}/{evaluate_expressive.EVAL_STEM}.{evaluate_expressive.PLOT_TYPES[1]}.csv",
-                                  stem = f"{evaluate_expressive.EVAL_STEM}/eval_{evaluate_expressive.PLOT_TYPES[1]}")
+                                  output_filepath = f"{args.output_dir}/{evaluate.EVAL_STEM}.{evaluate.PLOT_TYPES[1]}.csv",
+                                  stem = f"{evaluate.EVAL_STEM}/eval_{evaluate.PLOT_TYPES[1]}")
     _ = make_density_plot(density = density, output_dir = plots_dir)
     del density
 
     # feature types summary
     summary = combine_data_tables(models = models_with_truth,
-                                  output_filepath = f"{args.output_dir}/{evaluate_expressive.EVAL_STEM}.{evaluate_expressive.PLOT_TYPES[2]}.csv",
-                                  stem = f"{evaluate_expressive.EVAL_STEM}/eval_{evaluate_expressive.PLOT_TYPES[2]}")
+                                  output_filepath = f"{args.output_dir}/{evaluate.EVAL_STEM}.{evaluate.PLOT_TYPES[2]}.csv",
+                                  stem = f"{evaluate.EVAL_STEM}/eval_{evaluate.PLOT_TYPES[2]}")
     expressive_feature_types = make_summary_plot(summary = summary, output_dir = plots_dir)
     del summary
 
     # sparsity
     sparsity = combine_data_tables(models = models_with_truth,
-                                   output_filepath = f"{args.output_dir}/{evaluate_expressive.EVAL_STEM}.{evaluate_expressive.PLOT_TYPES[3]}.csv",
-                                   stem = f"{evaluate_expressive.EVAL_STEM}/eval_{evaluate_expressive.PLOT_TYPES[3]}")
+                                   output_filepath = f"{args.output_dir}/{evaluate.EVAL_STEM}.{evaluate.PLOT_TYPES[3]}.csv",
+                                   stem = f"{evaluate.EVAL_STEM}/eval_{evaluate.PLOT_TYPES[3]}")
     _ = make_sparsity_plot(sparsity = sparsity, output_dir = plots_dir, expressive_feature_types = expressive_feature_types)
     del sparsity
 
     # perplexity
-    perplexity = combine_data_tables(models = models,
-                                     output_filepath = f"{args.output_dir}/{evaluate_expressive.EVAL_STEM}.{evaluate_expressive.PLOT_TYPES[4]}.csv",
-                                     stem = f"{evaluate_expressive.EVAL_STEM}/eval_{evaluate_expressive.PLOT_TYPES[4]}")
-    perplexity = perplexity.groupby(by = "model").mean(numeric_only = True).reset_index(drop = False) # summarize
-    perplexity_summary_output_filepath = f"{args.output_dir}/{evaluate_expressive.EVAL_STEM}.{evaluate_expressive.PLOT_TYPES[4]}.summary.csv"
+    losses_for_perplexity_output_filepath = f"{args.output_dir}/{evaluate.EVAL_STEM}.{evaluate.PLOT_TYPES[4]}.csv"
+    losses_for_perplexity = combine_data_tables(models = models,
+                                 output_filepath = losses_for_perplexity_output_filepath,
+                                 stem = f"{evaluate.EVAL_STEM}/eval_{evaluate.PLOT_TYPES[4]}")
+    losses_for_perplexity = losses_for_perplexity.groupby(by = "model").sum(numeric_only = True).reset_index(drop = False) # summarize per model
+    loss_columns = list(losses_for_perplexity.columns[losses_for_perplexity.columns.index("loss_" + train.ALL_STRING):]) # get the loss columns (for renaming)
+    perplexity_columns = list(map(lambda loss_column: loss_column.replace("loss_", "ppl_"), loss_columns)) # get the new perplexity column names
+    perplexity_summary_output_filepath = ".".join(losses_for_perplexity_output_filepath.split(".")[:-1]) + ".summary.csv"
+    perplexity = losses_for_perplexity.rename(columns = dict(zip(loss_columns, perplexity_columns))) # rename columns from loss to perplexity
+    for perplexity_column in perplexity_columns: # compute perplexity given each loss value
+        perplexity[perplexity_column] = perplexity[perplexity_column].apply(math.exp) # exp(loss)
     perplexity.to_csv(path_or_buf = perplexity_summary_output_filepath, sep = ",", na_rep = train.NA_VALUE, header = True, index = False, mode = "w")
-    del perplexity
+    del losses_for_perplexity_output_filepath, losses_for_perplexity, loss_columns, perplexity_summary_output_filepath, perplexity, perplexity_columns
 
     ##################################################
 

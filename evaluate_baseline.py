@@ -34,7 +34,7 @@ import representation
 import encode
 import decode
 import utils
-from train import PARTITIONS, NA_VALUE, DEFAULT_MAX_SEQ_LEN
+from train import PARTITIONS, NA_VALUE, DEFAULT_MAX_SEQ_LEN, DEFAULT_MAX_BEAT
 
 ##################################################
 
@@ -306,7 +306,7 @@ if __name__ == "__main__":
 
         # create the dataset
         logging.info(f"Creating the data loader...")
-        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = DEFAULT_MAX_SEQ_LEN)
+        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = DEFAULT_MAX_SEQ_LEN, max_beat = DEFAULT_MAX_BEAT, use_augmentation = False)
 
     # load model if necessary
     else:
@@ -324,7 +324,7 @@ if __name__ == "__main__":
 
         # create the dataset
         logging.info(f"Creating the data loader...")
-        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = train_args["max_seq_len"])
+        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = train_args["max_seq_len"], max_beat = train_args["max_beat"], use_augmentation = False, is_baseline = ("baseline" in args.output_dir))
 
         # create the model
         logging.info(f"Creating the model...")
