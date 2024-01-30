@@ -48,19 +48,23 @@ import utils
 ##################################################
 
 DATA_DIR = "/data2/pnlong/musescore/data"
-ALL_STRING = "total"
+OUTPUT_DIR = "/data2/pnlong/musescore/data"
+ENCODING_FILEPATH = "/data2/pnlong/musescore/encoding.json"
+
 DEFAULT_MAX_SEQ_LEN = 1024
 DEFAULT_MAX_BEAT = 256
+
+NA_VALUE = "NA"
+ALL_STRING = "total"
+
 PARTITIONS = ("train", "valid", "test")
 RELEVANT_PARTITIONS = PARTITIONS[:2]
 MASKS = (ALL_STRING, "note", "expressive") # for determining loss in notes vs expressive features
 PERFORMANCE_METRICS = ("loss", "accuracy")
 PERFORMANCE_OUTPUT_COLUMNS = ["step", "metric", "partition", "mask", "field", "value"]
-NA_VALUE = "NA"
+
 PATHS_TRAIN = f"{DATA_DIR}/{RELEVANT_PARTITIONS[0]}.txt"
 PATHS_VALID = f"{DATA_DIR}/{RELEVANT_PARTITIONS[1]}.txt"
-OUTPUT_DIR = "/data2/pnlong/musescore/data"
-ENCODING_FILEPATH = "/data2/pnlong/musescore/encoding.json"
 
 # environment constants
 # environ["CUDA_LAUNCH_BLOCKING"] = "1" # to ignore https://github.com/facebookresearch/detectron2/issues/2837 error (device-side assert triggered)

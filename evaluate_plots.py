@@ -26,7 +26,8 @@ import utils
 import train
 import expressive_features_plots
 from train_plots import make_model_name_fancy
-import evaluate_baseline, evaluate
+import evaluate
+import evaluate_baseline
 from read_mscz.music import DIVIDE_BY_ZERO_CONSTANT
 
 ##################################################
@@ -57,7 +58,7 @@ def parse_args(args = None, namespace = None):
 # HELPER FUNCTION FOR COMBINING DATA TABLES
 ##################################################
 
-def combine_data_tables(models: list, output_filepath: str, stem: str = None) -> pd.DataFrame:
+def combine_data_tables(models: list, output_filepath: str, is_baseline: bool = False, eval_type: str = None, stem: str = None) -> pd.DataFrame:
 
     # if it already exists, read it in
     if exists(output_filepath):
@@ -66,8 +67,9 @@ def combine_data_tables(models: list, output_filepath: str, stem: str = None) ->
     # create the combined data table
     else:
         for i, model in enumerate(models):
-            input_filepath = f"{args.output_dir}/{model}/{stem}.csv"
-            if not exists(input_filepath): continue
+            input_filepath = args.output_dir + "/" + model + "/eval" + ("_baseline" if is_baseline else "") + (f"/{eval_type}" if not ((model == evaluate_baseline.TRUTH_DIR_STEM) or (is_baseline)) else "") + "/" + stem + ".csv"
+            if not exists(input_filepath):
+                continue
             df_model = pd.read_csv(filepath_or_buffer = input_filepath, sep = ",", na_values = train.NA_VALUE, header = 0, index_col = False) # read in performance
             if i == 0: # learn the column names on the first iteration
                 columns = ["model"] + df_model.columns.tolist()
@@ -97,6 +99,13 @@ def get_histogram_data_table(data: list, bins: list) -> pd.DataFrame:
 
 # HELPER FUNCTIONS THAT MAKE PLOTS
 ##################################################
+
+def make_baseline_table(baseline: pd.DataFrame, output_dir: str) -> None:
+    """Make a table summarizing baseline metrics."""
+    baseline = baseline.groupby(by = "model").mean(numeric_only = True).reset_index(drop = False)
+    baseline.to_csv(path_or_buf = f"{output_dir}/{evaluate_baseline.EVAL_STEM}.summary.csv", sep = ",", na_rep = train.NA_VALUE, header = True, index = False, mode = "w")
+    return None
+
 
 def make_n_expressive_features_plot(n_expressive_features: pd.DataFrame, output_dir: str, apply_log: bool = True) -> None:
     """Make percentiles plot for number of expressive features for each generated path."""
@@ -465,6 +474,28 @@ def make_sparsity_plot(sparsity: pd.DataFrame, output_dir: str, expressive_featu
 
     return None
 
+def make_perplexity_table(losses_for_perplexity: pd.DataFrame, output_filepath: str):
+    """Make a table summarizing perplexities."""
+
+    # summarize per model
+    losses_for_perplexity = losses_for_perplexity.groupby(by = "model").sum(numeric_only = True).reset_index(drop = False) # summarize per model
+
+    # old and new column names
+    losses_for_perplexity_columns = list(losses_for_perplexity.columns[losses_for_perplexity.columns.index("loss_" + train.ALL_STRING):]) # get the loss columns (for renaming)
+    perplexity_columns = list(map(lambda loss_column: loss_column.replace("loss_", "ppl_"), losses_for_perplexity_columns)) # get the new perplexity column names
+
+    # compute perplexity
+    perplexity_function = lambda loss_for_perplexity: math.exp(-math.log(loss_for_perplexity))
+    perplexity = losses_for_perplexity.rename(columns = dict(zip(losses_for_perplexity_columns, perplexity_columns))) # rename columns from loss to perplexity
+    for perplexity_column in perplexity_columns: # compute perplexity given each loss value
+        perplexity[perplexity_column] = perplexity[perplexity_column].apply(perplexity_function) # exp(loss)
+
+    # output
+    perplexity.to_csv(path_or_buf = output_filepath, sep = ",", na_rep = train.NA_VALUE, header = True, index = False, mode = "w")
+    del losses_for_perplexity, losses_for_perplexity_columns, perplexity, perplexity_columns
+
+    return None
+
 ##################################################
 
 
@@ -482,11 +513,11 @@ if __name__ == "__main__":
     with open(args.models, "r") as models_output: # read in list of trained models
         models = [model.strip() for model in models_output.readlines()] # use a set because better for `in` operations
     models_with_truth = [evaluate_baseline.TRUTH_DIR_STEM] + models
-    
-    # make sure plots directory exists
-    plots_dir = f"{args.output_dir}/plots"
-    if not exists(plots_dir):
-        mkdir(plots_dir)
+
+    # make sure eval directory exists
+    eval_dir = f"{args.output_dir}/eval"
+    if not exists(eval_dir):
+        mkdir(eval_dir)
 
     ##################################################
     
@@ -494,18 +525,13 @@ if __name__ == "__main__":
     # BASELINE
     ##################################################
 
-    # create/read in big data frame
+    # pure baseline eval
     baseline = combine_data_tables(models = models_with_truth,
                                    output_filepath = f"{args.output_dir}/{evaluate_baseline.EVAL_STEM}.csv",
-                                   stem = f"{evaluate_baseline.EVAL_STEM}/{evaluate_baseline.EVAL_STEM}")
-
-    # summarize
-    baseline = baseline.groupby(by = "model").mean(numeric_only = True).reset_index(drop = False)
-    baseline_summary_output_filepath = f"{args.output_dir}/{evaluate_baseline.EVAL_STEM}.summary.csv"
-    baseline.to_csv(path_or_buf = baseline_summary_output_filepath, sep = ",", na_rep = train.NA_VALUE, header = True, index = False, mode = "w")
-
-    # free up some memory
-    del baseline, baseline_summary_output_filepath
+                                   is_baseline = True,
+                                   stem = evaluate_baseline.EVAL_STEM)
+    _ = make_baseline_table(baseline = baseline, output_dir = eval_dir)
+    del baseline
 
     ##################################################
 
@@ -513,48 +539,69 @@ if __name__ == "__main__":
     # DISTRIBUTION OF EXPRESSIVE FEATURES
     ##################################################
 
-    # n expressive features
-    n_expressive_features = combine_data_tables(models = models_with_truth,
-                                                output_filepath = f"{args.output_dir}/{evaluate.EVAL_STEM}.{evaluate.PLOT_TYPES[0]}.csv",
-                                                stem = f"{evaluate.EVAL_STEM}/eval_{evaluate.PLOT_TYPES[0]}")
-    _ = make_n_expressive_features_plot(n_expressive_features = n_expressive_features, output_dir = plots_dir)
-    del n_expressive_features
+    for eval_type in evaluate.EVAL_TYPES:
 
-    # density
-    density = combine_data_tables(models = models_with_truth,
-                                  output_filepath = f"{args.output_dir}/{evaluate.EVAL_STEM}.{evaluate.PLOT_TYPES[1]}.csv",
-                                  stem = f"{evaluate.EVAL_STEM}/eval_{evaluate.PLOT_TYPES[1]}")
-    _ = make_density_plot(density = density, output_dir = plots_dir)
-    del density
+        # make sure plots directory exists
+        eval_subdir = f"{eval_dir}/{eval_type}"
+        if not exists(eval_subdir):
+            mkdir(eval_subdir)
+        plots_dir = f"{eval_subdir}/plots"
+        if not exists(plots_dir):
+            mkdir(plots_dir)
 
-    # feature types summary
-    summary = combine_data_tables(models = models_with_truth,
-                                  output_filepath = f"{args.output_dir}/{evaluate.EVAL_STEM}.{evaluate.PLOT_TYPES[2]}.csv",
-                                  stem = f"{evaluate.EVAL_STEM}/eval_{evaluate.PLOT_TYPES[2]}")
-    expressive_feature_types = make_summary_plot(summary = summary, output_dir = plots_dir)
-    del summary
+        # baseline metrics
+        baseline = combine_data_tables(models = models_with_truth,
+                                       output_filepath = f"{eval_subdir}/eval_{evaluate.PLOT_TYPES[0]}.csv",
+                                       is_baseline = False,
+                                       eval_type = eval_type,
+                                       stem = f"eval_{evaluate.PLOT_TYPES[0]}")
+        _ = make_baseline_table(baseline = baseline, output_dir = args.output_dir)
+        del baseline
 
-    # sparsity
-    sparsity = combine_data_tables(models = models_with_truth,
-                                   output_filepath = f"{args.output_dir}/{evaluate.EVAL_STEM}.{evaluate.PLOT_TYPES[3]}.csv",
-                                   stem = f"{evaluate.EVAL_STEM}/eval_{evaluate.PLOT_TYPES[3]}")
-    _ = make_sparsity_plot(sparsity = sparsity, output_dir = plots_dir, expressive_feature_types = expressive_feature_types)
-    del sparsity
+        # n expressive features
+        n_expressive_features = combine_data_tables(models = models_with_truth,
+                                                    output_filepath = f"{eval_subdir}/eval_{evaluate.PLOT_TYPES[1]}.csv",
+                                                    is_baseline = False,
+                                                    eval_type = eval_type,
+                                                    stem = f"eval_{evaluate.PLOT_TYPES[1]}")
+        _ = make_n_expressive_features_plot(n_expressive_features = n_expressive_features, output_dir = plots_dir)
+        del n_expressive_features
 
-    # perplexity
-    losses_for_perplexity_output_filepath = f"{args.output_dir}/{evaluate.EVAL_STEM}.{evaluate.PLOT_TYPES[4]}.csv"
-    losses_for_perplexity = combine_data_tables(models = models,
-                                 output_filepath = losses_for_perplexity_output_filepath,
-                                 stem = f"{evaluate.EVAL_STEM}/eval_{evaluate.PLOT_TYPES[4]}")
-    losses_for_perplexity = losses_for_perplexity.groupby(by = "model").sum(numeric_only = True).reset_index(drop = False) # summarize per model
-    loss_columns = list(losses_for_perplexity.columns[losses_for_perplexity.columns.index("loss_" + train.ALL_STRING):]) # get the loss columns (for renaming)
-    perplexity_columns = list(map(lambda loss_column: loss_column.replace("loss_", "ppl_"), loss_columns)) # get the new perplexity column names
-    perplexity_summary_output_filepath = ".".join(losses_for_perplexity_output_filepath.split(".")[:-1]) + ".summary.csv"
-    perplexity = losses_for_perplexity.rename(columns = dict(zip(loss_columns, perplexity_columns))) # rename columns from loss to perplexity
-    for perplexity_column in perplexity_columns: # compute perplexity given each loss value
-        perplexity[perplexity_column] = perplexity[perplexity_column].apply(math.exp) # exp(loss)
-    perplexity.to_csv(path_or_buf = perplexity_summary_output_filepath, sep = ",", na_rep = train.NA_VALUE, header = True, index = False, mode = "w")
-    del losses_for_perplexity_output_filepath, losses_for_perplexity, loss_columns, perplexity_summary_output_filepath, perplexity, perplexity_columns
+        # density
+        density = combine_data_tables(models = models_with_truth,
+                                      output_filepath = f"{eval_subdir}/eval_{evaluate.PLOT_TYPES[2]}.csv",
+                                      is_baseline = False,
+                                      eval_type = eval_type,
+                                      stem = f"eval_{evaluate.PLOT_TYPES[2]}")
+        _ = make_density_plot(density = density, output_dir = plots_dir)
+        del density
+
+        # feature types summary
+        summary = combine_data_tables(models = models_with_truth,
+                                      output_filepath = f"{eval_subdir}/eval_{evaluate.PLOT_TYPES[3]}.csv",
+                                      is_baseline = False,
+                                      eval_type = eval_type,
+                                      stem = f"eval_{evaluate.PLOT_TYPES[3]}")
+        expressive_feature_types = make_summary_plot(summary = summary, output_dir = plots_dir)
+        del summary
+
+        # sparsity
+        sparsity = combine_data_tables(models = models_with_truth,
+                                       output_filepath = f"{eval_subdir}/eval_{evaluate.PLOT_TYPES[4]}.csv",
+                                       is_baseline = False,
+                                       eval_type = eval_type,
+                                       stem = f"eval_{evaluate.PLOT_TYPES[4]}")
+        _ = make_sparsity_plot(sparsity = sparsity, output_dir = plots_dir, expressive_feature_types = expressive_feature_types)
+        del sparsity
+
+        # perplexity
+        losses_for_perplexity = combine_data_tables(models = models,
+                                                    output_filepath = f"{eval_subdir}/eval_{evaluate.PLOT_TYPES[5]}.csv",
+                                                    is_baseline = False,
+                                                    eval_type = eval_type,
+                                                    stem = f"eval_{evaluate.PLOT_TYPES[5]}")
+        _ = make_perplexity_table(losses_for_perplexity = losses_for_perplexity, output_filepath = f"{eval_subdir}/eval_{evaluate.PLOT_TYPES[5]}.summary.csv")
+        del losses_for_perplexity
 
     ##################################################
 
