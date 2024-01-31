@@ -373,7 +373,7 @@ if __name__ == "__main__":
                 ##################################################
 
                 # default prefix sequence
-                prefix_default = torch.tensor(data = [sos] + ([0] * (len(encoding["dimensions"]) - 1)), dtype = torch.long, device = device).reshape(1, 1, len(encoding["dimensions"]))
+                prefix_default = torch.tensor(data = [sos] + ([0] * (len(encoding["dimensions"]) - 1)), dtype = torch.long, device = device).reshape(1, 1, len(encoding["dimensions"])).to(device)
                 n_notes_so_far = 0
                 last_prefix_index = -1
                 for j in range(batch["seq"].shape[1]):
@@ -382,7 +382,7 @@ if __name__ == "__main__":
                     if batch["seq"][:, j, 0] in (encoding["type_code_map"]["note"], encoding["type_code_map"]["grace-note"]): # if event is a note
                         n_notes_so_far += 1 # increment
                         last_prefix_index = j # update last prefix index
-                prefix_conditional_default = batch["seq"][:, :last_prefix_index + 1, :]
+                prefix_conditional_default = batch["seq"][:, :last_prefix_index + 1, :].to(device)
                 if prefix_conditional_default.shape[1] == 0: # make sure the prefix conditional default is not just empty
                     prefix_conditional_default = prefix_default
 
@@ -411,7 +411,7 @@ if __name__ == "__main__":
 
                     # generate new samples
                     generated = model.generate(
-                        seq_in = prefix,
+                        seq_in = prefix.to(device),
                         seq_len = args.seq_len,
                         eos_token = eos,
                         temperature = args.temperature,
