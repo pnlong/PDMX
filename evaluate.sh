@@ -61,7 +61,7 @@ done
 
 printf "============================   ${model^^}   ============================\n"
 
-if [[ ${model} == ${default_model} ]]; then
+if [[ "${model}" == "${default_model}" ]]; then
 
     # python ${software_dir}/evaluate_baseline.py --paths ${paths_test} --encoding ${encoding} --n_samples ${n_samples} --truth --gpu ${gpu}
     python ${software_dir}/evaluate.py --paths ${paths_test} --encoding ${encoding} --n_samples ${n_samples} --truth --gpu ${gpu}

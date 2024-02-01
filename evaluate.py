@@ -249,21 +249,26 @@ if __name__ == "__main__":
     if not args.truth:
         LOSS_FOR_PERPLEXITY_COLUMNS = ["path"] + [f"loss_{field}" for field in [train.ALL_STRING] + encoding["dimensions"]]
 
+    # helper function for writing column names
+    def write_column_names(output_filepaths: list):
+        pd.DataFrame(columns = BASELINE_COLUMNS).to_csv(path_or_buf = output_filepaths[0], sep = ",", na_rep = train.NA_VALUE, header = True, index = False, mode = "w")
+        pd.DataFrame(columns = N_EXPRESSIVE_FEATURES_COLUMNS).to_csv(path_or_buf = output_filepaths[1], sep = ",", na_rep = train.NA_VALUE, header = True, index = False, mode = "w") # n expressive features
+        pd.DataFrame(columns = expressive_features_plots.DENSITY_COLUMNS).to_csv(path_or_buf = output_filepaths[2], sep = ",", na_rep = train.NA_VALUE, header = True, index = False, mode = "w") # density
+        pd.DataFrame(columns = expressive_features_plots.FEATURE_TYPES_SUMMARY_COLUMNS).to_csv(path_or_buf = output_filepaths[3], sep = ",", na_rep = train.NA_VALUE, header = True, index = False, mode = "w") # features summary
+        pd.DataFrame(columns = expressive_features_plots.SPARSITY_COLUMNS).to_csv(path_or_buf = output_filepaths[4], sep = ",", na_rep = train.NA_VALUE, header = True, index = False, mode = "w") # sparsity
+        if not args.truth:
+            pd.DataFrame(columns = LOSS_FOR_PERPLEXITY_COLUMNS).to_csv(path_or_buf = output_filepaths[5], sep = ",", na_rep = train.NA_VALUE, header = True, index = False, mode = "w") # sparsity
+
+
     # output filepaths for data used in plots
     if args.truth:
         output_filepaths = [f"{EVAL_DIR}/eval_{plot_type}.csv" for plot_type in PLOT_TYPES]
+        write_column_names(output_filepaths = output_filepaths)
     else:
         output_filepaths = {eval_type: [f"{dirname(eval_output_dirs[eval_type])}/eval_{plot_type}.csv" for plot_type in PLOT_TYPES] for eval_type in EVAL_TYPES}
-        for eval_type in output_filepaths.keys():
-            if not all(exists(path) for path in output_filepaths[eval_type][:-1]):
-                pd.DataFrame(columns = BASELINE_COLUMNS).to_csv(path_or_buf = output_filepaths[eval_type][0], sep = ",", na_rep = train.NA_VALUE, header = True, index = False, mode = "w")
-                pd.DataFrame(columns = N_EXPRESSIVE_FEATURES_COLUMNS).to_csv(path_or_buf = output_filepaths[eval_type][1], sep = ",", na_rep = train.NA_VALUE, header = True, index = False, mode = "w") # n expressive features
-                pd.DataFrame(columns = expressive_features_plots.DENSITY_COLUMNS).to_csv(path_or_buf = output_filepaths[eval_type][2], sep = ",", na_rep = train.NA_VALUE, header = True, index = False, mode = "w") # density
-                pd.DataFrame(columns = expressive_features_plots.FEATURE_TYPES_SUMMARY_COLUMNS).to_csv(path_or_buf = output_filepaths[eval_type][3], sep = ",", na_rep = train.NA_VALUE, header = True, index = False, mode = "w") # features summary
-                pd.DataFrame(columns = expressive_features_plots.SPARSITY_COLUMNS).to_csv(path_or_buf = output_filepaths[eval_type][4], sep = ",", na_rep = train.NA_VALUE, header = True, index = False, mode = "w") # sparsity
-                if not args.truth:
-                    pd.DataFrame(columns = LOSS_FOR_PERPLEXITY_COLUMNS).to_csv(path_or_buf = output_filepaths[eval_type][5], sep = ",", na_rep = train.NA_VALUE, header = True, index = False, mode = "w") # sparsity
-
+        for output_filepaths_at_eval_type in output_filepaths.values():
+            write_column_names(output_filepaths = output_filepaths_at_eval_type)
+        
     # set up the logger
     logging.basicConfig(level = logging.INFO, format = "%(message)s", handlers = [logging.FileHandler(filename = f"{EVAL_DIR}/evaluate.log", mode = "a"), logging.StreamHandler(stream = sys.stdout)])
 
