@@ -95,7 +95,11 @@ def reconstruct(data: np.array, resolution: int, encoding: dict = representation
         time = (beat * resolution) + ((position / encoding["resolution"]) * resolution) # get time in time steps
         duration = (resolution / encoding["resolution"]) * duration # get duration in time steps
         if event_type in ("note", "grace-note"):
-            music.tracks[track_index].notes.append(Note(time = time, pitch = value, duration = duration, is_grace = (event_type == "grace_note")))
+            try:
+                pitch = int(value) # make sure the pitch is in fact a pitch
+            except (ValueError):
+                continue
+            music.tracks[track_index].notes.append(Note(time = time, pitch = pitch, duration = duration, is_grace = (event_type == "grace_note")))
             for ongoing_articulation_chunk in tuple(ongoing_articulation_chunks[track_index].keys()): # add articulation if necessary
                 if time <= ongoing_articulation_chunks[track_index][ongoing_articulation_chunk]: # if the duration is still on
                     music.tracks[track_index].annotations.append(Annotation(time = time, annotation = Articulation(subtype = ongoing_articulation_chunk)))

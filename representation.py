@@ -25,6 +25,7 @@ RESOLUTION = 12
 MAX_BEAT = 1024
 MAX_DURATION = 768  # remember to modify known durations as well!
 DEFAULT_VALUE_CODE = -1
+N_NOTES = 128
 NA_VALUES = ("null", "None", None) # for loading encodings
 
 ##################################################
@@ -283,7 +284,7 @@ EXPRESSIVE_FEATURES = {
     # ],
 }
 EXPRESSIVE_FEATURE_TYPE_MAP = {expressive_feature_subtype : expressive_feature_type for expressive_feature_type in tuple(EXPRESSIVE_FEATURES.keys()) for expressive_feature_subtype in EXPRESSIVE_FEATURES[expressive_feature_type]}
-VALUE_CODE_MAP = unique(l = [None,] + list(range(128)) + sum(list(EXPRESSIVE_FEATURES.values()), [])) # ensure no duplicates
+VALUE_CODE_MAP = unique(l = [None,] + list(range(N_NOTES)) + sum(list(EXPRESSIVE_FEATURES.values()), [])) # ensure no duplicates
 VALUE_CODE_MAP = {VALUE_CODE_MAP[i]: i for i in range(len(VALUE_CODE_MAP))}
 CODE_VALUE_MAP = utils.inverse_dict(VALUE_CODE_MAP)
 

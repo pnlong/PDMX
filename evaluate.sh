@@ -21,6 +21,7 @@ encoding="${base_dir}/encoding.json"
 output_dir="${data_dir}"
 n_samples=2000
 gpu=3
+default_model="truth"
 
 ##################################################
 
@@ -30,12 +31,14 @@ gpu=3
 
 # parse command line arguments
 usage="Usage: $(basename ${0}) [-m] (the model to evaluate)"
-default_model="truth"
 model=${default_model}
-while getopts ':m:h' opt; do
+while getopts ':m:g:h' opt; do
   case "${opt}" in
     m)
       model="${OPTARG}"
+      ;;
+    g)
+      gpu="${OPTARG}"
       ;;
     h)
       echo ${usage}
