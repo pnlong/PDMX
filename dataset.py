@@ -130,7 +130,7 @@ class MusicDataset(Dataset):
         # trim seq to max_beat
         elif self.max_beat is not None:
             if n_beats > self.max_beat:
-                data = data[data[:, self.beat_dim].astype(encode.ENCODING_ARRAY_TYPE) <= self.max_beat]
+                data = data[data[:, self.beat_dim].astype(encode.ENCODING_ARRAY_TYPE) < self.max_beat]
         
         # encode the data
         seq = encode.encode_data(data = data[data[:, 0] != representation.EXPRESSIVE_FEATURE_TYPE_STRING] if self.is_baseline else data, encoding = self.encoding, conditioning = self.conditioning, sigma = self.sigma)

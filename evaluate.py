@@ -225,6 +225,7 @@ if __name__ == "__main__":
 
     # parse the command-line arguments
     args = parse_args()
+    # args.output_dir += "/baseline_aug_ape_20M" # for debugging
 
     # create eval_dir if necessary
     EVAL_DIR = (f"{dirname(args.paths)}/{evaluate_baseline.TRUTH_DIR_STEM}" if args.truth else args.output_dir) + f"/{EVAL_STEM}"
@@ -411,7 +412,7 @@ if __name__ == "__main__":
 
                     # generate new samples
                     generated = model.generate(
-                        seq_in = prefix.to(device),
+                        seq_in = prefix,
                         seq_len = args.seq_len,
                         eos_token = eos,
                         temperature = args.temperature,

@@ -25,24 +25,49 @@ gpu=3
 ##################################################
 
 
+# COMMAND LINE ARGS
+##################################################
+
+# parse command line arguments
+usage="Usage: $(basename ${0}) [-m] (the model to evaluate)"
+default_model="truth"
+model=${default_model}
+while getopts ':m:h' opt; do
+  case "${opt}" in
+    m)
+      model="${OPTARG}"
+      ;;
+    h)
+      echo ${usage}
+      exit 0
+      ;;
+    :)
+      echo -e "option requires an argument.\n${usage}"
+      exit 1
+      ;;
+    ?)
+      echo -e "Invalid command option.\n${usage}"
+      exit 1
+      ;;
+  esac
+done
+##################################################
+
 # EVALUATE
 ##################################################
 
-printf "==================================================\n\n   Truth\n\n==================================================\n"
+printf "============================   ${model^^}   ============================\n"
 
-# python ${software_dir}/evaluate_baseline.py --paths ${paths_test} --encoding ${encoding} --n_samples ${n_samples} --truth --gpu ${gpu}
-python ${software_dir}/evaluate.py --paths ${paths_test} --encoding ${encoding} --n_samples ${n_samples} --truth --gpu ${gpu}
+if [[ ${model} == ${default_model} ]]; then
 
-for model in $(cat "${trained_models}"); do
+    # python ${software_dir}/evaluate_baseline.py --paths ${paths_test} --encoding ${encoding} --n_samples ${n_samples} --truth --gpu ${gpu}
+    python ${software_dir}/evaluate.py --paths ${paths_test} --encoding ${encoding} --n_samples ${n_samples} --truth --gpu ${gpu}
 
-    printf "==================================================\n\n   ${model}\n\n==================================================\n"
+else
 
-    # evalute same as mmt (baseline)
     # python ${software_dir}/evaluate_baseline.py --paths ${paths_test} --encoding ${encoding} --output_dir "${output_dir}/${model}" --n_samples ${n_samples} --gpu ${gpu}
-    
-    # evaluate for the distribution of expressive features for joint and conditional models
     python ${software_dir}/evaluate.py --paths ${paths_test} --encoding ${encoding} --output_dir "${output_dir}/${model}" --n_samples ${n_samples} --gpu ${gpu}
-    
-done
+
+fi
 
 ##################################################
