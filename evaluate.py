@@ -178,10 +178,10 @@ def evaluate(
     # save results
     path = f"{eval_dir}/{stem}"
     np.save(file = f"{path}.npy", arr = data) # save as a numpy array
-    encode.save_csv_codes(filepath = f"{path}.csv", data = data) # save as a .csv file
+    # encode.save_csv_codes(filepath = f"{path}.csv", data = data) # save as a .csv file
     music = decode.decode(codes = data, encoding = encoding) # convert to a BetterMusic object
     music.trim(end = music.resolution * 64) # trim the music
-    music.save_json(path = f"{path}.json") # save as a BetterMusic .json file
+    # music.save_json(path = f"{path}.json") # save as a BetterMusic .json file
 
     # extract data
     data = encode.extract_data(music = music, use_implied_duration = False, include_annotation_class_name = True) # duration doesn't matter for our purposes here

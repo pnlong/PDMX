@@ -244,10 +244,10 @@ def evaluate(data: Union[np.array, torch.tensor], encoding: dict, stem: str, eva
 
     # save results
     np.save(file = f"{eval_dir}/{stem}.npy", arr = data) # save as a numpy array
-    encode.save_csv_codes(filepath = f"{eval_dir}/{stem}.csv", data = data) # save as a .csv file
+    # encode.save_csv_codes(filepath = f"{eval_dir}/{stem}.csv", data = data) # save as a .csv file
     music = decode.decode(codes = data, encoding = encoding) # convert to a BetterMusic object
     music.trim(end = music.resolution * 64) # trim the music
-    music.save_json(path = f"{eval_dir}/{stem}.json") # save as a BetterMusic .json file
+    # music.save_json(path = f"{eval_dir}/{stem}.json") # save as a BetterMusic .json file
 
     # return a dictionary
     if len(music.tracks) == 0:
