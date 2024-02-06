@@ -667,7 +667,7 @@ def load_encoding(filepath: str) -> dict:
 
 if __name__ == "__main__":
 
-    ENCODING_FILEPATH = "/data2/pnlong/musescore/encoding.json"
+    ENCODING_FILEPATH = "/data2/pnlong/musescore/data/encoding.json"
 
     # get arguments
     parser = argparse.ArgumentParser(prog = "Representation", description = "Test Encoding/Decoding mechanisms for MuseScore data.")

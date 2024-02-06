@@ -19,8 +19,9 @@ trained_models="${data_dir}/models.txt"
 paths_test="${data_dir}/test.txt"
 encoding="${base_dir}/encoding.json"
 output_dir="${data_dir}"
-n_samples=2000
+n_samples=1000
 gpu=3
+batch_size=8
 default_model="truth"
 
 ##################################################
@@ -59,17 +60,19 @@ done
 # EVALUATE
 ##################################################
 
+set -e
+
 printf "============================   ${model^^}   ============================\n"
 
 if [[ "${model}" == "${default_model}" ]]; then
 
-    # python ${software_dir}/evaluate_baseline.py --paths ${paths_test} --encoding ${encoding} --n_samples ${n_samples} --truth --gpu ${gpu}
-    python ${software_dir}/evaluate.py --paths ${paths_test} --encoding ${encoding} --n_samples ${n_samples} --truth --gpu ${gpu}
+    python ${software_dir}/evaluate_baseline.py --paths ${paths_test} --encoding ${encoding} --n_samples ${n_samples} --truth --gpu ${gpu} --batch_size ${batch_size}
+    python ${software_dir}/evaluate.py --paths ${paths_test} --encoding ${encoding} --n_samples ${n_samples} --truth --gpu ${gpu} --batch_size ${batch_size}
 
 else
 
-    # python ${software_dir}/evaluate_baseline.py --paths ${paths_test} --encoding ${encoding} --output_dir "${output_dir}/${model}" --n_samples ${n_samples} --gpu ${gpu}
-    python ${software_dir}/evaluate.py --paths ${paths_test} --encoding ${encoding} --output_dir "${output_dir}/${model}" --n_samples ${n_samples} --gpu ${gpu}
+    python ${software_dir}/evaluate_baseline.py --paths ${paths_test} --encoding ${encoding} --output_dir "${output_dir}/${model}" --n_samples ${n_samples} --gpu ${gpu} --batch_size ${batch_size}
+    python ${software_dir}/evaluate.py --paths ${paths_test} --encoding ${encoding} --output_dir "${output_dir}/${model}" --n_samples ${n_samples} --gpu ${gpu} --batch_size ${batch_size}
 
 fi
 

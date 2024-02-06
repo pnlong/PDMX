@@ -17,8 +17,9 @@ import pprint
 import sys
 from os.path import exists, basename, dirname
 from os import mkdir, makedirs
-from typing import Union
+from typing import Union, List
 import math
+import multiprocessing
 
 import muspy
 import numpy as np
@@ -69,11 +70,24 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("--filter", nargs = "+", default = "top_k", type = str, help = "Sampling filter (default: 'top_k')")
     parser.add_argument("--filter_thres", nargs = "+", default = 0.9, type = float, help = "Sampling filter threshold (default: 0.9)")
     # others
+    parser.add_argument("-bs", "--batch_size", default = 8, type = int, help = "Batch size")
     parser.add_argument("-g", "--gpu", type = int, help = "GPU number")
-    parser.add_argument("-j", "--jobs", default = 0, type = int, help = "Number of jobs")
+    parser.add_argument("-j", "--jobs", default = 4, type = int, help = "Number of jobs")
     parser.add_argument("-r", "--resume", action = "store_true", help = "Whether or not to resume evaluation from previous run")
     parser.add_argument("-t", "--truth", action = "store_true", help = "Whether or not to run the evaluation on the paths provided")
     return parser.parse_args(args = args, namespace = namespace)
+##################################################
+
+
+# HELPER PADDING FUNCTION
+##################################################
+
+def pad(data: List[torch.tensor]) -> torch.tensor:
+    max_seq_len = max(len(seq) for seq in data) # get the longest length of a sequence
+    padded = [torch.from_numpy(np.pad(array = seq.cpu(), pad_width = ((max_seq_len - len(seq), 0), (0, 0)))) for seq in data] # pad so all of same length
+    padded = torch.stack(tensors = padded, dim = 0) # combine into a single tensor
+    return padded
+
 ##################################################
 
 
@@ -251,9 +265,10 @@ def evaluate(data: Union[np.array, torch.tensor], encoding: dict, stem: str, eva
 
     # return a dictionary
     if len(music.tracks) == 0:
-        return {eval_metric: np.nan for eval_metric in EVAL_METRICS}
+        return {"stem": stem, EVAL_METRICS[0]: np.nan, EVAL_METRICS[1]: np.nan, EVAL_METRICS[2]: np.nan}
     else:
         return {
+            "stem": stem,
             EVAL_METRICS[0]: pitch_class_entropy(music = music),
             EVAL_METRICS[1]: scale_consistency(music = music),
             EVAL_METRICS[2]: groove_consistency(music = music, measure_resolution = 4 * music.resolution)
@@ -353,6 +368,7 @@ if __name__ == "__main__":
         # get special tokens
         sos = encoding["type_code_map"]["start-of-song"]
         eos = encoding["type_code_map"]["end-of-song"]
+    expressive_token = encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING]
 
     # to output evaluation metrics
     output_filepath = f"{EVAL_DIR}/{basename(EVAL_DIR)}.csv"
@@ -374,28 +390,41 @@ if __name__ == "__main__":
     ##################################################
 
     # create data loader and instantiate iterable
-    test_data_loader = torch.utils.data.DataLoader(dataset = test_dataset, num_workers = args.jobs, collate_fn = dataset.MusicDataset.collate, batch_size = 1, shuffle = False)
+    test_data_loader = torch.utils.data.DataLoader(dataset = test_dataset, num_workers = args.jobs, collate_fn = dataset.MusicDataset.collate, batch_size = args.batch_size, shuffle = False)
     test_iter = iter(test_data_loader)
+    chunk_size = int(args.batch_size / 4)
 
     # iterate over the dataset
     with torch.no_grad():
-        for i in tqdm(iterable = range(i_start, len(test_data_loader) if args.n_samples is None else args.n_samples), desc = "Evaluating"):
+        n_iterations = int((args.n_samples - 1) / args.batch_size) + 1
+        for i in tqdm(iterable = range(i_start, len(test_data_loader) if (args.n_samples is None) else n_iterations), desc = "Evaluating"):
 
             # get new batch
             batch = next(test_iter)
             stem = i
-
+            if (args.n_samples is not None) and (i == n_iterations - 1): # if last iteration
+                n_samples = args.n_samples % args.batch_size
+                if (n_samples == 0):
+                    n_samples = args.batch_size
+                batch["seq"] = batch["seq"][:n_samples, :, :]
+                batch["mask"] = batch["mask"][:n_samples, :]
+                batch["seq_len"] = batch["seq_len"][:n_samples]
+                batch["path"] = batch["path"][:n_samples]
+            
             if args.truth:
 
                 # GROUND TRUTH
                 ##################################################
 
                 # get ground truth
-                truth = batch["seq"].squeeze(dim = 0).numpy()
-                truth = truth[truth[:, 0] != encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING]] # filter out expressive features
+                truth = batch["seq"]
+                truth = pad(data = [truth[j][truth[j, :, 0] != expressive_token] for j in range(len(truth))]) # filter out expressive features
 
                 # add to results
-                result = evaluate(data = truth, encoding = encoding, stem = stem, eval_dir = eval_output_dir)
+                def evaluate_helper(j: int) -> dict:
+                    return evaluate(data = truth[j], encoding = encoding, stem = f"{stem}_{j}", eval_dir = eval_output_dir)
+                with multiprocessing.Pool(processes = args.jobs) as pool:
+                    results = pool.map(func = evaluate_helper, iterable = range(len(truth)), chunksize = chunk_size)
 
                 ##################################################
 
@@ -405,7 +434,7 @@ if __name__ == "__main__":
                 ##################################################
 
                 # get output start tokens
-                prefix = torch.tensor(data = [sos] + ([0] * (len(encoding["dimensions"]) - 1)), dtype = torch.long, device = device).reshape(1, 1, len(encoding["dimensions"]))
+                prefix = torch.repeat_interleave(input = torch.tensor(data = [sos] + ([0] * (len(encoding["dimensions"]) - 1)), dtype = torch.long, device = device).reshape(1, 1, len(encoding["dimensions"])), repeats = args.batch_size, dim = 0)
 
                 # generate new samples
                 generated = model.generate(
@@ -419,17 +448,20 @@ if __name__ == "__main__":
                     notes_only = True
                 )
                 # kwargs = {"eos_token": eos, "temperature": args.temperature, "filter_logits_fn": args.filter, "filter_thres": args.filter_thres, "monotonicity_dim": ("type", "beat")}
-                generated = torch.cat(tensors = (prefix, generated), dim = 1).squeeze(dim = 0).cpu().numpy()
+                generated = torch.cat(tensors = (prefix, generated), dim = 1).cpu().numpy()
 
                 # add to results
-                result = evaluate(data = generated, encoding = encoding, stem = stem, eval_dir = eval_output_dir)
+                def evaluate_helper(j: int) -> dict:
+                    return evaluate(data = generated[j], encoding = encoding, stem = f"{stem}_{j}", eval_dir = eval_output_dir)
+                with multiprocessing.Pool(processes = args.jobs) as pool:
+                    results = pool.map(func = evaluate_helper, iterable = range(len(generated)), chunksize = chunk_size)
 
                 ##################################################
 
             # OUTPUT STATISTICS
             ##################################################
 
-            pd.DataFrame(data = [[i, batch["path"][0], stem,] + list(result.values())], columns = OUTPUT_COLUMNS).to_csv(path_or_buf = output_filepath, sep = ",", na_rep = NA_VALUE, header = False, index = False, mode = "a")
+            pd.DataFrame(data = [[i, batch["path"][j]] + list(results[j].values()) for j in range(len(results))], columns = OUTPUT_COLUMNS).to_csv(path_or_buf = output_filepath, sep = ",", na_rep = NA_VALUE, header = False, index = False, mode = "a")
             
             ##################################################
 

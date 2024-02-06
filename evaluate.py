@@ -18,6 +18,7 @@ from os.path import exists, dirname
 from os import makedirs
 from typing import Union
 import math
+import multiprocessing
 
 import numpy as np
 import pandas as pd
@@ -36,6 +37,7 @@ import parse_mscz
 import expressive_features_plots
 import train
 import evaluate_baseline
+from evaluate_baseline import pad # for padding batches
 
 ##################################################
 
@@ -78,8 +80,9 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("--filter_threshold", nargs = "+", default = 0.9, type = float, help = "Sampling filter threshold (default: 0.9)")
     parser.add_argument("--prefix_len", default = DEFAULT_MAX_PREFIX_LEN, type = int, help = "Number of notes in prefix sequence for generation")
     # others
+    parser.add_argument("-bs", "--batch_size", default = 8, type = int, help = "Batch size")
     parser.add_argument("-g", "--gpu", type = int, help = "GPU number")
-    parser.add_argument("-j", "--jobs", default = 0, type = int, help = "Number of jobs")
+    parser.add_argument("-j", "--jobs", default = 4, type = int, help = "Number of jobs")
     parser.add_argument("-t", "--truth", action = "store_true", help = "Whether or not to run the evaluation on the paths provided")
     return parser.parse_args(args = args, namespace = namespace)
 ##################################################
@@ -150,7 +153,6 @@ def loss_for_perplexity(model, seq: torch.tensor, mask: torch.tensor, stem: str,
     # convert to dataframe and output
     losses_for_perplexity = pd.DataFrame(data = [[stem, sum(losses_for_perplexity)] + losses_for_perplexity], columns = loss_for_perplexity_columns) # convert to dataframe
     losses_for_perplexity.to_csv(path_or_buf = output_filepath, sep = ",", na_rep = train.NA_VALUE, header = False, index = False, mode = "a") # output
-
 
 ##################################################
 
@@ -259,7 +261,6 @@ if __name__ == "__main__":
         if not args.truth:
             pd.DataFrame(columns = LOSS_FOR_PERPLEXITY_COLUMNS).to_csv(path_or_buf = output_filepaths[5], sep = ",", na_rep = train.NA_VALUE, header = True, index = False, mode = "w") # sparsity
 
-
     # output filepaths for data used in plots
     if args.truth:
         output_filepaths = [f"{EVAL_DIR}/eval_{plot_type}.csv" for plot_type in PLOT_TYPES]
@@ -308,17 +309,19 @@ if __name__ == "__main__":
 
         # create the dataset
         logging.info(f"Creating the data loader...")
-        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = train_args["max_seq_len"], max_beat = train_args["max_beat"], use_augmentation = False, is_baseline = ("baseline" in args.output_dir))
+        max_beat = train_args["max_beat"]
+        max_seq_len = train_args["max_seq_len"]
+        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = max_seq_len, max_beat = max_beat, use_augmentation = False, is_baseline = ("baseline" in args.output_dir))
 
         # create the model
         logging.info(f"Creating the model...")
-        max_beat = train_args["max_beat"]
+        
         model = music_x_transformers.MusicXTransformer(
             dim = train_args["dim"],
             encoding = encoding,
             depth = train_args["layers"],
             heads = train_args["heads"],
-            max_seq_len = train_args["max_seq_len"],
+            max_seq_len = max_seq_len,
             max_beat = max_beat,
             rotary_pos_emb = train_args["rel_pos_emb"],
             use_abs_pos_emb = train_args["abs_pos_emb"],
@@ -337,6 +340,8 @@ if __name__ == "__main__":
         # get special tokens
         sos = encoding["type_code_map"]["start-of-song"]
         eos = encoding["type_code_map"]["end-of-song"]
+        note_token, grace_note_token = encoding["type_code_map"]["note"], encoding["type_code_map"]["grace-note"]
+        expressive_token = encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING]
 
     ##################################################
 
@@ -345,31 +350,45 @@ if __name__ == "__main__":
     ##################################################
 
     # create data loader and instantiate iterable
-    test_data_loader = torch.utils.data.DataLoader(dataset = test_dataset, num_workers = args.jobs, collate_fn = dataset.MusicDataset.collate, batch_size = 1, shuffle = False)
+    test_data_loader = torch.utils.data.DataLoader(dataset = test_dataset, num_workers = args.jobs, collate_fn = dataset.MusicDataset.collate, batch_size = args.batch_size, shuffle = False)
     test_iter = iter(test_data_loader)
+    chunk_size = int(args.batch_size / 4)
 
     # iterate over the dataset
     with torch.no_grad():
-        for i in tqdm(iterable = range(len(test_data_loader) if args.n_samples is None else args.n_samples), desc = "Evaluating"):
+        n_iterations = (int((args.n_samples - 1) / args.batch_size) + 1) if args.n_samples is not None else len(test_data_loader)
+        for i in tqdm(iterable = range(n_iterations), desc = "Evaluating"):
 
             # get new batch
             batch = next(test_iter)
             stem = i
+            if (args.n_samples is not None) and (i == n_iterations - 1): # if last iteration
+                n_samples = args.n_samples % args.batch_size
+                if (n_samples == 0):
+                    n_samples = args.batch_size
+                batch["seq"] = batch["seq"][:n_samples, :, :]
+                batch["mask"] = batch["mask"][:n_samples, :]
+                batch["seq_len"] = batch["seq_len"][:n_samples]
+                batch["path"] = batch["path"][:n_samples]
 
             if args.truth:
 
                 # GROUND TRUTH
                 ##################################################
 
-                # evaluate
-                evaluate(
-                    data = batch["seq"].squeeze(dim = 0).numpy(),
-                    encoding = encoding,
-                    stem = stem,
-                    eval_dir = eval_output_dir,
-                    output_filepaths = output_filepaths,
-                    calculate_loss_for_perplexity = False
-                    )
+                # get ground truth
+                truth = batch["seq"].numpy()
+
+                # add to results
+                def evaluate_helper(j: int):
+                    return evaluate(data = truth[j],
+                                    encoding = encoding,
+                                    stem = f"{stem}_{j}",
+                                    eval_dir = eval_output_dir,
+                                    output_filepaths = output_filepaths,
+                                    calculate_loss_for_perplexity = False)
+                with multiprocessing.Pool(processes = args.jobs) as pool:
+                    results = pool.imap_unordered(func = evaluate_helper, iterable = range(len(truth)), chunksize = chunk_size)
 
                 ##################################################
 
@@ -379,18 +398,22 @@ if __name__ == "__main__":
                 ##################################################
 
                 # default prefix sequence
-                prefix_default = torch.tensor(data = [sos] + ([0] * (len(encoding["dimensions"]) - 1)), dtype = torch.long, device = device).reshape(1, 1, len(encoding["dimensions"])).to(device)
-                n_notes_so_far = 0
-                last_prefix_index = -1
-                for j in range(batch["seq"].shape[1]):
-                    if n_notes_so_far > args.prefix_len: # make sure the prefix isn't too long
-                        break
-                    if batch["seq"][:, j, 0] in (encoding["type_code_map"]["note"], encoding["type_code_map"]["grace-note"]): # if event is a note
-                        n_notes_so_far += 1 # increment
-                        last_prefix_index = j # update last prefix index
-                prefix_conditional_default = batch["seq"][:, :last_prefix_index + 1, :].to(device)
-                if prefix_conditional_default.shape[1] == 0: # make sure the prefix conditional default is not just empty
-                    prefix_conditional_default = prefix_default
+                prefix_default = torch.repeat_interleave(input = torch.tensor(data = [sos] + ([0] * (len(encoding["dimensions"]) - 1)), dtype = torch.long, device = device).reshape(1, 1, len(encoding["dimensions"])), repeats = batch["seq"].shape[0], dim = 0)
+                n_notes_so_far = utils.rep(x = 0, times = batch["seq"].shape[0])
+                last_prefix_indicies = utils.rep(x = -1, times = batch["seq"].shape[0])
+                for j in range(len(last_prefix_indicies)):
+                    for k in range(batch["seq"].shape[1]):
+                        if (n_notes_so_far[j] > args.prefix_len) or (batch["seq"][j, k, 0] == eos): # make sure the prefix isn't too long, or if end of song token, no end of song tokens in prefix
+                            last_prefix_indicies[j] = k - 1
+                            break
+                        elif batch["seq"][j, k, 0] in (note_token, grace_note_token): # if event is a note
+                            n_notes_so_far[j] += 1 # increment
+                            last_prefix_indicies[j] = k # update last prefix index
+                prefix_conditional_default = [batch["seq"][j, :(last_prefix_indicies[j] + 1), :] for j in range(len(last_prefix_indicies))] # truncate to last prefix for each sequence in batch
+                for j in range(len(prefix_conditional_default)):
+                    if prefix_conditional_default[j].shape[0] == 0: # make sure the prefix conditional default is not just empty
+                        prefix_conditional_default[j] = prefix_default[0]
+                prefix_conditional_default = pad(data = prefix_conditional_default).to(device) # pad
 
                 for eval_type in EVAL_TYPES:
 
@@ -404,9 +427,9 @@ if __name__ == "__main__":
                         conditional_type, generation_type = eval_type.split("_")[1:]
                         notes_only = (generation_type != train.ALL_STRING)
                         if conditional_type == CONDITIONAL_TYPES[1]: # conditional on notes only
-                            prefix = prefix_conditional_default[:, (prefix_conditional_default[0, :, 0] != encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING]), :]
+                            prefix = pad(data = [prefix_conditional[(prefix_conditional[:, 0] != expressive_token), :] for prefix_conditional in prefix_conditional_default]).to(device)
                         elif conditional_type == CONDITIONAL_TYPES[2]: # conditional on expressive features only
-                            prefix = prefix_conditional_default[:, ((prefix_conditional_default[0, :, 0] != encoding["type_code_map"]["note"]) & (prefix_conditional_default[0, :, 0] != encoding["type_code_map"]["grace-note"])), :]
+                            prefix = pad(data = [prefix_conditional[((prefix_conditional[:, 0] != note_token) & (prefix_conditional[:, 0] != grace_note_token)), :] for prefix_conditional in prefix_conditional_default]).to(device)
                         else: # conditional on everything
                             prefix = prefix_conditional_default
 
@@ -426,18 +449,28 @@ if __name__ == "__main__":
                         monotonicity_dim = ("type", "beat"),
                         notes_only = notes_only
                     )
-                    generated = torch.cat(tensors = (prefix, generated), dim = 1).cpu().squeeze(dim = 0).numpy() # wrangle a bit
+                    generated = torch.cat(tensors = (prefix, generated), dim = 1).cpu().numpy() # wrangle a bit
 
-                    # evaluate
-                    evaluate(
-                        data = generated,
-                        encoding = encoding,
-                        stem = stem,
-                        eval_dir = eval_output_dirs[eval_type],
-                        output_filepaths = output_filepaths[eval_type],
-                        calculate_loss_for_perplexity = True,
-                        model = model, seq = batch["seq"].to(device), mask = batch["mask"].to(device), loss_for_perplexity_columns = LOSS_FOR_PERPLEXITY_COLUMNS
-                        )
+                    # add to results
+                    def evaluate_helper(j: int):
+                        # setup for loss for perplexity calculations
+                        seq = batch["seq"][j].unsqueeze(dim = 0).to(device)
+                        mask = batch["mask"][j].unsqueeze(dim = 0).to(device)
+                        if notes_only:
+                            loss_query = (seq[:, :, 0] != encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING]) # filter out expressive features
+                            seq = seq[loss_query, :].unsqueeze(dim = 0)
+                            mask = mask[loss_query].unsqueeze(dim = 0)
+                            del loss_query
+                        # evaluate
+                        evaluate(data = generated[j],
+                                 encoding = encoding,
+                                 stem = f"{stem}_{j}",
+                                 eval_dir = eval_output_dirs[eval_type],
+                                 output_filepaths = output_filepaths[eval_type],
+                                 calculate_loss_for_perplexity = True,
+                                 model = model, seq = seq, mask = mask, loss_for_perplexity_columns = LOSS_FOR_PERPLEXITY_COLUMNS)
+                    with multiprocessing.Pool(processes = args.jobs) as pool:
+                        results = pool.imap(func = evaluate_helper, iterable = range(len(generated)), chunksize = chunk_size)
                     
                     ##################################################
 

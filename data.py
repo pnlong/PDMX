@@ -51,7 +51,8 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("-p", "--paths", type = str, default = MSCZ_FILEPATHS, help = "List of (absolute) filepaths to MuseScore files whose data will be extracted")
     parser.add_argument("-i", "--input_dir", type = str, default = INPUT_DIR, help = "Directory containing all data tables needed as input")
     parser.add_argument("-o", "--output_dir", type = str, default = OUTPUT_DIR, help = "Output directory")
-    parser.add_argument('-ed', '--explicit_duration', action = "store_true", help = "Whether or not to calculate the 'implied duration' of features without an explicitly-defined duration.")
+    parser.add_argument("-ed", "--explicit_duration", action = "store_true", help = "Whether or not to calculate the 'implied duration' of features without an explicitly-defined duration.")
+    parser.add_argument("-v", "--velocity", action = "store_true", help = "Whether or not to include a velocity field that reflects expressive features.")
     parser.add_argument("-j", "--jobs", type = int, default = int(multiprocessing.cpu_count() / 4), help = "Number of Jobs")
     return parser.parse_args(args = args, namespace = namespace)
 
@@ -61,7 +62,7 @@ def parse_args(args = None, namespace = None):
 # EXTRACTION FUNCTION (EXTRACT RELEVANT DATA FROM A GIVEN MUSESCORE FILE
 ##################################################
 
-def extract(path: str, path_output_prefix: str) -> int:
+def extract(path: str, path_output_prefix: str, use_implied_duration: bool = True, include_velocity: bool = False) -> int:
     """Extract relevant information from a .mscz file, output as tokens
 
     Parameters
@@ -113,7 +114,7 @@ def extract(path: str, path_output_prefix: str) -> int:
         # create BetterMusic object with just one track (we are not doing multitrack)
         track_music = copy(x = music)
         track_music.tracks = [track,]
-        data = extract_data(music = track_music, use_implied_duration = USE_IMPLIED_DURATION)
+        data = extract_data(music = track_music, use_implied_duration = use_implied_duration, include_velocity = include_velocity)
 
         # create output path from path_output_prefix
         path_output = f"{path_output_prefix}.{i}.npy"
@@ -171,7 +172,6 @@ if __name__ == "__main__":
     prefix = basename(args.output_dir)
     TIMING_OUTPUT_FILEPATH = f"{args.output_dir}/{prefix}.timing.txt"
     MAPPING_OUTPUT_FILEPATH = f"{args.output_dir}/{prefix}.csv"
-    USE_IMPLIED_DURATION = not bool(args.explicit_duration)
 
     # for getting metadata
     METADATA = pd.read_csv(filepath_or_buffer = METADATA_MAPPING_FILEPATH, sep = ",", header = 0, index_col = False)
@@ -222,7 +222,12 @@ if __name__ == "__main__":
     start_time = perf_counter() # start the timer
     with multiprocessing.Pool(processes = args.jobs) as pool:
         results = pool.starmap(func = extract,
-                               iterable = tqdm(iterable = zip(paths, path_output_prefixes), desc = "Extracting Data from MuseScore Files", total = len(paths)),
+                               iterable = tqdm(iterable = zip(
+                                                              paths,
+                                                              path_output_prefixes,
+                                                              utils.rep(x = not bool(args.explicit_duration), times = len(paths)),
+                                                              utils.rep(x = args.velocity, times = len(paths))),
+                                               desc = "Extracting Data from MuseScore Files", total = len(paths)),
                                chunksize = chunk_size)
     end_time = perf_counter() # stop the timer
     total_time = end_time - start_time # compute total time elapsed
