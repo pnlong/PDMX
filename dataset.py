@@ -17,6 +17,7 @@ import logging
 import argparse
 from tqdm import tqdm
 from typing import List
+from os.path import exists
 
 import representation
 import encode
@@ -67,7 +68,7 @@ class MusicDataset(Dataset):
     # CONSTRUCTOR
     ##################################################
 
-    def __init__(self, paths: str, encoding: dict, conditioning: str = encode.DEFAULT_CONDITIONING, sigma: float = encode.SIGMA, is_baseline: bool = False, max_seq_len: int = None, max_beat: int = None, use_augmentation: bool = False):
+    def __init__(self, paths: str, encoding: dict, conditioning: str = encode.DEFAULT_CONDITIONING, sigma: float = encode.SIGMA, is_baseline: bool = False, max_seq_len: int = None, max_beat: int = None, use_augmentation: bool = False, include_velocity: bool = False):
         super().__init__()
         with open(paths) as file:
             self.paths = [line.strip() for line in file if line]
@@ -78,6 +79,7 @@ class MusicDataset(Dataset):
         self.max_seq_len = max_seq_len
         self.max_beat = max_beat
         self.use_augmentation = use_augmentation
+        self.include_velocity = include_velocity
         self.beat_dim, self.value_dim = self.encoding["dimensions"].index("beat"), self.encoding["dimensions"].index("value")
 
     ##################################################
@@ -133,13 +135,13 @@ class MusicDataset(Dataset):
                 data = data[data[:, self.beat_dim].astype(encode.ENCODING_ARRAY_TYPE) < self.max_beat]
         
         # encode the data
-        seq = encode.encode_data(data = data[data[:, 0] != representation.EXPRESSIVE_FEATURE_TYPE_STRING] if self.is_baseline else data, encoding = self.encoding, conditioning = self.conditioning, sigma = self.sigma)
+        seq = encode.encode_data(data = data[data[:, 0] != representation.EXPRESSIVE_FEATURE_TYPE_STRING] if self.is_baseline else data, encoding = self.encoding, conditioning = self.conditioning, sigma = self.sigma, include_velocity = self.include_velocity)
 
         # FOR NOW, TRIM OFF UNKNOWN TEXT (-1)
         seq = seq[seq[:, self.value_dim] != representation.DEFAULT_VALUE_CODE]
 
         # trim seq to max_seq_len
-        if self.max_seq_len is not None and len(seq) > self.max_seq_len:
+        if (self.max_seq_len is not None) and (len(seq) > self.max_seq_len):
             seq = np.delete(arr = seq, obj = range(self.max_seq_len - 1, seq.shape[0] - 1), axis = 0)
 
         return {"path": path, "seq": seq}
@@ -180,8 +182,9 @@ def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(prog = "Dataset", description = "Create and test PyTorch Dataset for MuseScore data.")
     parser.add_argument("-p", "--paths", type = str, default = DEFAULT_PATHS, help = "Filepath to list of paths to data")
-    parser.add_argument("-e", "--encoding", type = str, default = None, help = "Filepath to encoding .json file")
+    parser.add_argument("-e", "--encoding", type = str, default = representation.ENCODING_FILEPATH, help = "Filepath to encoding .json file")
     parser.add_argument("-bs", "--batch_size", type = int, default = 8, help = "Batch size")
+    parser.add_argument("-v", "--velocity", action = "store_true", help = "Whether to add a velocity field.")
     return parser.parse_args(args = args, namespace = namespace)
 
 ##################################################
@@ -208,13 +211,10 @@ if __name__ == "__main__":
     ##################################################
     
     # load encoding
-    if args.encoding is not None:
-        encoding = representation.load_encoding(filepath = args.encoding)
-    else:
-        encoding = representation.get_encoding()
+    encoding = representation.load_encoding(filepath = args.encoding) if exists(args.encoding) else representation.get_encoding()
 
     # create the dataset and data loader
-    dataset = MusicDataset(paths = args.paths, encoding = encoding, conditioning = "sort", max_seq_len = None, max_beat = encoding["max_beat"], use_augmentation = False)
+    dataset = MusicDataset(paths = args.paths, encoding = encoding, conditioning = "sort", max_seq_len = None, max_beat = encoding["max_beat"], use_augmentation = False, include_velocity = args.velocity)
     data_loader = DataLoader(dataset = dataset, batch_size = args.batch_size, shuffle = True, collate_fn = MusicDataset.collate)
 
     ##################################################

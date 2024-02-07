@@ -24,9 +24,12 @@ from utils import unique
 RESOLUTION = 12
 MAX_BEAT = 1024
 MAX_DURATION = 768  # remember to modify known durations as well!
+MAX_VELOCITY = 127
 DEFAULT_VALUE_CODE = -1
 N_NOTES = 128
 NA_VALUES = ("null", "None", None) # for loading encodings
+
+ENCODING_FILEPATH = "/data2/pnlong/musescore/data/encoding.json"
 
 ##################################################
 
@@ -36,7 +39,7 @@ NA_VALUES = ("null", "None", None) # for loading encodings
 
 # (NOTE: "type" must be the first dimension!)
 # (NOTE: Remember to modify N_TOKENS as well!)
-DIMENSIONS = ["type", "beat", "position", "value", "duration", "instrument", "time", "time.s"] # last 2 columns are for sorting, and will be discarded later
+DIMENSIONS = ["type", "beat", "position", "value", "duration", "instrument", "velocity", "time", "time.s"] # last 2 columns are for sorting, and will be discarded later
 assert DIMENSIONS[0] == "type"
 
 ##################################################
@@ -580,6 +583,17 @@ CODE_INSTRUMENT_MAP = utils.inverse_dict(INSTRUMENT_CODE_MAP)
 ##################################################
 
 
+# VELOCITY
+##################################################
+
+NON_VELOCITY = 0
+VELOCITY_CODE_MAP = {i: i + 1 for i in range(MAX_VELOCITY + 1)}
+VELOCITY_CODE_MAP[None] = 0
+CODE_VELOCITY_MAP = utils.inverse_dict(VELOCITY_CODE_MAP)
+
+##################################################
+
+
 # TOKEN COUNTS
 ##################################################
 
@@ -590,6 +604,7 @@ N_TOKENS = [
     max(VALUE_CODE_MAP.values()) + 1,
     max(DURATION_CODE_MAP.values()) + 1,
     max(INSTRUMENT_CODE_MAP.values()) + 1,
+    max(VELOCITY_CODE_MAP.values()) + 1,
 ]
 
 ##################################################
@@ -620,6 +635,8 @@ def get_encoding() -> dict:
         "code_instrument_map": CODE_INSTRUMENT_MAP,
         "program_instrument_map": PROGRAM_INSTRUMENT_MAP,
         "instrument_program_map": INSTRUMENT_PROGRAM_MAP,
+        "velocity_code_map": VELOCITY_CODE_MAP,
+        "code_velocity_map": CODE_VELOCITY_MAP,
     }
 
 def load_encoding(filepath: str) -> dict:
@@ -649,6 +666,13 @@ def load_encoding(filepath: str) -> dict:
     for key in ("beat_code_map", "position_code_map", "duration_code_map", "code_beat_map", "code_position_map", "code_duration_map"):
         encoding[key] = {int(k) if k not in NA_VALUES else None: int(v) if v not in NA_VALUES else None for k, v in encoding[key].items()}
 
+    # velocity
+    velocity_maps = {"velocity_code_map", "code_velocity_map"}
+    if all((velocity_map in encoding.keys() for velocity_map in velocity_maps)):
+        for key in velocity_maps:
+            encoding[key] = {int(k) if k not in NA_VALUES else None: int(v) if v not in NA_VALUES else None for k, v in encoding[key].items()}
+    del velocity_maps
+
     # values
     encoding["value_code_map"] = {str(k) if k not in NA_VALUES else None: int(v) for k, v in encoding["value_code_map"].items()}
     encoding["code_value_map"] = {int(k): str(v) if v not in NA_VALUES else None for k, v in encoding["code_value_map"].items()}
@@ -666,8 +690,6 @@ def load_encoding(filepath: str) -> dict:
 ##################################################
 
 if __name__ == "__main__":
-
-    ENCODING_FILEPATH = "/data2/pnlong/musescore/data/encoding.json"
 
     # get arguments
     parser = argparse.ArgumentParser(prog = "Representation", description = "Test Encoding/Decoding mechanisms for MuseScore data.")

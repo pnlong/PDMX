@@ -226,7 +226,8 @@ if __name__ == "__main__":
                                                               paths,
                                                               path_output_prefixes,
                                                               utils.rep(x = not bool(args.explicit_duration), times = len(paths)),
-                                                              utils.rep(x = args.velocity, times = len(paths))),
+                                                              utils.rep(x = args.velocity, times = len(paths))
+                                                              ),
                                                desc = "Extracting Data from MuseScore Files", total = len(paths)),
                                chunksize = chunk_size)
     end_time = perf_counter() # stop the timer

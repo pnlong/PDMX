@@ -30,6 +30,7 @@ from read_mscz.music import BetterMusic
 import dataset
 import music_x_transformers
 import representation
+from representation import ENCODING_FILEPATH
 import encode
 import decode
 import utils
@@ -47,7 +48,6 @@ from evaluate_baseline import pad # for padding batches
 
 DATA_DIR = "/data2/pnlong/musescore/data"
 PATHS = f"{DATA_DIR}/test.txt"
-ENCODING_FILEPATH = "/data2/pnlong/musescore/encoding.json"
 OUTPUT_DIR = "/data2/pnlong/musescore/data"
 EVAL_STEM = "eval"
 
@@ -73,6 +73,7 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("-e", "--encoding", default = ENCODING_FILEPATH, type = str, help = ".json file with encoding information.")
     parser.add_argument("-o", "--output_dir", default = OUTPUT_DIR, type = str, help = "Output directory")
     parser.add_argument("-ns", "--n_samples", type = int, help = "Number of samples to evaluate")
+    parser.add_argument("-v", "--velocity", action = "store_true", help = "Whether to add a velocity field.")
     # model
     parser.add_argument("--seq_len", default = train.DEFAULT_MAX_SEQ_LEN, type = int, help = "Sequence length to generate")
     parser.add_argument("--temperature", nargs = "+", default = 1.0, type = float, help = "Sampling temperature (default: 1.0)")
@@ -247,6 +248,12 @@ if __name__ == "__main__":
     # load the encoding
     encoding = representation.load_encoding(filepath = args.encoding) if exists(args.encoding) else representation.get_encoding()
 
+    # deal with velocity field
+    if (not args.velocity) and ("velocity" in encoding["dimensions"]):
+        encoding["dimensions"].remove("velocity")
+    elif (args.velocity) and ("velocity" not in encoding["dimensions"]):
+        encoding["dimensions"].append("velocity")
+
     # determine columns
     if not args.truth:
         LOSS_FOR_PERPLEXITY_COLUMNS = ["path"] + [f"loss_{field}" for field in [train.ALL_STRING] + encoding["dimensions"]]
@@ -272,6 +279,7 @@ if __name__ == "__main__":
         
     # set up the logger
     logging.basicConfig(level = logging.INFO, format = "%(message)s", handlers = [logging.FileHandler(filename = f"{EVAL_DIR}/evaluate.log", mode = "a"), logging.StreamHandler(stream = sys.stdout)])
+    multiprocessing.set_start_method("spawn")
 
     # log command called and arguments, save arguments
     logging.info(f"Running command: python {' '.join(sys.argv)}")
@@ -291,7 +299,7 @@ if __name__ == "__main__":
 
         # create the dataset
         logging.info(f"Creating the data loader...")
-        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = train.DEFAULT_MAX_SEQ_LEN, max_beat = train.DEFAULT_MAX_BEAT, use_augmentation = False)
+        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = train.DEFAULT_MAX_SEQ_LEN, max_beat = train.DEFAULT_MAX_BEAT, use_augmentation = False, include_velocity = args.velocity)
 
     # load model if necessary
     else:
@@ -311,7 +319,7 @@ if __name__ == "__main__":
         logging.info(f"Creating the data loader...")
         max_beat = train_args["max_beat"]
         max_seq_len = train_args["max_seq_len"]
-        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = max_seq_len, max_beat = max_beat, use_augmentation = False, is_baseline = ("baseline" in args.output_dir))
+        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = max_seq_len, max_beat = max_beat, use_augmentation = False, is_baseline = ("baseline" in args.output_dir), include_velocity = args.velocity)
 
         # create the model
         logging.info(f"Creating the model...")
@@ -352,7 +360,7 @@ if __name__ == "__main__":
     # create data loader and instantiate iterable
     test_data_loader = torch.utils.data.DataLoader(dataset = test_dataset, num_workers = args.jobs, collate_fn = dataset.MusicDataset.collate, batch_size = args.batch_size, shuffle = False)
     test_iter = iter(test_data_loader)
-    chunk_size = int(args.batch_size / 4)
+    chunk_size = int(args.batch_size / 2)
 
     # iterate over the dataset
     with torch.no_grad():
@@ -388,7 +396,7 @@ if __name__ == "__main__":
                                     output_filepaths = output_filepaths,
                                     calculate_loss_for_perplexity = False)
                 with multiprocessing.Pool(processes = args.jobs) as pool:
-                    results = pool.imap_unordered(func = evaluate_helper, iterable = range(len(truth)), chunksize = chunk_size)
+                    results = pool.map(func = evaluate_helper, iterable = range(len(truth)), chunksize = chunk_size)
 
                 ##################################################
 
@@ -470,7 +478,7 @@ if __name__ == "__main__":
                                  calculate_loss_for_perplexity = True,
                                  model = model, seq = seq, mask = mask, loss_for_perplexity_columns = LOSS_FOR_PERPLEXITY_COLUMNS)
                     with multiprocessing.Pool(processes = args.jobs) as pool:
-                        results = pool.imap(func = evaluate_helper, iterable = range(len(generated)), chunksize = chunk_size)
+                        results = pool.map(func = evaluate_helper, iterable = range(len(generated)), chunksize = chunk_size)
                     
                     ##################################################
 

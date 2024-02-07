@@ -38,6 +38,7 @@ import datetime # for creating wandb run names linked to time of run
 from dataset import MusicDataset
 import music_x_transformers
 import representation
+from representation import ENCODING_FILEPATH
 import encode
 import utils
 
@@ -49,7 +50,6 @@ import utils
 
 DATA_DIR = "/data2/pnlong/musescore/data"
 OUTPUT_DIR = "/data2/pnlong/musescore/data"
-ENCODING_FILEPATH = "/data2/pnlong/musescore/encoding.json"
 
 DEFAULT_MAX_SEQ_LEN = 1024
 DEFAULT_MAX_BEAT = 256
@@ -90,6 +90,7 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("-c", "--conditioning", default = encode.DEFAULT_CONDITIONING, choices = encode.CONDITIONINGS, type = str, help = "Conditioning type")
     parser.add_argument("-s", "--sigma", default = encode.SIGMA, type = float, help = "Sigma anticipation value (for anticipation conditioning, ignored when --conditioning != 'anticipation')")
     parser.add_argument("--baseline", action = "store_true", help = "Whether or not this is training the baseline model. The baseline ignores all expressive features.")
+    parser.add_argument("-v", "--velocity", action = "store_true", help = "Whether to add a velocity field.")
     # model
     parser.add_argument("--max_seq_len", default = DEFAULT_MAX_SEQ_LEN, type = int, help = "Maximum sequence length")
     parser.add_argument("--max_beat", default = DEFAULT_MAX_BEAT, type = int, help = "Maximum number of beats")
@@ -217,11 +218,17 @@ if __name__ == "__main__":
     # load the encoding
     encoding = representation.load_encoding(filepath = args.encoding) if exists(args.encoding) else representation.get_encoding()
 
+    # deal with velocity field
+    if (not args.velocity) and ("velocity" in encoding["dimensions"]):
+        encoding["dimensions"].remove("velocity")
+    elif (args.velocity) and ("velocity" not in encoding["dimensions"]):
+        encoding["dimensions"].append("velocity")
+
     # create the dataset and data loader
     print(f"Creating the data loader...")
     dataset = {
-        RELEVANT_PARTITIONS[0]: MusicDataset(paths = args.paths_train, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, is_baseline = args.baseline, max_seq_len = args.max_seq_len, max_beat = args.max_beat, use_augmentation = args.aug),
-        RELEVANT_PARTITIONS[1]: MusicDataset(paths = args.paths_valid, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, is_baseline = args.baseline, max_seq_len = args.max_seq_len, max_beat = args.max_beat, use_augmentation = args.aug)
+        RELEVANT_PARTITIONS[0]: MusicDataset(paths = args.paths_train, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, is_baseline = args.baseline, max_seq_len = args.max_seq_len, max_beat = args.max_beat, use_augmentation = args.aug, include_velocity = args.velocity),
+        RELEVANT_PARTITIONS[1]: MusicDataset(paths = args.paths_valid, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, is_baseline = args.baseline, max_seq_len = args.max_seq_len, max_beat = args.max_beat, use_augmentation = args.aug, include_velocity = args.velocity)
         }
     data_loader = {
         RELEVANT_PARTITIONS[0]: torch.utils.data.DataLoader(dataset = dataset[RELEVANT_PARTITIONS[0]], batch_size = args.batch_size, shuffle = True, num_workers = args.jobs, collate_fn = MusicDataset.collate),
@@ -315,7 +322,7 @@ if __name__ == "__main__":
     performance_columns_must_be_written = not (exists(output_filepath) and args.resume) # whether or not to write column names
     if performance_columns_must_be_written: # if column names need to be written
         pd.DataFrame(columns = PERFORMANCE_OUTPUT_COLUMNS).to_csv(path_or_buf = output_filepath, sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w")
-    full_fields = [ALL_STRING] + list(encoding["dimensions"]) # list of fields plus the total loss/accuracy metric
+    full_fields = [ALL_STRING] + list(encoding["dimensions"])
 
     # initialize variables
     step = 0

@@ -34,9 +34,12 @@ from muspy.utils import CIRCLE_OF_FIFTHS
 def decode_data(codes: np.array, encoding: dict = representation.get_encoding()) -> List[list]:
     """Decode codes into a data sequence.
     Each row of the input is encoded as follows.
-        (event_type, beat, position, value, duration, instrument)
+        (event_type, beat, position, value, duration, instrument, velocity (if included))
     Each row of the output is decoded the same way.
     """
+
+    # whether there is a velocity field
+    include_velocity = ("velocity" in encoding["dimensions"]) and (len(encoding["dimensions"]) == codes.shape[1])
 
     # get variables and maps
     code_type_map = encoding["code_type_map"]
@@ -54,6 +57,11 @@ def decode_data(codes: np.array, encoding: dict = representation.get_encoding())
     duration_dim = encoding["dimensions"].index("duration")
     instrument_dim = encoding["dimensions"].index("instrument")
 
+    # if we are including velocity
+    if include_velocity:
+        code_velocity_map = encoding["code_velocity_map"]
+        velocity_dim = encoding["dimensions"].index("velocity")
+
     # decode the codes into a sequence of data
     data = []
     for row in codes:
@@ -65,10 +73,13 @@ def decode_data(codes: np.array, encoding: dict = representation.get_encoding())
         elif event_type in ("note", "grace-note", representation.EXPRESSIVE_FEATURE_TYPE_STRING):
             beat = code_beat_map[int(row[beat_dim])]
             position = code_position_map[int(row[position_dim])]
-            value = code_value_map[int(row[value_dim])]
+            value = code_value_map[max(int(row[value_dim]), 0)]
             duration = code_duration_map[int(row[duration_dim])]
             program = instrument_program_map[code_instrument_map[int(row[instrument_dim])]]
-            data.append((event_type, beat, position, value, duration, program))
+            current_row = (event_type, beat, position, value, duration, program)
+            if include_velocity:
+                current_row.append(code_velocity_map[int(row[velocity_dim])])
+            data.append(current_row)
         else:
             raise ValueError("Unknown event type.")
         
@@ -88,7 +99,9 @@ def reconstruct(data: np.array, resolution: int, encoding: dict = representation
 
     # append the notes
     ongoing_articulation_chunks = {track_index: {} for track_index in range(len(programs))}
-    for event_type, beat, position, value, duration, program in data:
+    for row in data:
+        event_type, beat, position, value, duration, program = row[:6]
+        velocity = row[-1] if (len(row) > 6) else DEFAULT_VELOCITY # if there is a velocity value
         if any(field is None for field in (beat, position, duration, program)): # skip if invalid
             continue
         track_index = programs.index(program) # get track index
@@ -99,7 +112,7 @@ def reconstruct(data: np.array, resolution: int, encoding: dict = representation
                 pitch = int(value) # make sure the pitch is in fact a pitch
             except (ValueError):
                 continue
-            music.tracks[track_index].notes.append(Note(time = time, pitch = pitch, duration = duration, is_grace = (event_type == "grace_note")))
+            music.tracks[track_index].notes.append(Note(time = time, pitch = pitch, duration = duration, velocity = velocity, is_grace = (event_type == "grace_note")))
             for ongoing_articulation_chunk in tuple(ongoing_articulation_chunks[track_index].keys()): # add articulation if necessary
                 if time <= ongoing_articulation_chunks[track_index][ongoing_articulation_chunk]: # if the duration is still on
                     music.tracks[track_index].annotations.append(Annotation(time = time, annotation = Articulation(subtype = ongoing_articulation_chunk)))
@@ -213,6 +226,9 @@ def decode(codes: np.array, encoding: dict = representation.get_encoding()) -> B
 def dump(codes: np.array, encoding: dict = representation.get_encoding()) -> str:
     """Decode the codes and dump as a string."""
 
+    # whether there is a velocity field
+    include_velocity = ("velocity" in encoding["dimensions"]) and (len(encoding["dimensions"]) == codes.shape[1])
+
     # get maps
     code_type_map = encoding["code_type_map"]
     code_beat_map = encoding["code_beat_map"]
@@ -228,6 +244,11 @@ def dump(codes: np.array, encoding: dict = representation.get_encoding()) -> str
     duration_dim = encoding["dimensions"].index("duration")
     instrument_dim = encoding["dimensions"].index("instrument")
 
+    # if we are including velocity
+    if include_velocity:
+        code_velocity_map = encoding["code_velocity_map"]
+        velocity_dim = encoding["dimensions"].index("velocity")
+    
     # iterate over the rows
     lines = []
     for row in codes:
@@ -276,9 +297,12 @@ def dump(codes: np.array, encoding: dict = representation.get_encoding()) -> str
             # get instrument
             instrument = code_instrument_map[int(row[instrument_dim])]
 
+            if include_velocity:
+                velocity = code_velocity_map[int(row[velocity_dim])]
+
             # create output
-            lines.append(f"{''.join(' '.join(event_type.split('-')).title().split())}: beat={beat}, position={position}, value={value}, duration={duration}, instrument={instrument}")
-        
+            lines.append(f"{''.join(' '.join(event_type.split('-')).title().split())}: beat={beat}, position={position}, value={value}, duration={duration}, instrument={instrument}" + (f", velocity={velocity}" if include_velocity else ""))
+
         # unknown event type
         else:
             raise ValueError(f"Unknown event type: {event_type}")
@@ -305,11 +329,9 @@ def save_txt(filepath: str, codes: np.array, encoding: dict = representation.get
 
 if __name__ == "__main__":
 
-    ENCODING_FILEPATH = "/data2/pnlong/musescore/encoding.json"
-
     # get arguments
     parser = argparse.ArgumentParser(prog = "Representation", description = "Test Encoding/Decoding mechanisms for MuseScore data.")
-    parser.add_argument("-e", "--encoding", type = str, default = ENCODING_FILEPATH, help = "Absolute filepath to encoding file")
+    parser.add_argument("-e", "--encoding", type = str, default = representation.ENCODING_FILEPATH, help = "Absolute filepath to encoding file")
     args = parser.parse_args()
 
     # load encoding

@@ -108,11 +108,11 @@ def to_mido_note_on_note_off(note: Note, channel: int, use_note_off_message: boo
     velocity = note.velocity # copy of velocity as to not alter the music object
     if velocity is None:
         velocity = DEFAULT_VELOCITY
-    velocity = int(max(min(velocity, 127), 0)) # make sure velocity is within valid range and an integer
+    velocity = int(max(min(velocity, representation.MAX_VELOCITY), 0)) # make sure velocity is within valid range and an integer
 
     # deal with note
     pitch = note.pitch
-    pitch = int(max(min(pitch, 127), 0)) # make sure the note is within valid range and an integer
+    pitch = int(max(min(pitch, representation.MAX_VELOCITY), 0)) # make sure the note is within valid range and an integer
 
     # note on message
     note_on_msg = Message(type = "note_on", time = note.time, note = pitch, velocity = velocity, channel = channel) # create note on message
@@ -269,6 +269,56 @@ def get_wiggle_func(articulation_subtype: str, amplitude: float = FRACTION_TO_WI
     return wiggle_func
 
 
+def get_expressive_features_per_note(note_times: list, all_annotations: list) -> dict:
+    """Return a dictionary where the keys are the set of note times, and the values are the expressive features present at that note time."""
+
+    # create expressive features
+    expressive_features: Dict[int, List[Annotation]] = dict(zip(note_times, ([] for _ in range(len(note_times))))) # dictionary where keys are time and values are expressive feature annotation objects
+    for annotation in sorted(all_annotations, key = lambda annotation: annotation.time): # sort staff and system level annotations
+        if hasattr(annotation.annotation, "subtype"):
+            if annotation.annotation.subtype is None:
+                continue
+            else:
+                annotation.annotation.subtype = clean_up_subtype(subtype = annotation.annotation.subtype) # clean up the subtype
+        annotation_falls_on_note = annotation.time in expressive_features.keys()
+        if annotation_falls_on_note: # if this annotation falls on a note, add that annotation to expressive features (which we care about)
+            expressive_features[annotation.time].append(annotation) # add annotation
+        if hasattr(annotation.annotation, "duration"): # deal with duration
+            if annotation.annotation.__class__.__name__ == "Dynamic" and annotation.annotation.subtype not in representation.DYNAMIC_DYNAMICS: # for sudden dynamic hikes do not fill with duration
+                continue
+            if annotation_falls_on_note: # get index of the note after the current time when annotation falls on a note
+                current_note_time_index = note_times.index(annotation.time) + 1
+            else: # get index of the note after the current time when annotation does not fall on a note
+                current_note_time_index = len(note_times) # default value
+                for i in range(len(note_times)):
+                    if note_times[i] > annotation.time: # first note time after the annotation time
+                        current_note_time_index = i
+                        break
+            while current_note_time_index < len(note_times):
+                if note_times[current_note_time_index] >= annotation.time + annotation.annotation.duration: # when the annotation does not have any more effect on the notes being played
+                    break # break out of while loop
+                expressive_features[note_times[current_note_time_index]].append(annotation)
+                current_note_time_index += 1 # increment
+            del current_note_time_index
+    
+    # make sure all note times in expressive features have a dynamic at index 0
+    for i, note_time in enumerate(note_times):
+        if not any((annotation.annotation.__class__.__name__ == "Dynamic" for annotation in expressive_features[note_time])): # if there is no dynamic
+            j = i - 1 # start index finder at the index before current
+            while not any((annotation.annotation.subtype in representation.DYNAMIC_DYNAMICS for annotation in expressive_features[note_times[j]] if annotation.annotation.__class__.__name__ == "Dynamic")) and j > -1: # look for previous note times with a dynamic
+                j -= 1 # decrement j
+            if j == -1: # no notes with dynamics before this one, result to default values
+                dynamic_annotation = Dynamic(subtype = DEFAULT_DYNAMIC, velocity = representation.DYNAMIC_VELOCITY_MAP[DEFAULT_DYNAMIC])
+            else: # we found a dynamic before this note time
+                dynamic_annotation = expressive_features[note_times[j]][0].annotation # we can assume the dynamic marking is at index 0 because of our sorting
+            expressive_features[note_time].insert(0, Annotation(time = note_time, annotation = dynamic_annotation))
+        expressive_features[note_time] = sorted(expressive_features[note_time], key = sort_expressive_features_key) # sort expressive features in desired order
+        if expressive_features[note_time][0].annotation.velocity is None: # make sure dynamic velocity is not none
+            expressive_features[note_time][0].annotation.velocity = representation.DYNAMIC_VELOCITY_MAP[DEFAULT_DYNAMIC] # set to default velocity
+
+    return expressive_features
+
+
 def to_mido_track(track: Track, music: "BetterMusic", channel: int = None, use_note_off_message: bool = False) -> MidiTrack:
     """Return a Track object as a mido MidiTrack object.
 
@@ -306,48 +356,7 @@ def to_mido_track(track: Track, music: "BetterMusic", channel: int = None, use_n
 
     # deal with expressive features
     note_times = sorted(unique(l = [note.time for note in track.notes])) # times of notes, sorted ascending, removing duplicates
-    expressive_features: Dict[int, List[Annotation]] = dict(zip(note_times, ([] for _ in range(len(note_times))))) # dictionary where keys are time and values are expressive feature annotation objects
-    for annotation in sorted(track.annotations + music.annotations, key = lambda annotation: annotation.time): # sort staff and system level annotations
-        if hasattr(annotation.annotation, "subtype"):
-            if annotation.annotation.subtype is None:
-                continue
-            else:
-                annotation.annotation.subtype = clean_up_subtype(subtype = annotation.annotation.subtype) # clean up the subtype
-        annotation_falls_on_note = annotation.time in expressive_features.keys()
-        if annotation_falls_on_note: # if this annotation falls on a note, add that annotation to expressive features (which we care about)
-            expressive_features[annotation.time].append(annotation) # add annotation
-        if hasattr(annotation.annotation, "duration"): # deal with duration
-            if annotation.annotation.__class__.__name__ == "Dynamic" and annotation.annotation.subtype not in representation.DYNAMIC_DYNAMICS: # for sudden dynamic hikes do not fill with duration
-                continue
-            if annotation_falls_on_note: # get index of the note after the current time when annotation falls on a note
-                current_note_time_index = note_times.index(annotation.time) + 1
-            else: # get index of the note after the current time when annotation does not fall on a note
-                current_note_time_index = len(note_times) # default value
-                for i in range(len(note_times)):
-                    if note_times[i] > annotation.time: # first note time after the annotation time
-                        current_note_time_index = i
-                        break
-            while current_note_time_index < len(note_times):
-                if note_times[current_note_time_index] >= annotation.time + annotation.annotation.duration: # when the annotation does not have any more effect on the notes being played
-                    break # break out of while loop
-                expressive_features[note_times[current_note_time_index]].append(annotation)
-                current_note_time_index += 1 # increment
-            del current_note_time_index
-
-    # make sure all notes have a dynamic at index 0
-    for i, note_time in enumerate(note_times):
-        if not any((annotation.annotation.__class__.__name__ == "Dynamic" for annotation in expressive_features[note_time])): # if there is no dynamic
-            j = i - 1 # start index finder at the index before current
-            while not any((annotation.annotation.subtype in representation.DYNAMIC_DYNAMICS for annotation in expressive_features[note_times[j]] if annotation.annotation.__class__.__name__ == "Dynamic")) and j > -1: # look for previous note times with a dynamic
-                j -= 1 # decrement j
-            if j == -1: # no notes with dynamics before this one, result to default values
-                dynamic_annotation = Dynamic(subtype = DEFAULT_DYNAMIC, velocity = representation.DYNAMIC_VELOCITY_MAP[DEFAULT_DYNAMIC])
-            else: # we found a dynamic before this note time
-                dynamic_annotation = expressive_features[note_times[j]][0].annotation # we can assume the dynamic marking is at index 0 because of our sorting
-            expressive_features[note_time].insert(0, Annotation(time = note_time, annotation = dynamic_annotation))
-        expressive_features[note_time] = sorted(expressive_features[note_time], key = sort_expressive_features_key) # sort expressive features in desired order
-        if expressive_features[note_time][0].annotation.velocity is None: # make sure dynamic velocity is not none
-            expressive_features[note_time][0].annotation.velocity = representation.DYNAMIC_VELOCITY_MAP[DEFAULT_DYNAMIC] # set to default velocity
+    expressive_features = get_expressive_features_per_note(note_times = note_times, all_annotations = track.annotations + music.annotations) # dictionary where keys are time and values are expressive feature annotation objects
 
     # note on and note off messages
     for note in track.notes:
@@ -358,14 +367,15 @@ def to_mido_track(track: Track, music: "BetterMusic", channel: int = None, use_n
                 if annotation.annotation.subtype is None:
                     continue
             # HairPinSpanner and TempoSpanner; changes in velocity
-            if annotation.annotation.__class__.__name__ in ("HairPinSpanner", "TempoSpanner"): # some TempoSpanners involve a velocity change, so that is included here as well
+            if (annotation.annotation.__class__.__name__ in ("HairPinSpanner", "TempoSpanner")): # some TempoSpanners involve a velocity change, so that is included here as well
                 if annotation.group is None: # since we aren't storing anything there anyways
                     end_velocity = note.velocity # default is no change
                     if any((annotation.annotation.subtype.startswith(prefix) for prefix in ("allarg", "cr"))): # increase-volume; allargando, crescendo
                         end_velocity *= VELOCITY_INCREASE_FACTOR
                     elif any((annotation.annotation.subtype.startswith(prefix) for prefix in ("smorz", "dim", "decr"))): # decrease-volume; smorzando, diminuendo, decrescendo
                         end_velocity /= VELOCITY_INCREASE_FACTOR
-                    annotation.group = lambda time: (((end_velocity - note.velocity) / ((annotation.time + annotation.annotation.duration) - note.time)) * (time - note.time)) + note.velocity # we will use group to store a lambda function to calculate velocity
+                    duration = annotation.annotation.duration
+                    annotation.group = lambda time: (((end_velocity - note.velocity) / ((annotation.time + duration) - note.time)) * (time - note.time)) + note.velocity # we will use group to store a lambda function to calculate velocity
                 note.velocity += annotation.group(time = note.time)
             # SlurSpanner
             elif annotation.annotation.__class__.__name__ == "SlurSpanner":

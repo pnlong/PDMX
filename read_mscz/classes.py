@@ -255,7 +255,7 @@ class Note(muspy.classes.Note):
     _attributes = OrderedDict([("time", int), ("measure", int), ("pitch", int), ("duration", int), ("velocity", int), ("pitch_str", str), ("is_grace", bool)])
     _optional_attributes = ["velocity", "pitch_str", "is_grace", "measure"]
 
-    def __init__(self, time: int, pitch: int, duration: int, velocity: int = None, pitch_str: str = None, is_grace: bool = False, measure: int = None):
+    def __init__(self, time: int, pitch: int, duration: int, velocity: int = DEFAULT_VELOCITY, pitch_str: str = None, is_grace: bool = False, measure: int = None):
         super().__init__(time = time, pitch = pitch, duration = duration, velocity = velocity, pitch_str = pitch_str)
         self.measure = measure
         self.is_grace = is_grace
