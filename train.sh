@@ -16,16 +16,47 @@ software_dir="/home/pnlong/model_musescore"
 software="${software_dir}/train.py"
 
 # data filepaths
-base_dir="/data2/pnlong/musescore"
-data_dir="${base_dir}/data"
+data_dir="/data2/pnlong/musescore/data"
+gpu=3 # gpu number
+
+##################################################
+
+
+# COMMAND LINE ARGS
+##################################################
+
+# parse command line arguments
+usage="Usage: $(basename ${0}) [-d] (data directory) [-g] (gpu to use)"
+while getopts ':d:g:h' opt; do
+  case "${opt}" in
+    d)
+      data_dir="${OPTARG}"
+      ;;
+    g)
+      gpu="${OPTARG}"
+      ;;
+    h)
+      echo ${usage}
+      exit 0
+      ;;
+    :)
+      echo -e "option requires an argument.\n${usage}"
+      exit 1
+      ;;
+    ?)
+      echo -e "Invalid command option.\n${usage}"
+      exit 1
+      ;;
+  esac
+done
+
 paths_train="${data_dir}/train.txt"
 paths_valid="${data_dir}/valid.txt"
-encoding="${base_dir}/encoding.json"
+encoding="${data_dir}/encoding.json"
 output_dir="${data_dir}"
 
 # constants
 batch_size=4 # decrease if gpu memory consumption is too high
-gpu=3 # gpu number
 steps=80000 # in my experience >70000 is sufficient to train
 
 # to adjust the size of the model (number of parameters, adjust these)
@@ -38,6 +69,8 @@ heads=8 # attention heads
 
 # NOT CONDITIONAL ON NOTES
 ##################################################
+
+set -e
 
 # baseline
 python ${software} --baseline --aug --paths_train ${paths_train} --paths_valid ${paths_valid} --encoding ${encoding} --output_dir ${output_dir} --batch_size ${batch_size} --steps ${steps} --dim ${dim} --layers ${layers} --heads ${heads} --gpu ${gpu}

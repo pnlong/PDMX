@@ -613,9 +613,9 @@ N_TOKENS = [
 # ENCODING-GENERATING FUNCTIONS
 ##################################################
 
-def get_encoding() -> dict:
+def get_encoding(include_velocity: bool = False) -> dict:
     """Return the encoding configurations."""
-    return {
+    encoding = {
         "resolution": RESOLUTION,
         "max_beat": MAX_BEAT,
         "max_duration": MAX_DURATION,
@@ -638,6 +638,12 @@ def get_encoding() -> dict:
         "velocity_code_map": VELOCITY_CODE_MAP,
         "code_velocity_map": CODE_VELOCITY_MAP,
     }
+    if not include_velocity:
+        del encoding["velocity_code_map"], encoding["code_velocity_map"]
+        encoding["dimensions"].remove("velocity") # remove velocity from dimensions
+        encoding["n_tokens"] = encoding["n_tokens"][:-1] # remove token count for velocity
+    return encoding
+
 
 def load_encoding(filepath: str) -> dict:
     """Load encoding configurations from a JSON file. Make sure types are correct."""
@@ -694,10 +700,11 @@ if __name__ == "__main__":
     # get arguments
     parser = argparse.ArgumentParser(prog = "Representation", description = "Test Encoding/Decoding mechanisms for MuseScore data.")
     parser.add_argument("-e", "--encoding", type = str, default = ENCODING_FILEPATH, help = "Absolute filepath to encoding file")
+    parser.add_argument("-v", "--velocity", action = "store_true", help = "Whether to add a velocity field.")
     args = parser.parse_args()
 
     # get the encoding
-    encoding = get_encoding()
+    encoding = get_encoding(include_velocity = args.velocity)
 
     # save the encoding
     utils.save_json(filepath = args.encoding, data = encoding)

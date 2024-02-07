@@ -73,7 +73,6 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("-e", "--encoding", default = ENCODING_FILEPATH, type = str, help = ".json file with encoding information.")
     parser.add_argument("-o", "--output_dir", default = OUTPUT_DIR, type = str, help = "Output directory")
     parser.add_argument("-ns", "--n_samples", type = int, help = "Number of samples to evaluate")
-    parser.add_argument("-v", "--velocity", action = "store_true", help = "Whether to add a velocity field.")
     # model
     parser.add_argument("--seq_len", default = train.DEFAULT_MAX_SEQ_LEN, type = int, help = "Sequence length to generate")
     parser.add_argument("--temperature", nargs = "+", default = 1.0, type = float, help = "Sampling temperature (default: 1.0)")
@@ -249,11 +248,7 @@ if __name__ == "__main__":
     encoding = representation.load_encoding(filepath = args.encoding) if exists(args.encoding) else representation.get_encoding()
 
     # deal with velocity field
-    if (not args.velocity) and ("velocity" in encoding["dimensions"]):
-        encoding["dimensions"].remove("velocity")
-        encoding["n_tokens"] = encoding["n_tokens"][:-1]
-    elif (args.velocity) and ("velocity" not in encoding["dimensions"]):
-        raise ValueError("`velocity` not in `dimensions`. Try rerunning representation.py.")
+    include_velocity = ("velocity" in encoding["dimensions"])
 
     # determine columns
     if not args.truth:
@@ -301,7 +296,7 @@ if __name__ == "__main__":
 
         # create the dataset
         logging.info(f"Creating the data loader...")
-        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = train.DEFAULT_MAX_SEQ_LEN, max_beat = train.DEFAULT_MAX_BEAT, use_augmentation = False, include_velocity = args.velocity)
+        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = train.DEFAULT_MAX_SEQ_LEN, max_beat = train.DEFAULT_MAX_BEAT, use_augmentation = False, include_velocity = include_velocity)
 
     # load model if necessary
     else:
@@ -321,7 +316,7 @@ if __name__ == "__main__":
         logging.info(f"Creating the data loader...")
         max_beat = train_args["max_beat"]
         max_seq_len = train_args["max_seq_len"]
-        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = max_seq_len, max_beat = max_beat, use_augmentation = False, is_baseline = ("baseline" in args.output_dir), include_velocity = args.velocity)
+        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = max_seq_len, max_beat = max_beat, use_augmentation = False, is_baseline = ("baseline" in args.output_dir), include_velocity = include_velocity)
 
         # create the model
         logging.info(f"Creating the model...")
@@ -493,22 +488,24 @@ if __name__ == "__main__":
                                  calculate_loss_for_perplexity = True,
                                  model = model, seq = seq, mask = mask, loss_for_perplexity_columns = loss_for_perplexity_columns
                                  )
-                    with multiprocess.Pool(processes = args.jobs) as pool:
-                        results = pool.starmap(func = evaluate_helper,
-                                               iterable = zip(
-                                                   range(len(generated)),
-                                                   utils.rep(x = batch, times = len(generated)),
-                                                   utils.rep(x = device, times = len(generated)),
-                                                   utils.rep(x = notes_only, times = len(generated)),
-                                                   utils.rep(x = generated, times = len(generated)),
-                                                   utils.rep(x = encoding, times = len(generated)),
-                                                   utils.rep(x = stem, times = len(generated)),
-                                                   utils.rep(x = eval_output_dirs, times = len(generated)),
-                                                   utils.rep(x = output_filepaths, times = len(generated)),
-                                                   utils.rep(x = eval_type, times = len(generated)),
-                                                   utils.rep(x = model, times = len(generated)),
-                                                   utils.rep(x = LOSS_FOR_PERPLEXITY_COLUMNS, times = len(generated))),
-                                               chunksize = chunk_size)
+                    for j in range(len(generated)):
+                        evaluate_helper(j = j)
+                    # with multiprocess.Pool(processes = args.jobs) as pool:
+                    #     results = pool.starmap(func = evaluate_helper,
+                    #                            iterable = zip(
+                    #                                range(len(generated)),
+                    #                                utils.rep(x = batch, times = len(generated)),
+                    #                                utils.rep(x = device, times = len(generated)),
+                    #                                utils.rep(x = notes_only, times = len(generated)),
+                    #                                utils.rep(x = generated, times = len(generated)),
+                    #                                utils.rep(x = encoding, times = len(generated)),
+                    #                                utils.rep(x = stem, times = len(generated)),
+                    #                                utils.rep(x = eval_output_dirs, times = len(generated)),
+                    #                                utils.rep(x = output_filepaths, times = len(generated)),
+                    #                                utils.rep(x = eval_type, times = len(generated)),
+                    #                                utils.rep(x = model, times = len(generated)),
+                    #                                utils.rep(x = LOSS_FOR_PERPLEXITY_COLUMNS, times = len(generated))),
+                    #                            chunksize = chunk_size)
                     
                     ##################################################
 

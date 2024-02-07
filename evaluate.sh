@@ -13,16 +13,9 @@
 ##################################################
 
 software_dir="/home/pnlong/model_musescore"
-base_dir="/data2/pnlong/musescore"
-data_dir="${base_dir}/data"
-trained_models="${data_dir}/models.txt"
-paths_test="${data_dir}/test.txt"
-encoding="${data_dir}/encoding.json"
-output_dir="${data_dir}"
-n_samples=1000
+data_dir="/data2/pnlong/musescore/data"
 gpu=3
-batch_size=8
-default_model="truth"
+model="truth"
 
 ##################################################
 
@@ -31,12 +24,14 @@ default_model="truth"
 ##################################################
 
 # parse command line arguments
-usage="Usage: $(basename ${0}) [-m] (the model to evaluate)"
-model=${default_model}
-while getopts ':m:g:h' opt; do
+usage="Usage: $(basename ${0}) [-m] (the model to evaluate) [-d] (data directory) [-g] (gpu to use)"
+while getopts ':m:d:g:h' opt; do
   case "${opt}" in
     m)
       model="${OPTARG}"
+      ;;
+    d)
+      data_dir="${OPTARG}"
       ;;
     g)
       gpu="${OPTARG}"
@@ -55,7 +50,16 @@ while getopts ':m:g:h' opt; do
       ;;
   esac
 done
+
+trained_models="${data_dir}/models.txt"
+paths_test="${data_dir}/test.txt"
+encoding="${data_dir}/encoding.json"
+output_dir="${data_dir}"
+n_samples=1000
+batch_size=8
+
 ##################################################
+
 
 # EVALUATE
 ##################################################
