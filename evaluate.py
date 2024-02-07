@@ -18,7 +18,7 @@ from os.path import exists, dirname
 from os import makedirs
 from typing import Union
 import math
-import multiprocessing
+import multiprocessing, multiprocess
 
 import numpy as np
 import pandas as pd
@@ -251,8 +251,9 @@ if __name__ == "__main__":
     # deal with velocity field
     if (not args.velocity) and ("velocity" in encoding["dimensions"]):
         encoding["dimensions"].remove("velocity")
+        encoding["n_tokens"] = encoding["n_tokens"][:-1]
     elif (args.velocity) and ("velocity" not in encoding["dimensions"]):
-        encoding["dimensions"].append("velocity")
+        raise ValueError("`velocity` not in `dimensions`. Try rerunning representation.py.")
 
     # determine columns
     if not args.truth:
@@ -279,7 +280,8 @@ if __name__ == "__main__":
         
     # set up the logger
     logging.basicConfig(level = logging.INFO, format = "%(message)s", handlers = [logging.FileHandler(filename = f"{EVAL_DIR}/evaluate.log", mode = "a"), logging.StreamHandler(stream = sys.stdout)])
-    multiprocessing.set_start_method("spawn")
+    if not args.truth: # for multiprocessing with cuda objects
+        multiprocess.set_start_method("spawn")
 
     # log command called and arguments, save arguments
     logging.info(f"Running command: python {' '.join(sys.argv)}")
@@ -460,7 +462,20 @@ if __name__ == "__main__":
                     generated = torch.cat(tensors = (prefix, generated), dim = 1).cpu().numpy() # wrangle a bit
 
                     # add to results
-                    def evaluate_helper(j: int):
+                    def evaluate_helper( # to work with multiprocess.Pool, since separate processes cannot share the same globals
+                            j: int,
+                            batch: torch.tensor = batch,
+                            device: torch.device = device,
+                            notes_only: bool = notes_only,
+                            generated: torch.tensor = generated,
+                            encoding: dict = encoding,
+                            stem: str = stem,
+                            eval_output_dirs: list = eval_output_dirs,
+                            output_filepaths: list = output_filepaths,
+                            eval_type: str = eval_type,
+                            model: music_x_transformers.MusicXTransformer = model,
+                            loss_for_perplexity_columns: list = LOSS_FOR_PERPLEXITY_COLUMNS
+                            ):
                         # setup for loss for perplexity calculations
                         seq = batch["seq"][j].unsqueeze(dim = 0).to(device)
                         mask = batch["mask"][j].unsqueeze(dim = 0).to(device)
@@ -476,9 +491,24 @@ if __name__ == "__main__":
                                  eval_dir = eval_output_dirs[eval_type],
                                  output_filepaths = output_filepaths[eval_type],
                                  calculate_loss_for_perplexity = True,
-                                 model = model, seq = seq, mask = mask, loss_for_perplexity_columns = LOSS_FOR_PERPLEXITY_COLUMNS)
-                    with multiprocessing.Pool(processes = args.jobs) as pool:
-                        results = pool.map(func = evaluate_helper, iterable = range(len(generated)), chunksize = chunk_size)
+                                 model = model, seq = seq, mask = mask, loss_for_perplexity_columns = loss_for_perplexity_columns
+                                 )
+                    with multiprocess.Pool(processes = args.jobs) as pool:
+                        results = pool.starmap(func = evaluate_helper,
+                                               iterable = zip(
+                                                   range(len(generated)),
+                                                   utils.rep(x = batch, times = len(generated)),
+                                                   utils.rep(x = device, times = len(generated)),
+                                                   utils.rep(x = notes_only, times = len(generated)),
+                                                   utils.rep(x = generated, times = len(generated)),
+                                                   utils.rep(x = encoding, times = len(generated)),
+                                                   utils.rep(x = stem, times = len(generated)),
+                                                   utils.rep(x = eval_output_dirs, times = len(generated)),
+                                                   utils.rep(x = output_filepaths, times = len(generated)),
+                                                   utils.rep(x = eval_type, times = len(generated)),
+                                                   utils.rep(x = model, times = len(generated)),
+                                                   utils.rep(x = LOSS_FOR_PERPLEXITY_COLUMNS, times = len(generated))),
+                                               chunksize = chunk_size)
                     
                     ##################################################
 

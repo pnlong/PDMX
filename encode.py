@@ -402,7 +402,7 @@ def extract_data(music: BetterMusic, use_implied_duration: bool = True, include_
     time_dim = output_columns.index("time")
 
     # realize velocity information
-    music = deepcopy(music) # don't alter the original object
+    # music = deepcopy(music) # don't alter the original object
     for i in range(len(music.tracks)):
         note_times = sorted(utils.unique(l = [note.time for note in music.tracks[i].notes])) # times of notes, sorted ascending, removing duplicates
         expressive_features = get_expressive_features_per_note(note_times = note_times, all_annotations = music.tracks[i].annotations + music.annotations) # dictionary where keys are time and values are expressive feature annotation objects

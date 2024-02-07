@@ -321,8 +321,9 @@ if __name__ == "__main__":
     # deal with velocity field
     if (not args.velocity) and ("velocity" in encoding["dimensions"]):
         encoding["dimensions"].remove("velocity")
+        encoding["n_tokens"] = encoding["n_tokens"][:-1]
     elif (args.velocity) and ("velocity" not in encoding["dimensions"]):
-        encoding["dimensions"].append("velocity")
+        raise ValueError("`velocity` not in `dimensions`. Try rerunning representation.py.")
 
     if args.truth:
 
