@@ -29,7 +29,8 @@ DEFAULT_VALUE_CODE = -1
 N_NOTES = 128
 NA_VALUES = ("null", "None", None) # for loading encodings
 
-ENCODING_FILEPATH = "/data2/pnlong/musescore/data/encoding.json"
+ENCODING_DIR = "/data2/pnlong/musescore/data"
+ENCODING_BASENAME = "encoding.json"
 
 ##################################################
 
@@ -699,7 +700,7 @@ if __name__ == "__main__":
 
     # get arguments
     parser = argparse.ArgumentParser(prog = "Representation", description = "Test Encoding/Decoding mechanisms for MuseScore data.")
-    parser.add_argument("-e", "--encoding", type = str, default = ENCODING_FILEPATH, help = "Absolute filepath to encoding file")
+    parser.add_argument("-o", "--output_dir", type = str, default = ENCODING_DIR, help = "Directory in which to store the encoding file")
     parser.add_argument("-v", "--velocity", action = "store_true", help = "Whether to add a velocity field.")
     args = parser.parse_args()
 
@@ -707,10 +708,12 @@ if __name__ == "__main__":
     encoding = get_encoding(include_velocity = args.velocity)
 
     # save the encoding
-    utils.save_json(filepath = args.encoding, data = encoding)
+    encoding_filepath = f"{args.output_dir}/{ENCODING_BASENAME}"
+    utils.save_json(filepath = encoding_filepath, data = encoding)
+    print(f"Encoding saved to {encoding_filepath}")
 
     # load encoding
-    encoding = load_encoding(filepath = args.encoding)
+    encoding = load_encoding(filepath = encoding_filepath)
 
     # print the maps
     print(f"{' Maps ':=^40}")
