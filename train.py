@@ -544,8 +544,11 @@ if __name__ == "__main__":
 
     # output model name to list of models
     models_output_filepath = f"{dirname(args.output_dir)}/models.txt"
-    with open(models_output_filepath, "r") as models_output: # read in list of trained models
-        models = {model.strip() for model in models_output.readlines()} # use a set because better for `in` operations
+    if exists(models_output_filepath):
+        with open(models_output_filepath, "r") as models_output: # read in list of trained models
+            models = {model.strip() for model in models_output.readlines()} # use a set because better for `in` operations
+    else:
+        models = set()
     with open(models_output_filepath, "a") as models_output:
         if basename(args.output_dir) not in models: # check if in list of trained models
             models_output.write(basename(args.output_dir) + "\n") # add model to list of trained models if it isn't already there

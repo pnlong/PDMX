@@ -490,22 +490,6 @@ if __name__ == "__main__":
                                  )
                     for j in range(len(generated)):
                         evaluate_helper(j = j)
-                    # with multiprocess.Pool(processes = args.jobs) as pool:
-                    #     results = pool.starmap(func = evaluate_helper,
-                    #                            iterable = zip(
-                    #                                range(len(generated)),
-                    #                                utils.rep(x = batch, times = len(generated)),
-                    #                                utils.rep(x = device, times = len(generated)),
-                    #                                utils.rep(x = notes_only, times = len(generated)),
-                    #                                utils.rep(x = generated, times = len(generated)),
-                    #                                utils.rep(x = encoding, times = len(generated)),
-                    #                                utils.rep(x = stem, times = len(generated)),
-                    #                                utils.rep(x = eval_output_dirs, times = len(generated)),
-                    #                                utils.rep(x = output_filepaths, times = len(generated)),
-                    #                                utils.rep(x = eval_type, times = len(generated)),
-                    #                                utils.rep(x = model, times = len(generated)),
-                    #                                utils.rep(x = LOSS_FOR_PERPLEXITY_COLUMNS, times = len(generated))),
-                    #                            chunksize = chunk_size)
                     
                     ##################################################
 
@@ -519,7 +503,7 @@ if __name__ == "__main__":
 
     # output perplexity if available
     if not args.truth:
-        logging.info("".join(("=" for _ in range(25))) + " PERPLEXITY " + "".join(("=" for _ in range(25))))
+        logging.info("\n" + "".join(("=" for _ in range(25))) + " PERPLEXITY " + "".join(("=" for _ in range(25))))
         for eval_type in EVAL_TYPES:
             eval_type_fancy = eval_type.title() if eval_type == EVAL_TYPES[0] else (eval_type.split("_")[2].title() + "s conditional on " + eval_type.split("_")[1].title() + "s:")
             logging.info("\n" + eval_type_fancy)
