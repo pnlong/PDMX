@@ -31,6 +31,7 @@ NA_VALUES = ("null", "None", None) # for loading encodings
 
 ENCODING_DIR = "/data2/pnlong/musescore/data"
 ENCODING_BASENAME = "encoding.json"
+ENCODING_FILEPATH = f"{ENCODING_DIR}/{ENCODING_BASENAME}"
 
 ##################################################
 
