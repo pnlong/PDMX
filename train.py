@@ -90,7 +90,6 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("-c", "--conditioning", default = encode.DEFAULT_CONDITIONING, choices = encode.CONDITIONINGS, type = str, help = "Conditioning type")
     parser.add_argument("-s", "--sigma", default = encode.SIGMA, type = float, help = "Sigma anticipation value (for anticipation conditioning, ignored when --conditioning != 'anticipation')")
     parser.add_argument("--baseline", action = "store_true", help = "Whether or not this is training the baseline model. The baseline ignores all expressive features.")
-    parser.add_argument("-v", "--velocity", action = "store_true", help = "Whether to add a velocity field.")
     # model
     parser.add_argument("--max_seq_len", default = DEFAULT_MAX_SEQ_LEN, type = int, help = "Maximum sequence length")
     parser.add_argument("--max_beat", default = DEFAULT_MAX_BEAT, type = int, help = "Maximum number of beats")
@@ -219,17 +218,13 @@ if __name__ == "__main__":
     encoding = representation.load_encoding(filepath = args.encoding) if exists(args.encoding) else representation.get_encoding()
 
     # deal with velocity field
-    if (not args.velocity) and ("velocity" in encoding["dimensions"]):
-        encoding["dimensions"].remove("velocity")
-        encoding["n_tokens"] = encoding["n_tokens"][:-1]
-    elif (args.velocity) and ("velocity" not in encoding["dimensions"]):
-        raise ValueError("`velocity` not in `dimensions`. Try rerunning representation.py.")
+    include_velocity = ("velocity" in encoding["dimensions"])
 
     # create the dataset and data loader
     print(f"Creating the data loader...")
     dataset = {
-        RELEVANT_PARTITIONS[0]: MusicDataset(paths = args.paths_train, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, is_baseline = args.baseline, max_seq_len = args.max_seq_len, max_beat = args.max_beat, use_augmentation = args.aug, include_velocity = args.velocity),
-        RELEVANT_PARTITIONS[1]: MusicDataset(paths = args.paths_valid, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, is_baseline = args.baseline, max_seq_len = args.max_seq_len, max_beat = args.max_beat, use_augmentation = args.aug, include_velocity = args.velocity)
+        RELEVANT_PARTITIONS[0]: MusicDataset(paths = args.paths_train, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, is_baseline = args.baseline, max_seq_len = args.max_seq_len, max_beat = args.max_beat, use_augmentation = args.aug, include_velocity = include_velocity),
+        RELEVANT_PARTITIONS[1]: MusicDataset(paths = args.paths_valid, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, is_baseline = args.baseline, max_seq_len = args.max_seq_len, max_beat = args.max_beat, use_augmentation = args.aug, include_velocity = include_velocity)
         }
     data_loader = {
         RELEVANT_PARTITIONS[0]: torch.utils.data.DataLoader(dataset = dataset[RELEVANT_PARTITIONS[0]], batch_size = args.batch_size, shuffle = True, num_workers = args.jobs, collate_fn = MusicDataset.collate),
