@@ -585,7 +585,7 @@ def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_COND
     core_codes[:, duration_dim] = list(map(lambda duration: duration_code_map[min(max_duration, max(0, int(duration)))], data[:, duration_dim])) # encode duration
     core_codes[:, instrument_dim] = list(map(program_instrument_mapper, data[:, instrument_dim])) # encode instrument column
     if include_velocity:
-        core_codes[:, velocity_dim] = list(map(lambda velocity: velocity_code_map[min(representation.MAX_VELOCITY, max(0, int(velocity)))], data[:, velocity_dim])) # encode velocity
+        core_codes[:, velocity_dim] = list(map(lambda velocity: velocity_code_map[min(representation.MAX_VELOCITY, max(0, int(velocity))) if (not np.isnan(velocity)) else None], data[:, velocity_dim])) # encode velocity
     core_codes = core_codes[core_codes[:, beat_dim] <= max_beat + 1] # remove data if beat greater than max beat
     core_codes = core_codes[core_codes[:, instrument_dim] >= 0] # skip unknown instruments
 
