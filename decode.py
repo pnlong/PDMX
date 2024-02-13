@@ -76,9 +76,10 @@ def decode_data(codes: np.array, encoding: dict = representation.get_encoding())
             value = code_value_map[max(int(row[value_dim]), 0)]
             duration = code_duration_map[int(row[duration_dim])]
             program = instrument_program_map[code_instrument_map[int(row[instrument_dim])]]
-            current_row = (event_type, beat, position, value, duration, program)
+            current_row = [event_type, beat, position, value, duration, program]
             if include_velocity:
                 current_row.append(code_velocity_map[int(row[velocity_dim])])
+            current_row = tuple(current_row)
             data.append(current_row)
         else:
             raise ValueError("Unknown event type.")
