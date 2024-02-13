@@ -145,7 +145,7 @@ def make_n_expressive_features_plot(n_expressive_features: pd.DataFrame, output_
     axes["legend"].axis("off")
 
     # save image
-    fig.savefig(f"{output_dir}/{evaluate.PLOT_TYPES[0]}.png", dpi = expressive_features_plots.OUTPUT_RESOLUTION_DPI) # save image
+    fig.savefig(f"{output_dir}/{evaluate.PLOT_TYPES[1]}.png", dpi = expressive_features_plots.OUTPUT_RESOLUTION_DPI) # save image
 
     # clear up some memory
     del n_expressive_features
@@ -194,7 +194,7 @@ def make_density_plot(density: pd.DataFrame, output_dir: str) -> None:
     axes["legend"].axis("off")
 
     # save image
-    fig.savefig(f"{output_dir}/{evaluate.PLOT_TYPES[1]}.png", dpi = expressive_features_plots.OUTPUT_RESOLUTION_DPI) # save image
+    fig.savefig(f"{output_dir}/{evaluate.PLOT_TYPES[2]}.png", dpi = expressive_features_plots.OUTPUT_RESOLUTION_DPI) # save image
 
     # clear up memory
     del density
@@ -249,7 +249,7 @@ def make_summary_plot(summary: pd.DataFrame, output_dir: str, apply_log: bool = 
     axes["legend"].axis("off")
 
     # save image
-    fig.savefig(f"{output_dir}/{evaluate.PLOT_TYPES[2]}.png", dpi = expressive_features_plots.OUTPUT_RESOLUTION_DPI) # save image
+    fig.savefig(f"{output_dir}/{evaluate.PLOT_TYPES[3]}.png", dpi = expressive_features_plots.OUTPUT_RESOLUTION_DPI) # save image
 
     # return the order from most common to least
     return pd.unique(values = summary[plot_types[0]]["type"]).tolist()
@@ -263,7 +263,7 @@ def make_sparsity_plot(sparsity: pd.DataFrame, output_dir: str, expressive_featu
     relevant_time_units_suffix = [relevant_time_unit + expressive_features_plots.SPARSITY_SUCCESSIVE_SUFFIX for relevant_time_unit in relevant_time_units]
     plot_types = ["total", "mean", "median"]
     plot_type = plot_types[1] # which plot type to display
-    output_filepaths = [f"{output_dir}/{evaluate.PLOT_TYPES[3]}.{suffix}.png" for suffix in ("percentiles", "histograms", "percentiles2")]
+    output_filepaths = [f"{output_dir}/{evaluate.PLOT_TYPES[4]}.{suffix}.png" for suffix in ("percentiles", "histograms", "percentiles2")]
 
     # we have distances between successive expressive features in time_steps, beats, seconds, and as a fraction of the length of the song
     # sparsity = sparsity.drop(index = sparsity.index[-1]) # last row is None, since there is no successive expressive features, so drop it
@@ -274,7 +274,7 @@ def make_sparsity_plot(sparsity: pd.DataFrame, output_dir: str, expressive_featu
     expressive_feature_types.insert(0, all_features_type_name) # add a plot for all expressive features
     step = 0.001
     percentiles = np.arange(start = 0, stop = 100 + step, step = step)
-    pickle_output = f"{output_dir}/{evaluate.PLOT_TYPES[3]}_percentiles.pickle"
+    pickle_output = f"{output_dir}/{evaluate.PLOT_TYPES[4]}_percentiles.pickle"
     if not (exists(pickle_output) and args.resume):
 
         # helper function to calculate various percentiles
@@ -297,7 +297,7 @@ def make_sparsity_plot(sparsity: pd.DataFrame, output_dir: str, expressive_featu
                     out[plot_type][out_column] = np.percentile(a = df_temp[column], q = percentiles)
             return (out, n)
         percentile_values = {expressive_feature_type: {model: calculate_percentiles(df = sparsity[(sparsity["model"] == model) & (sparsity["type"] == expressive_feature_type)], columns = relevant_time_units_suffix) for model in models_with_truth}
-                             for expressive_feature_type in tqdm(iterable = [eft for eft in expressive_feature_types if eft != all_features_type_name], desc = "Calculating Sparsity Percentiles")}
+                             for expressive_feature_type in [eft for eft in expressive_feature_types if eft != all_features_type_name]}
         percentile_values[all_features_type_name] = {model: calculate_percentiles(df = sparsity[sparsity["model"] == model], columns = relevant_time_units) for model in models_with_truth}
     
         # save to pickle file
@@ -544,7 +544,7 @@ if __name__ == "__main__":
     # DISTRIBUTION OF EXPRESSIVE FEATURES
     ##################################################
 
-    for eval_type in evaluate.EVAL_TYPES:
+    for eval_type in tqdm(iterable = evaluate.EVAL_TYPES, desc = "Making Evaluation Plots"):
 
         # make sure plots directory exists
         eval_subdir = f"{eval_dir}/{eval_type}"
