@@ -38,7 +38,7 @@ from read_mscz.music import DIVIDE_BY_ZERO_CONSTANT
 
 DATA_DIR = "/data2/pnlong/musescore/data"
 MODELS_FILEPATH = f"{DATA_DIR}/models.txt"
-OUTPUT_DIR = "/data2/pnlong/musescore/data"
+OUTPUT_DIR = DATA_DIR
 LARGE_PLOTS_DPI = int(1.5 * expressive_features_plots.OUTPUT_RESOLUTION_DPI)
 
 ##################################################
@@ -51,6 +51,7 @@ def parse_args(args = None, namespace = None):
     parser = argparse.ArgumentParser()
     parser.add_argument("-m", "--models", default = MODELS_FILEPATH, type = str, help = ".txt file with a list of directory names for each model")
     parser.add_argument("-o", "--output_dir", default = OUTPUT_DIR, type = str, help = "Output directory")
+    parser.add_argument("-r", "--resume", action = "store_true", help = "Whether or not to recreate data tables.")
     return parser.parse_args(args = args, namespace = namespace)
 ##################################################
 
@@ -61,7 +62,7 @@ def parse_args(args = None, namespace = None):
 def combine_data_tables(models: list, output_filepath: str, is_baseline: bool = False, eval_type: str = None, stem: str = None) -> pd.DataFrame:
 
     # if it already exists, read it in
-    if exists(output_filepath):
+    if exists(output_filepath) and args.resume:
         df = pd.read_csv(filepath_or_buffer = output_filepath, sep = ",", na_values = train.NA_VALUE, header = 0, index_col = False) # read in full table
     
     # create the combined data table
@@ -90,8 +91,8 @@ def combine_data_tables(models: list, output_filepath: str, is_baseline: bool = 
 
 def get_histogram_data_table(data: list, bins: list) -> pd.DataFrame:
     """Gets the necessary data for a histogram in a data table. There are two columns in the output data table: `bins` and `frequency`."""
-    data = pd.cut(x = data, bins = bins, labels = bins[:-1]) # get histogram
-    data = data.groupby(by = "bins").size().reset_index(drop = False).rename(columns = {0: "frequency"})
+    data = pd.DataFrame(data = pd.cut(x = data, bins = bins, labels = bins[:-1])) # get histogram
+    data = data.rename(columns = {data.columns[0]: "bins"}).groupby(by = "bins").size().reset_index(drop = False).rename(columns = {0: "frequency"})
     return data
 
 ##################################################
@@ -119,7 +120,7 @@ def make_n_expressive_features_plot(n_expressive_features: pd.DataFrame, output_
     fig.suptitle("Number of Expressive Features in Data", fontweight = "bold")
 
     # make plot
-    for j, model in models_with_truth:
+    for j, model in enumerate(models_with_truth):
         percentile_values = np.percentile(a = n_expressive_features[n_expressive_features["model"] == model]["n"].tolist(), q = percentiles)
         if apply_log:
             percentile_values = np.log10(percentile_values + DIVIDE_BY_ZERO_CONSTANT)
@@ -214,9 +215,9 @@ def make_summary_plot(summary: pd.DataFrame, output_dir: str, apply_log: bool = 
     if exclude_time_signatures:
         summary = summary[summary["type"] != "TimeSignature"] # exclude time signatures
     summary = {
-        plot_types[0]: summary.groupby(by = ["model", "type"]).sum().reset_index(drop = False).sort_values(by = "size", ascending = False),
-        plot_types[1]: summary.groupby(by = ["model", "type"]).mean().reset_index(drop = False).sort_values(by = "size", ascending = False),
-        plot_types[2]: summary.groupby(by = ["model", "type"]).median().reset_index(drop = False).sort_values(by = "size", ascending = False)
+        plot_types[0]: summary.groupby(by = ["model", "type"]).sum().reset_index(drop = False).sort_values(by = "size", ascending = False).reset_index(drop = True),
+        plot_types[1]: summary.groupby(by = ["model", "type"]).mean().reset_index(drop = False).sort_values(by = "size", ascending = False).reset_index(drop = True),
+        plot_types[2]: summary.groupby(by = ["model", "type"]).median().reset_index(drop = False).sort_values(by = "size", ascending = False).reset_index(drop = True)
         }
     if apply_log:
         summary[plot_types[0]]["size"] = summary[plot_types[0]]["size"].apply(lambda count: np.log10(count + DIVIDE_BY_ZERO_CONSTANT)) # apply log scale to total count
@@ -224,9 +225,9 @@ def make_summary_plot(summary: pd.DataFrame, output_dir: str, apply_log: bool = 
     # create plot
     for i, plot_type in enumerate(plot_types):
         axes[plot_type].xaxis.grid(True)
-        for j, model in models_with_truth:
-            model_summary = summary[summary["model"] == model]
-            axes[plot_type].plot(model_summary[plot_type]["size"], model_summary[plot_type]["type"], label = model, color = expressive_features_plots.LINE_COLORS[j])
+        for j, model in enumerate(models_with_truth):
+            model_summary = summary[plot_type][summary[plot_type]["model"] == model]
+            axes[plot_type].plot(model_summary["size"], model_summary["type"], label = model, color = expressive_features_plots.LINE_COLORS[j])
         del model_summary
         axes[plot_type].set_title(f"{plot_type.title()}")
         axes[plot_type].ticklabel_format(axis = "x", style = "scientific", scilimits = (-1, 3))
@@ -250,11 +251,8 @@ def make_summary_plot(summary: pd.DataFrame, output_dir: str, apply_log: bool = 
     # save image
     fig.savefig(f"{output_dir}/{evaluate.PLOT_TYPES[2]}.png", dpi = expressive_features_plots.OUTPUT_RESOLUTION_DPI) # save image
 
-    # clear up some memory
-    del summary
-
     # return the order from most common to least
-    return summary[plot_types[0]]["type"].tolist()
+    return pd.unique(values = summary[plot_types[0]]["type"]).tolist()
 
 
 def make_sparsity_plot(sparsity: pd.DataFrame, output_dir: str, expressive_feature_types: list, apply_log_percentiles_by_feature: bool = True, apply_log_histogram: bool = True, apply_log_percentiles_by_model: bool = True) -> None:
@@ -277,12 +275,14 @@ def make_sparsity_plot(sparsity: pd.DataFrame, output_dir: str, expressive_featu
     step = 0.001
     percentiles = np.arange(start = 0, stop = 100 + step, step = step)
     pickle_output = f"{output_dir}/{evaluate.PLOT_TYPES[3]}_percentiles.pickle"
-    if not exists(pickle_output):
+    if not (exists(pickle_output) and args.resume):
 
         # helper function to calculate various percentiles
         def calculate_percentiles(df: pd.DataFrame, columns: list) -> tuple:
-            n = len(df) # get number of points
             df = df[~pd.isna(df[columns[0]])] # filter out NA values
+            n = len(df) # get number of points
+            if n == 0:
+                return (None, 0)
             df = df[["path"] + columns] # filter down to only necessary columns
             out_columns = [column.replace(expressive_features_plots.SPARSITY_SUCCESSIVE_SUFFIX, "") for column in columns] # get rid of suffix if necessary
             out = dict(zip(plot_types, utils.rep(x = pd.DataFrame(columns = out_columns), times = len(plot_types)))) # create output dataframe
@@ -328,6 +328,8 @@ def make_sparsity_plot(sparsity: pd.DataFrame, output_dir: str, expressive_featu
         if use_twin_axis_percentiles:
             percentile_right_axis = axes[expressive_feature_type].twinx() # create twin x
         for j, model in enumerate(models_with_truth):
+            if percentile_values[expressive_feature_type][model][0] is None: # if not enough expressive features for sparsity
+                continue
             percentiles_values_current = percentile_values[expressive_feature_type][model][0][plot_type].sort_values(by = relevant_time_units[0])
             if apply_log_percentiles_by_feature: # apply log function
                 for column in relevant_time_units:
@@ -349,7 +351,7 @@ def make_sparsity_plot(sparsity: pd.DataFrame, output_dir: str, expressive_featu
         else: # is not a bottom plot
             # axes[expressive_feature_type].set_xticks([]) # will keep xticks for now
             axes[expressive_feature_type].set_xticklabels([])
-        axes[expressive_feature_type].set_title(f"{utils.split_camel_case(string = expressive_feature_type, sep = ' ').title()} (n = {percentile_values[expressive_feature_type][1]:,})")
+        axes[expressive_feature_type].set_title(f"{utils.split_camel_case(string = expressive_feature_type, sep = ' ').title()} (n = {sum(percentile_values[expressive_feature_type][model][1] for model in models_with_truth):,})")
         axes[expressive_feature_type].grid() # add gridlines
 
     # get legend
@@ -373,7 +375,7 @@ def make_sparsity_plot(sparsity: pd.DataFrame, output_dir: str, expressive_featu
     for expressive_feature_type in expressive_feature_types:
         if use_twin_axis_histogram:
             histogram_right_axis = axes[expressive_feature_type].twinx() # create twin x
-        histogram_values = sparsity[["path"] + relevant_time_units] if expressive_feature_type == all_features_type_name else sparsity[sparsity["type"] == expressive_feature_type][["path"] + relevant_time_units_suffix].rename(columns = dict(zip(relevant_time_units_suffix, relevant_time_units))) # get subset of sparsity
+        histogram_values = sparsity[["model", "path"] + relevant_time_units] if expressive_feature_type == all_features_type_name else sparsity[sparsity["type"] == expressive_feature_type][["model", "path"] + relevant_time_units_suffix].rename(columns = dict(zip(relevant_time_units_suffix, relevant_time_units))) # get subset of sparsity
         if plot_type == "mean":
             histogram_values = histogram_values.groupby(by = ["path", "model"]).mean().reset_index(drop = False)
         elif plot_type == "median":
@@ -394,16 +396,16 @@ def make_sparsity_plot(sparsity: pd.DataFrame, output_dir: str, expressive_featu
                     histogram["frequency"] = np.log10(histogram["frequency"] + DIVIDE_BY_ZERO_CONSTANT)
                 axes[expressive_feature_type].plot(histogram["bins"], histogram["frequency"], label = model, color = expressive_features_plots.LINE_COLORS[j])
         axes[expressive_feature_type].set_xlabel(relevant_time_units[0].title())
-        axes[expressive_feature_type].get_xaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda count, _: f"{int(count):,}")) # add commas
+        axes[expressive_feature_type].get_xaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda count, _: f"{int(count):,}" if (not math.isnan(count)) else "")) # add commas
         if use_twin_axis_histogram:
             histogram_right_axis.set_xlabel(relevant_time_units[1].title())
-            histogram_right_axis.get_xaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda count, _: f"{int(count):,}")) # add commas
-        if is_bottom_plot(expressive_feature_type = expressive_feature_type):
+            histogram_right_axis.get_xaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda count, _: f"{int(count):,}" if (not math.isnan(count)) else "")) # add commas
+        if is_left_plot(expressive_feature_type = expressive_feature_type):
             axes[expressive_feature_type].set_ylabel("Count")
-        axes[expressive_feature_type].get_yaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda count, _: "$10^{" + str(int(np.log10(count))) + "}$" if int(np.log10(count)) >= 3 and apply_log_histogram else f"{int(count):,}")) # add commas
+        axes[expressive_feature_type].get_yaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda count, _: "$10^{" + str(int(np.log10(count))) + "}$" if ((not math.isnan(count)) and (count >= 10e3) and apply_log_histogram) else f"{int(count):,}")) # add commas
         # axes[expressive_feature_type].set_yticks(axes[expressive_feature_type].get_yticks())
         # axes[expressive_feature_type].set_yticklabels(axes[expressive_feature_type].get_yticklabels(), rotation = 0)
-        axes[expressive_feature_type].set_title(f"{utils.split_camel_case(string = expressive_feature_type, sep = ' ').title()} (n = {percentile_values[expressive_feature_type][1]:,})")
+        axes[expressive_feature_type].set_title(f"{utils.split_camel_case(string = expressive_feature_type, sep = ' ').title()} (n = {sum(percentile_values[expressive_feature_type][model][1] for model in models_with_truth):,})")
         axes[expressive_feature_type].grid() # add gridlines
     
     # get legend
@@ -436,7 +438,9 @@ def make_sparsity_plot(sparsity: pd.DataFrame, output_dir: str, expressive_featu
         if use_twin_axis_percentiles:
             percentile_right_axis = axes[model].twinx() # create twin x
         for i, expressive_feature_type in enumerate(expressive_feature_types):
-            percentiles_values_current = percentile_values[expressive_feature_type][0][model].sort_values(by = relevant_time_units[0])
+            if percentile_values[expressive_feature_type][model][0] is None: # if not enough expressive features for sparsity
+                continue
+            percentiles_values_current = percentile_values[expressive_feature_type][model][0][plot_type].sort_values(by = relevant_time_units[0])
             if apply_log_percentiles_by_model: # apply log function
                 for column in relevant_time_units:
                     percentiles_values_current[column] = np.log10(abs(percentiles_values_current[column]) + DIVIDE_BY_ZERO_CONSTANT)
@@ -463,7 +467,7 @@ def make_sparsity_plot(sparsity: pd.DataFrame, output_dir: str, expressive_featu
     # add a legend
     handles, labels = axes[models_with_truth[0]].get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
-    axes["legend"].legend(handles = by_label.values(), labels = list(map(lambda expressive_feature_type: utils.split_camel_case(string = expressive_feature_type, sep = " ").title(), by_label.keys())), loc = "center", fontsize = "medium", title_fontsize = "large", alignment = "center", ncol = 2, title = "Expressive Feature", mode = "expand")
+    axes["legend"].legend(handles = by_label.values(), labels = list(map(lambda expressive_feature_type: utils.split_camel_case(string = expressive_feature_type, sep = " ").title(), by_label.keys())), loc = "center", fontsize = "small", title_fontsize = "medium", alignment = "center", ncol = 1, title = "Expressive Feature", mode = "expand")
     axes["legend"].axis("off")
     
     # save image
@@ -474,6 +478,7 @@ def make_sparsity_plot(sparsity: pd.DataFrame, output_dir: str, expressive_featu
 
     return None
 
+
 def make_perplexity_table(losses_for_perplexity: pd.DataFrame, output_filepath: str):
     """Make a table summarizing perplexities."""
 
@@ -481,7 +486,7 @@ def make_perplexity_table(losses_for_perplexity: pd.DataFrame, output_filepath: 
     losses_for_perplexity = losses_for_perplexity.groupby(by = "model").sum(numeric_only = True).reset_index(drop = False) # summarize per model
 
     # old and new column names
-    losses_for_perplexity_columns = list(losses_for_perplexity.columns[losses_for_perplexity.columns.index("loss_" + train.ALL_STRING):]) # get the loss columns (for renaming)
+    losses_for_perplexity_columns = list(losses_for_perplexity.columns[losses_for_perplexity.columns.values.tolist().index("loss_" + train.ALL_STRING):]) # get the loss columns (for renaming)
     perplexity_columns = list(map(lambda loss_column: loss_column.replace("loss_", "ppl_"), losses_for_perplexity_columns)) # get the new perplexity column names
 
     # compute perplexity
@@ -602,6 +607,8 @@ if __name__ == "__main__":
                                                     stem = f"eval_{evaluate.PLOT_TYPES[5]}")
         _ = make_perplexity_table(losses_for_perplexity = losses_for_perplexity, output_filepath = f"{eval_subdir}/eval_{evaluate.PLOT_TYPES[5]}.summary.csv")
         del losses_for_perplexity
+
+        plt.close("all")
 
     ##################################################
 

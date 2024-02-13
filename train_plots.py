@@ -21,6 +21,7 @@ import matplotlib.pyplot as plt
 import utils
 import train
 import expressive_features_plots
+import evaluate_baseline
 
 ##################################################
 
@@ -51,6 +52,8 @@ def parse_args(args = None, namespace = None):
 
 def make_model_name_fancy(model: str) -> str:
     """Return a prettified version of the model name for legend."""
+    if model == evaluate_baseline.TRUTH_DIR_STEM:
+        return "Truth"
     model_name = model.split("_")
     model_name = model_name[0].title() + (", Conditional" if "conditional" in model else "") + ": " + model_name[-1]
     return model_name
