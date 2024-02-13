@@ -208,7 +208,7 @@ def make_summary_plot(summary: pd.DataFrame, output_dir: str, apply_log: bool = 
     plot_types = ["total", "mean", "median"]
 
     # create figure
-    fig, axes = plt.subplot_mosaic(mosaic = [np.repeat(a = plot_types, repeats = 2).tolist() + ["legend"]], constrained_layout = True, figsize = (12, 8))
+    fig, axes = plt.subplot_mosaic(mosaic = [np.repeat(a = plot_types, repeats = 1).tolist() + ["legend"]], constrained_layout = True, figsize = (12, 8))
     fig.suptitle("Summary of Present Expressive Features", fontweight = "bold")
 
     # load in table
@@ -226,8 +226,8 @@ def make_summary_plot(summary: pd.DataFrame, output_dir: str, apply_log: bool = 
     for i, plot_type in enumerate(plot_types):
         axes[plot_type].xaxis.grid(True)
         for j, model in enumerate(models_with_truth):
-            model_summary = summary[plot_type][summary[plot_type]["model"] == model]
-            axes[plot_type].plot(model_summary["size"], model_summary["type"], label = model, color = expressive_features_plots.LINE_COLORS[j])
+            model_summary = summary[plot_type][summary[plot_type]["model"] == model][::-1]
+            axes[plot_type].scatter(model_summary["size"], model_summary["type"], label = model, color = expressive_features_plots.LINE_COLORS[j])
         del model_summary
         axes[plot_type].set_title(f"{plot_type.title()}")
         axes[plot_type].ticklabel_format(axis = "x", style = "scientific", scilimits = (-1, 3))

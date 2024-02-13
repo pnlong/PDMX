@@ -55,7 +55,7 @@ def make_model_name_fancy(model: str) -> str:
     if model == evaluate_baseline.TRUTH_DIR_STEM:
         return "Truth"
     model_name = model.split("_")
-    model_name = model_name[0].title() + (", Conditional" if "conditional" in model else "") + ": " + model_name[-1]
+    model_name = model_name[0].title() + (" (C)" if "conditional" in model else "") + ": " + model_name[-1]
     return model_name
 
 def make_plot(partition: str, metric: str, mask: str, output_dir: str):
