@@ -68,7 +68,7 @@ set -e
 
 printf "============================   ${model^^}   ============================\n"
 
-if [[ "${model}" == "${default_model}" ]]; then
+if [[ ${model} == "truth" ]]; then
 
     python ${software_dir}/evaluate_baseline.py --paths ${paths_test} --encoding ${encoding} --n_samples ${n_samples} --truth --gpu ${gpu} --batch_size ${batch_size}
     python ${software_dir}/evaluate.py --paths ${paths_test} --encoding ${encoding} --n_samples ${n_samples} --truth --gpu ${gpu} --batch_size ${batch_size}
