@@ -15,6 +15,7 @@ import argparse
 from itertools import combinations
 from read_mscz.classes import DEFAULT_VELOCITY
 from utils import unique
+from sys import exit
 ##################################################
 
 
@@ -22,8 +23,11 @@ from utils import unique
 ##################################################
 
 RESOLUTION = 12
-MAX_BEAT = 1024
+MAX_BEAT = 1024 # in beats
+MAX_TIME = 100 # in seconds
+TIME_STEP = 0.01 # in seconds
 MAX_DURATION = 768  # remember to modify known durations as well!
+MAX_DURATION_ABSOLUTE_TIME = 10 # in seconds
 MAX_VELOCITY = 127
 DEFAULT_VALUE_CODE = -1
 N_NOTES = 128
@@ -73,6 +77,16 @@ CODE_BEAT_MAP = utils.inverse_dict(BEAT_CODE_MAP)
 POSITION_CODE_MAP = {i: i + 1 for i in range(RESOLUTION)}
 POSITION_CODE_MAP[None] = 0
 CODE_POSITION_MAP = utils.inverse_dict(POSITION_CODE_MAP)
+
+##################################################
+
+
+# TIME
+##################################################
+
+TIME_CODE_MAP = {time: i + 1 for i, time in enumerate(np.arange(start = 0, stop = MAX_TIME + TIME_STEP, step = TIME_STEP))}
+TIME_CODE_MAP[None] = 0
+CODE_TIME_MAP = utils.inverse_dict(TIME_CODE_MAP)
 
 ##################################################
 
@@ -299,6 +313,7 @@ CODE_VALUE_MAP = utils.inverse_dict(VALUE_CODE_MAP)
 # DURATION
 ##################################################
 
+# metrical time
 KNOWN_DURATIONS = [
     1,
     2,
@@ -343,6 +358,11 @@ CODE_DURATION_MAP = {
     i + 1: duration for i, duration in enumerate(KNOWN_DURATIONS)
 }
 CODE_DURATION_MAP[0] = None
+
+# absolute time
+DURATION_CODE_MAP_ABSOLUTE_TIME = {time: i + 1 for i, time in enumerate(np.arange(start = 0, stop = MAX_DURATION_ABSOLUTE_TIME, step = TIME_STEP))}
+DURATION_CODE_MAP_ABSOLUTE_TIME[None] = 0
+CODE_DURATION_MAP_ABSOLUTE_TIME = utils.inverse_dict(DURATION_CODE_MAP_ABSOLUTE_TIME)
 
 ##################################################
 
@@ -599,15 +619,17 @@ CODE_VELOCITY_MAP = utils.inverse_dict(VELOCITY_CODE_MAP)
 # TOKEN COUNTS
 ##################################################
 
-N_TOKENS = [
-    max(TYPE_CODE_MAP.values()) + 1,
-    max(BEAT_CODE_MAP.values()) + 1,
-    max(POSITION_CODE_MAP.values()) + 1,
-    max(VALUE_CODE_MAP.values()) + 1,
-    max(DURATION_CODE_MAP.values()) + 1,
-    max(INSTRUMENT_CODE_MAP.values()) + 1,
-    max(VELOCITY_CODE_MAP.values()) + 1,
-]
+N_TOKENS = {
+    "type": len(TYPE_CODE_MAP),
+    "beat": len(BEAT_CODE_MAP),
+    "position": len(POSITION_CODE_MAP),
+    "time": len(TIME_CODE_MAP),
+    "value": len(VALUE_CODE_MAP),
+    "duration": len(DURATION_CODE_MAP),
+    "duration_absolute_time": len(DURATION_CODE_MAP_ABSOLUTE_TIME),
+    "instrument": len(INSTRUMENT_CODE_MAP),
+    "velocity": len(VELOCITY_CODE_MAP),
+}
 
 ##################################################
 
@@ -615,35 +637,60 @@ N_TOKENS = [
 # ENCODING-GENERATING FUNCTIONS
 ##################################################
 
-def get_encoding(include_velocity: bool = False) -> dict:
+def get_encoding(include_velocity: bool = False, use_absolute_time: bool = False) -> dict:
     """Return the encoding configurations."""
+
+    # base
     encoding = {
         "resolution": RESOLUTION,
-        "max_beat": MAX_BEAT,
-        "max_duration": MAX_DURATION,
-        "dimensions": DIMENSIONS[:DIMENSIONS.index("time")],
+        "max_duration": float(MAX_DURATION_ABSOLUTE_TIME) if use_absolute_time else int(MAX_DURATION),
         "n_tokens": N_TOKENS,
+        "dimensions": DIMENSIONS[:DIMENSIONS.index("time")],
         "type_code_map": TYPE_CODE_MAP,
-        "beat_code_map": BEAT_CODE_MAP,
-        "position_code_map": POSITION_CODE_MAP,
         "value_code_map": VALUE_CODE_MAP,
-        "duration_code_map": DURATION_CODE_MAP,
         "instrument_code_map": INSTRUMENT_CODE_MAP,
         "code_type_map": CODE_TYPE_MAP,
-        "code_beat_map": CODE_BEAT_MAP,
-        "code_position_map": CODE_POSITION_MAP,
         "code_value_map": CODE_VALUE_MAP,
-        "code_duration_map": CODE_DURATION_MAP,
         "code_instrument_map": CODE_INSTRUMENT_MAP,
         "program_instrument_map": PROGRAM_INSTRUMENT_MAP,
-        "instrument_program_map": INSTRUMENT_PROGRAM_MAP,
-        "velocity_code_map": VELOCITY_CODE_MAP,
-        "code_velocity_map": CODE_VELOCITY_MAP,
+        "instrument_program_map": INSTRUMENT_PROGRAM_MAP
     }
-    if not include_velocity:
-        del encoding["velocity_code_map"], encoding["code_velocity_map"]
+
+    # absolute time
+    if use_absolute_time: # seconds
+        temporals = {
+            "max_time": float(MAX_TIME),
+            "time_code_map": TIME_CODE_MAP,
+            "duration_code_map": DURATION_CODE_MAP_ABSOLUTE_TIME,
+            "code_time_map": CODE_TIME_MAP,
+            "code_duration_map": CODE_DURATION_MAP_ABSOLUTE_TIME
+        }
+        encoding["dimensions"].remove("position") # remove position column
+        encoding["dimensions"][encoding["dimensions"].index("beat")] = "time" # rename beat column to time
+        encoding["n_tokens"]["duration"] = encoding["n_tokens"]["duration_absolute_time"] # set the number of tokens duration to absolute time
+    else: # beats and position
+        temporals = {
+            "max_beat": int(MAX_BEAT),
+            "beat_code_map": BEAT_CODE_MAP,
+            "position_code_map": POSITION_CODE_MAP,
+            "duration_code_map": DURATION_CODE_MAP,
+            "code_beat_map": CODE_BEAT_MAP,
+            "code_position_map": CODE_POSITION_MAP,
+            "code_duration_map": CODE_DURATION_MAP,
+        }
+    encoding.update(temporals)
+
+    # velocity
+    if include_velocity:
+        encoding["velocity_code_map"] = VELOCITY_CODE_MAP
+        encoding["code_velocity_map"] = CODE_VELOCITY_MAP
+    else:
         encoding["dimensions"].remove("velocity") # remove velocity from dimensions
-        encoding["n_tokens"] = encoding["n_tokens"][:-1] # remove token count for velocity
+        del encoding["n_tokens"]["velocity"] # remove token count for velocity
+    
+    # make sure encoding["n_tokens"] is a list
+    encoding["n_tokens"] = [encoding["n_tokens"][dim] for dim in encoding["dimensions"]]
+    
     return encoding
 
 
@@ -653,10 +700,12 @@ def load_encoding(filepath: str) -> dict:
     # load in encoding from json
     encoding = utils.load_json(filepath = filepath)
 
+    # determine include_velocity and use_absolute_time
+    include_velocity = ("velocity" in encoding["dimensions"])
+    use_absolute_time = not (("beat" in encoding["dimensions"]) and ("position" in encoding["dimensions"]))
+
     # constant values
     encoding["resolution"] = int(encoding["resolution"])
-    encoding["max_beat"] = int(encoding["max_beat"])
-    encoding["max_duration"] = int(encoding["max_duration"])
     encoding["n_tokens"] = list(map(int, encoding["n_tokens"]))
     encoding["dimensions"] = list(map(str, encoding["dimensions"]))
 
@@ -670,21 +719,31 @@ def load_encoding(filepath: str) -> dict:
     encoding["instrument_code_map"] = {str(k) if k not in NA_VALUES else None: int(v) for k, v in encoding["instrument_code_map"].items()}
     encoding["code_instrument_map"] = {int(k): str(v) if v not in NA_VALUES else None for k, v in encoding["code_instrument_map"].items()}
 
-    # all integer values
-    for key in ("beat_code_map", "position_code_map", "duration_code_map", "code_beat_map", "code_position_map", "code_duration_map"):
-        encoding[key] = {int(k) if k not in NA_VALUES else None: int(v) if v not in NA_VALUES else None for k, v in encoding[key].items()}
+    # temporal fields
+    if use_absolute_time: # seconds
+        encoding["max_duration"] = float(encoding["max_duration"])
+        encoding["max_time"] = float(encoding["max_time"])
+        for field in ("time", "duration"):
+            key = f"{field}_code_map"
+            encoding[key] = {float(k) if k not in NA_VALUES else None: int(v) if v not in NA_VALUES else None for k, v in encoding[key].items()}
+            key = f"code_{field}_map"
+            encoding[key] = {int(k) if k not in NA_VALUES else None: float(v) if v not in NA_VALUES else None for k, v in encoding[key].items()}
+    else: # beats and position
+        encoding["max_duration"] = int(encoding["max_duration"])
+        encoding["max_beat"] = int(encoding["max_beat"])
+        for field in ("beat", "position", "duration"):
+            for key in (f"{field}_code_map", f"code_{field}_map"):
+                encoding[key] = {int(k) if k not in NA_VALUES else None: int(v) if v not in NA_VALUES else None for k, v in encoding[key].items()}
 
     # velocity
-    velocity_maps = {"velocity_code_map", "code_velocity_map"}
-    if all((velocity_map in encoding.keys() for velocity_map in velocity_maps)):
-        for key in velocity_maps:
+    if include_velocity:
+        for key in ("velocity_code_map", "code_velocity_map"):
             encoding[key] = {int(k) if k not in NA_VALUES else None: int(v) if v not in NA_VALUES else None for k, v in encoding[key].items()}
-    del velocity_maps
 
     # values
     encoding["value_code_map"] = {str(k) if k not in NA_VALUES else None: int(v) for k, v in encoding["value_code_map"].items()}
     encoding["code_value_map"] = {int(k): str(v) if v not in NA_VALUES else None for k, v in encoding["code_value_map"].items()}
-    for i in range(128): # convert integer values
+    for i in range(N_NOTES): # convert integer values
         encoding["value_code_map"][i] = int(encoding["value_code_map"][str(i)])
         del encoding["value_code_map"][str(i)]
         encoding["code_value_map"][i + 1] = int(encoding["code_value_map"][i + 1])
@@ -694,21 +753,35 @@ def load_encoding(filepath: str) -> dict:
 ##################################################
 
 
+# PARSE ARGUMENTS
+##################################################
+def parse_args(args = None, namespace = None):
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(prog = "Representation", description = "Test Encoding/Decoding mechanisms for MuseScore data.")
+    parser.add_argument("-o", "--output_dir", type = str, default = None, help = "Directory in which to store the encoding file")
+    parser.add_argument("-v", "--velocity", action = "store_true", help = "Whether to add a velocity field.")
+    parser.add_argument("-a", "--absolute_time", action = "store_true", help = "Whether or not to use absolute (seconds) or metrical (beats) time.")
+    return parser.parse_args(args = args, namespace = namespace)
+##################################################
+
+
 # MAIN METHOD
 ##################################################
 
 if __name__ == "__main__":
 
-    # get arguments
-    parser = argparse.ArgumentParser(prog = "Representation", description = "Test Encoding/Decoding mechanisms for MuseScore data.")
-    parser.add_argument("-o", "--output_dir", type = str, default = ENCODING_DIR, help = "Directory in which to store the encoding file")
-    parser.add_argument("-v", "--velocity", action = "store_true", help = "Whether to add a velocity field.")
-    args = parser.parse_args()
+    # parse arguments
+    args = parse_args()
 
     # get the encoding
-    encoding = get_encoding(include_velocity = args.velocity)
+    encoding = get_encoding(include_velocity = args.velocity, use_absolute_time = args.absolute_time)
 
     # save the encoding
+    if args.output_dir is None:
+
+        print(encoding) # print to stdout
+        exit(0)
+
     encoding_filepath = f"{args.output_dir}/{ENCODING_BASENAME}"
     utils.save_json(filepath = encoding_filepath, data = encoding)
     print(f"Encoding saved to {encoding_filepath}")

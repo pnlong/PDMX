@@ -374,8 +374,8 @@ def to_mido_track(track: Track, music: "BetterMusic", channel: int = None, use_n
                         end_velocity *= VELOCITY_INCREASE_FACTOR
                     elif any((annotation.annotation.subtype.startswith(prefix) for prefix in ("smorz", "dim", "decr"))): # decrease-volume; smorzando, diminuendo, decrescendo
                         end_velocity /= VELOCITY_INCREASE_FACTOR
-                    duration = annotation.annotation.duration
-                    annotation.group = lambda time: (((end_velocity - note.velocity) / ((annotation.time + duration) - note.time)) * (time - note.time)) + note.velocity # we will use group to store a lambda function to calculate velocity
+                    denominator = (annotation.time + annotation.annotation.duration) - note.time
+                    annotation.group = lambda time: (((end_velocity - note.velocity) / denominator) * (time - note.time)) + note.velocity if (denominator != 0) else end_velocity # we will use group to store a lambda function to calculate velocity
                 note.velocity += annotation.group(time = note.time)
             # SlurSpanner
             elif annotation.annotation.__class__.__name__ == "SlurSpanner":

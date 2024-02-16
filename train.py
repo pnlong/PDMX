@@ -217,14 +217,11 @@ if __name__ == "__main__":
     # load the encoding
     encoding = representation.load_encoding(filepath = args.encoding) if exists(args.encoding) else representation.get_encoding()
 
-    # deal with velocity field
-    include_velocity = ("velocity" in encoding["dimensions"])
-
     # create the dataset and data loader
     print(f"Creating the data loader...")
     dataset = {
-        RELEVANT_PARTITIONS[0]: MusicDataset(paths = args.paths_train, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, is_baseline = args.baseline, max_seq_len = args.max_seq_len, max_beat = args.max_beat, use_augmentation = args.aug, include_velocity = include_velocity),
-        RELEVANT_PARTITIONS[1]: MusicDataset(paths = args.paths_valid, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, is_baseline = args.baseline, max_seq_len = args.max_seq_len, max_beat = args.max_beat, use_augmentation = args.aug, include_velocity = include_velocity)
+        RELEVANT_PARTITIONS[0]: MusicDataset(paths = args.paths_train, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, is_baseline = args.baseline, max_seq_len = args.max_seq_len, max_beat = args.max_beat, use_augmentation = args.aug),
+        RELEVANT_PARTITIONS[1]: MusicDataset(paths = args.paths_valid, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, is_baseline = args.baseline, max_seq_len = args.max_seq_len, max_beat = args.max_beat, use_augmentation = args.aug)
         }
     data_loader = {
         RELEVANT_PARTITIONS[0]: torch.utils.data.DataLoader(dataset = dataset[RELEVANT_PARTITIONS[0]], batch_size = args.batch_size, shuffle = True, num_workers = args.jobs, collate_fn = MusicDataset.collate),

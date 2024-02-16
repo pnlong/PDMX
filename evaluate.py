@@ -18,7 +18,8 @@ from os.path import exists, dirname
 from os import makedirs
 from typing import Union
 import math
-import multiprocessing, multiprocess
+import multiprocessing
+from glob import iglob
 
 import numpy as np
 import pandas as pd
@@ -148,7 +149,7 @@ def loss_for_perplexity(model, seq: torch.tensor, mask: torch.tensor, stem: str,
 
     # get and wrangle losses
     _, losses_for_perplexity = model(seq = seq, mask = mask, return_list = True, reduce = False, return_output = False)
-    losses_for_perplexity = torch.sum(input = losses_for_perplexity.cpu().squeeze(dim = 0), dim = 0).tolist() # get rid of batch size dimension, then sum across sequence length
+    losses_for_perplexity = torch.mean(input = losses_for_perplexity.cpu().squeeze(dim = 0), dim = 0).tolist() # get rid of batch size dimension, then sum across sequence length
 
     # convert to dataframe and output
     losses_for_perplexity = pd.DataFrame(data = [[stem, sum(losses_for_perplexity)] + losses_for_perplexity], columns = loss_for_perplexity_columns) # convert to dataframe
@@ -183,7 +184,6 @@ def evaluate(
     # encode.save_csv_codes(filepath = f"{path}.csv", data = data) # save as a .csv file
     music = decode.decode(codes = data, encoding = encoding) # convert to a BetterMusic object
     music.trim(end = music.resolution * 64) # trim the music
-    # music.save_json(path = f"{path}.json") # save as a BetterMusic .json file
 
     # extract data
     data = encode.extract_data(music = music, use_implied_duration = False, include_annotation_class_name = True) # duration doesn't matter for our purposes here
@@ -193,6 +193,15 @@ def evaluate(
     expressive_features[parse_mscz.TIME_IN_SECONDS_COLUMN_NAME] = expressive_features["time"].apply(lambda time: music.metrical_time_to_absolute_time(time_steps = time)) # add time in seconds column
     expressive_features = expressive_features[parse_mscz.EXPRESSIVE_FEATURE_COLUMNS] # reorder columns
     expressive_features["type"] = expressive_features["type"].apply(lambda expressive_feature_type: expressive_feature_type.replace("Spanner", ""))
+
+    # for scenarios with no time or key signature changes
+    time_signatures = (expressive_features["type"] == "TimeSignature")
+    if sum(time_signatures) <= 1:
+        expressive_features = expressive_features[~time_signatures]
+    key_signatures = (expressive_features["type"] == "KeySignature")
+    if sum(key_signatures) <= 1:
+        expressive_features = expressive_features[~key_signatures]
+    del time_signatures, key_signatures
 
     # baseline metrics
     baseline(music = music, stem = stem, output_filepath = output_filepaths[0])
@@ -247,9 +256,6 @@ if __name__ == "__main__":
     # load the encoding
     encoding = representation.load_encoding(filepath = args.encoding) if exists(args.encoding) else representation.get_encoding()
 
-    # deal with velocity field
-    include_velocity = ("velocity" in encoding["dimensions"])
-
     # determine columns
     if not args.truth:
         LOSS_FOR_PERPLEXITY_COLUMNS = ["path"] + [f"loss_{field}" for field in [train.ALL_STRING] + encoding["dimensions"]]
@@ -275,8 +281,6 @@ if __name__ == "__main__":
         
     # set up the logger
     logging.basicConfig(level = logging.INFO, format = "%(message)s", handlers = [logging.FileHandler(filename = f"{EVAL_DIR}/evaluate.log", mode = "a"), logging.StreamHandler(stream = sys.stdout)])
-    if not args.truth: # for multiprocessing with cuda objects
-        multiprocess.set_start_method("spawn")
 
     # log command called and arguments, save arguments
     logging.info(f"Running command: python {' '.join(sys.argv)}")
@@ -296,7 +300,7 @@ if __name__ == "__main__":
 
         # create the dataset
         logging.info(f"Creating the data loader...")
-        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = train.DEFAULT_MAX_SEQ_LEN, max_beat = train.DEFAULT_MAX_BEAT, use_augmentation = False, include_velocity = include_velocity)
+        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = train.DEFAULT_MAX_SEQ_LEN, max_beat = train.DEFAULT_MAX_BEAT, use_augmentation = False)
 
     # load model if necessary
     else:
@@ -316,7 +320,7 @@ if __name__ == "__main__":
         logging.info(f"Creating the data loader...")
         max_beat = train_args["max_beat"]
         max_seq_len = train_args["max_seq_len"]
-        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = max_seq_len, max_beat = max_beat, use_augmentation = False, is_baseline = ("baseline" in args.output_dir), include_velocity = include_velocity)
+        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = max_seq_len, max_beat = max_beat, use_augmentation = False, is_baseline = ("baseline" in args.output_dir))
 
         # create the model
         logging.info(f"Creating the model...")
@@ -443,34 +447,30 @@ if __name__ == "__main__":
                     # GENERATION
                     ##################################################
 
-                    # generate new samples
-                    generated = model.generate(
-                        seq_in = prefix,
-                        seq_len = args.seq_len,
-                        eos_token = eos,
-                        temperature = args.temperature,
-                        filter_logits_fn = args.filter,
-                        filter_thres = args.filter_threshold,
-                        monotonicity_dim = ("type", "beat"),
-                        notes_only = notes_only
-                    )
-                    generated = torch.cat(tensors = (prefix, generated), dim = 1).cpu().numpy() # wrangle a bit
+                    eval_dir = eval_output_dirs[eval_type]
+                    generated_output_filepaths = iglob(pathname = f"{eval_dir}/{stem}_*.npy")
+                    if not all((exists(generated_output_filepath) for generated_output_filepath in generated_output_filepaths)):
+
+                        # generate new samples
+                        generated = model.generate(
+                            seq_in = prefix,
+                            seq_len = args.seq_len,
+                            eos_token = eos,
+                            temperature = args.temperature,
+                            filter_logits_fn = args.filter,
+                            filter_thres = args.filter_threshold,
+                            monotonicity_dim = ("type", "beat"),
+                            notes_only = notes_only
+                        )
+                        generated = torch.cat(tensors = (prefix, generated), dim = 1).cpu().numpy() # wrangle a bit
+
+                    else:
+
+                        # load in previously generated samples
+                        generated = np.stack(arrays = [np.load(file = generated_output_filepath) for generated_output_filepath in generated_output_filepaths], axis = 0)
 
                     # add to results
-                    def evaluate_helper( # to work with multiprocess.Pool, since separate processes cannot share the same globals
-                            j: int,
-                            batch: torch.tensor = batch,
-                            device: torch.device = device,
-                            notes_only: bool = notes_only,
-                            generated: torch.tensor = generated,
-                            encoding: dict = encoding,
-                            stem: str = stem,
-                            eval_output_dirs: list = eval_output_dirs,
-                            output_filepaths: list = output_filepaths,
-                            eval_type: str = eval_type,
-                            model: music_x_transformers.MusicXTransformer = model,
-                            loss_for_perplexity_columns: list = LOSS_FOR_PERPLEXITY_COLUMNS
-                            ):
+                    def evaluate_helper(j: int):
                         # setup for loss for perplexity calculations
                         seq = batch["seq"][j].unsqueeze(dim = 0).to(device)
                         mask = batch["mask"][j].unsqueeze(dim = 0).to(device)
@@ -483,11 +483,10 @@ if __name__ == "__main__":
                         evaluate(data = generated[j],
                                  encoding = encoding,
                                  stem = f"{stem}_{j}",
-                                 eval_dir = eval_output_dirs[eval_type],
+                                 eval_dir = eval_dir,
                                  output_filepaths = output_filepaths[eval_type],
                                  calculate_loss_for_perplexity = True,
-                                 model = model, seq = seq, mask = mask, loss_for_perplexity_columns = loss_for_perplexity_columns
-                                 )
+                                 model = model, seq = seq, mask = mask, loss_for_perplexity_columns = LOSS_FOR_PERPLEXITY_COLUMNS)
                     for j in range(len(generated)):
                         evaluate_helper(j = j)
                     

@@ -20,6 +20,7 @@ from os import mkdir, makedirs
 from typing import Union, List
 import math
 import multiprocessing
+from glob import iglob
 
 import muspy
 import numpy as np
@@ -257,11 +258,11 @@ def evaluate(data: Union[np.array, torch.tensor], encoding: dict, stem: str, eva
     """Evaluate the results."""
 
     # save results
-    np.save(file = f"{eval_dir}/{stem}.npy", arr = data) # save as a numpy array
-    # encode.save_csv_codes(filepath = f"{eval_dir}/{stem}.csv", data = data) # save as a .csv file
+    path = f"{eval_dir}/{stem}"
+    np.save(file = f"{path}.npy", arr = data) # save as a numpy array
+    # encode.save_csv_codes(filepath = f"{path}.csv", data = data) # save as a .csv file
     music = decode.decode(codes = data, encoding = encoding) # convert to a BetterMusic object
     music.trim(end = music.resolution * 64) # trim the music
-    # music.save_json(path = f"{eval_dir}/{stem}.json") # save as a BetterMusic .json file
 
     # return a dictionary
     if len(music.tracks) == 0:
@@ -317,14 +318,11 @@ if __name__ == "__main__":
     # load the encoding
     encoding = representation.load_encoding(filepath = args.encoding) if exists(args.encoding) else representation.get_encoding()
 
-    # deal with velocity field
-    include_velocity = ("velocity" in encoding["dimensions"])
-
     if args.truth:
 
         # create the dataset
         logging.info(f"Creating the data loader...")
-        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = DEFAULT_MAX_SEQ_LEN, max_beat = DEFAULT_MAX_BEAT, use_augmentation = False, include_velocity = include_velocity)
+        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = DEFAULT_MAX_SEQ_LEN, max_beat = DEFAULT_MAX_BEAT, use_augmentation = False)
 
     # load model if necessary
     else:
@@ -342,7 +340,7 @@ if __name__ == "__main__":
 
         # create the dataset
         logging.info(f"Creating the data loader...")
-        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = train_args["max_seq_len"], max_beat = train_args["max_beat"], use_augmentation = False, is_baseline = ("baseline" in args.output_dir), include_velocity = include_velocity)
+        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = train_args["max_seq_len"], max_beat = train_args["max_beat"], use_augmentation = False, is_baseline = ("baseline" in args.output_dir))
 
         # create the model
         logging.info(f"Creating the model...")
@@ -436,26 +434,35 @@ if __name__ == "__main__":
                 # UNCONDITIONED GENERATION
                 ##################################################
 
-                # get output start tokens
-                prefix = torch.repeat_interleave(input = torch.tensor(data = [sos] + ([0] * (len(encoding["dimensions"]) - 1)), dtype = torch.long, device = device).reshape(1, 1, len(encoding["dimensions"])), repeats = args.batch_size, dim = 0)
+                eval_dir = eval_output_dir
+                generated_output_filepaths = iglob(pathname = f"{eval_dir}/{stem}_*.npy")
+                if not all((exists(generated_output_filepath) for generated_output_filepath in generated_output_filepaths)):
 
-                # generate new samples
-                generated = model.generate(
-                    seq_in = prefix,
-                    seq_len = args.seq_len,
-                    eos_token = eos,
-                    temperature = args.temperature,
-                    filter_logits_fn = args.filter,
-                    filter_thres = args.filter_thres,
-                    monotonicity_dim = ("type", "beat"),
-                    notes_only = True
-                )
-                # kwargs = {"eos_token": eos, "temperature": args.temperature, "filter_logits_fn": args.filter, "filter_thres": args.filter_thres, "monotonicity_dim": ("type", "beat")}
-                generated = torch.cat(tensors = (prefix, generated), dim = 1).cpu().numpy()
+                    # get output start tokens
+                    prefix = torch.repeat_interleave(input = torch.tensor(data = [sos] + ([0] * (len(encoding["dimensions"]) - 1)), dtype = torch.long, device = device).reshape(1, 1, len(encoding["dimensions"])), repeats = args.batch_size, dim = 0)
+
+                    # generate new samples
+                    generated = model.generate(
+                        seq_in = prefix,
+                        seq_len = args.seq_len,
+                        eos_token = eos,
+                        temperature = args.temperature,
+                        filter_logits_fn = args.filter,
+                        filter_thres = args.filter_thres,
+                        monotonicity_dim = ("type", "beat"),
+                        notes_only = True
+                    )
+                    # kwargs = {"eos_token": eos, "temperature": args.temperature, "filter_logits_fn": args.filter, "filter_thres": args.filter_thres, "monotonicity_dim": ("type", "beat")}
+                    generated = torch.cat(tensors = (prefix, generated), dim = 1).cpu().numpy()
+
+                else:
+                
+                    # load in previously generated samples
+                    generated = np.stack(arrays = [np.load(file = generated_output_filepath) for generated_output_filepath in generated_output_filepaths], axis = 0)
 
                 # add to results
                 def evaluate_helper(j: int) -> dict:
-                    return evaluate(data = generated[j], encoding = encoding, stem = f"{stem}_{j}", eval_dir = eval_output_dir)
+                    return evaluate(data = generated[j], encoding = encoding, stem = f"{stem}_{j}", eval_dir = eval_dir)
                 with multiprocessing.Pool(processes = args.jobs) as pool:
                     results = pool.map(func = evaluate_helper, iterable = range(len(generated)), chunksize = chunk_size)
 

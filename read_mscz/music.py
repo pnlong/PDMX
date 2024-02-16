@@ -25,8 +25,10 @@ from re import sub
 import yaml # for printing
 import json
 import gzip
+import utils
+import numpy as np
 
-from .output import write_midi, write_audio, write_musicxml
+from .output import write_midi, write_audio, write_musicxml, get_expressive_features_per_note, VELOCITY_INCREASE_FACTOR, ACCENT_VELOCITY_INCREASE_FACTOR, PEDAL_DURATION_CHANGE_FACTOR, STACCATO_DURATION_CHANGE_FACTOR
 ##################################################
 
 
@@ -514,6 +516,90 @@ class BetterMusic(muspy.music.Music):
             return write_audio(path = path, music = self, **kwargs)
         else:
             raise ValueError(f"Expect `kind` to be 'midi', 'musicxml', or 'audio', but got : {kind}.")
+
+    ##################################################
+        
+
+    # REALIZE EXPRESSIVE FEATURES TO THEIR FULLEST EXTENT
+    ##################################################
+
+    def realize_expressive_features(self):
+        """Changes note velocities and durations to reflect expressive features.
+        BE CAREFUL USING BEFORE WRITE(), AS WRITE IMPLEMENTS ITS ONLY EXPRESSIVE FEATURE REALIZATION!!!
+        """
+
+        # realize velocity information
+        # music = deepcopy(music) # don't alter the original object
+        for i in range(len(self.tracks)):
+            note_times = sorted(utils.unique(l = [note.time for note in self.tracks[i].notes])) # times of notes, sorted ascending, removing duplicates
+            expressive_features = get_expressive_features_per_note(note_times = note_times, all_annotations = self.tracks[i].annotations + self.annotations) # dictionary where keys are time and values are expressive feature annotation objects
+            # note on and note off messages
+            for note in self.tracks[i].notes:
+                note.velocity = expressive_features[note.time][0].annotation.velocity # the first index is always the dynamic
+                for annotation in expressive_features[note.time][1:]: # skip the first index, since we just dealt with it
+                    # ensure that values are valid
+                    if hasattr(annotation.annotation, "subtype"): # make sure subtype field is not none
+                        if annotation.annotation.subtype is None:
+                            continue
+                    # HairPinSpanner and TempoSpanner; changes in velocity
+                    if (annotation.annotation.__class__.__name__ in ("HairPinSpanner", "TempoSpanner")): # some TempoSpanners involve a velocity change, so that is included here as well
+                        if annotation.group is None: # since we aren't storing anything there anyways
+                            end_velocity = note.velocity # default is no change
+                            if any((annotation.annotation.subtype.startswith(prefix) for prefix in ("allarg", "cr"))): # increase-volume; allargando, crescendo
+                                end_velocity *= VELOCITY_INCREASE_FACTOR
+                            elif any((annotation.annotation.subtype.startswith(prefix) for prefix in ("smorz", "dim", "decr"))): # decrease-volume; smorzando, diminuendo, decrescendo
+                                end_velocity /= VELOCITY_INCREASE_FACTOR
+                            denominator = (annotation.time + annotation.annotation.duration) - note.time
+                            annotation.group = lambda time: (((end_velocity - note.velocity) / denominator) * (time - note.time)) + note.velocity if (denominator != 0) else end_velocity # we will use group to store a lambda function to calculate velocity
+                        note.velocity += annotation.group(time = note.time)
+                    # SlurSpanner
+                    elif annotation.annotation.__class__.__name__ == "SlurSpanner":
+                        current_note_time_index = note_times.index(note.time)
+                        if current_note_time_index < len(note_times) - 1: # elsewise, there is no next note to slur to
+                            note.duration = note_times[current_note_time_index + 1] - note_times[current_note_time_index]
+                        del current_note_time_index
+                    # PedalSpanner
+                    elif annotation.annotation.__class__.__name__ == "PedalSpanner":
+                        note.duration *= PEDAL_DURATION_CHANGE_FACTOR
+                    # Articulation
+                    elif annotation.annotation.__class__.__name__ == "Articulation":
+                        if any((keyword in annotation.annotation.subtype for keyword in ("staccato", "staccatissimo", "spiccato", "pizzicato", "plucked", "marcato", "sforzato"))): # shortens note length
+                            note.duration /= STACCATO_DURATION_CHANGE_FACTOR
+                        if any((keyword in annotation.annotation.subtype for keyword in ("marcato", "sforzato", "accent"))): # increases velocity
+                            note.velocity += note.velocity * (max((ACCENT_VELOCITY_INCREASE_FACTOR * (0.8 if "soft" in annotation.annotation.subtype else 1)), 1) - 1)
+                        if "spiccato" in annotation.annotation.subtype: # decreases velocity
+                            note.velocity /= ACCENT_VELOCITY_INCREASE_FACTOR
+                        if "tenuto" in annotation.annotation.subtype:
+                            pass # the duration is full duration
+                        # if "wiggle" in annotation.annotation.subtype: # vibrato and sawtooth
+                        #     pass # currently no implementation
+                        # if "portato" in annotation.annotation.subtype:
+                        #     pass # currently no implementation
+                        # if "trill" in annotation.annotation.subtype:
+                        #     pass # currently no implementation
+                        # if "mordent" in annotation.annotation.subtype:
+                        #     pass # currently no implementation
+                        # if "close" in annotation.annotation.subtype: # reference to a mute
+                        #     pass # currently no implementation
+                        # if any((keyword in annotation.annotation.subtype for keyword in ("open", "ouvert"))): # reference to a mute
+                        #     pass # currently no implementation
+                    # TechAnnotation
+                    # elif annotation.annotation.__class__.__name__ == "TechAnnotation":
+                    #     pass # currently no implementation since we so rarely encounter these
+
+            for note in self.tracks[i].notes:
+                note.velocity = expressive_features[note.time][0].annotation.velocity # the first index is always the dynamic
+                for annotation in expressive_features[note.time][1:]: # skip the first index, since we just dealt with it
+                    # HairPinSpanner and TempoSpanner; changes in velocity
+                    if (annotation.annotation.__class__.__name__ in ("HairPinSpanner", "TempoSpanner")): # some TempoSpanners involve a velocity change, so that is included here as well
+                        if annotation.group is None: # since we aren't storing anything there anyways
+                            end_velocity = note.velocity # default is no change
+                            if any((annotation.annotation.subtype.startswith(prefix) for prefix in ("allarg", "cr"))): # increase-volume; allargando, crescendo
+                                end_velocity *= VELOCITY_INCREASE_FACTOR
+                            elif any((annotation.annotation.subtype.startswith(prefix) for prefix in ("smorz", "dim", "decr"))): # decrease-volume; smorzando, diminuendo, decrescendo
+                                end_velocity /= VELOCITY_INCREASE_FACTOR
+                            annotation.group = lambda time: (((end_velocity - note.velocity) / ((annotation.time + annotation.annotation.duration) - note.time)) * (time - note.time)) + note.velocity # we will use group to store a lambda function to calculate velocity
+                        note.velocity += annotation.group(time = note.time) # update velocity
 
     ##################################################
 

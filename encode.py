@@ -16,11 +16,10 @@ from typing import List
 from re import sub, IGNORECASE
 import utils
 import representation
-from copy import deepcopy
+import math
 from read_mscz.music import BetterMusic
 from read_mscz.classes import *
 from read_mscz.read_mscz import read_musescore
-from read_mscz.output import get_expressive_features_per_note, VELOCITY_INCREASE_FACTOR
 ##################################################
 
 
@@ -386,10 +385,10 @@ def get_staff_level_expressive_features(track: Track, music: BetterMusic, use_im
 # ENCODER FUNCTIONS
 ##################################################
 
-def extract_data(music: BetterMusic, use_implied_duration: bool = True, include_velocity: bool = False, include_annotation_class_name: bool = False) -> np.array:
+def extract_data(music: BetterMusic, use_implied_duration: bool = True, include_velocity: bool = False, use_absolute_time: bool = False, include_annotation_class_name: bool = False) -> np.array:
     """Return a BetterMusic object as a data sequence.
     Each row of the output is a note specified as follows.
-        (event_type, beat, position, value, duration, program, velocity (if `include_velocity`), time, time (in seconds), annotation_class_name (if `include_annotation_class_name`))
+        (event_type, beat, position, value, duration (in seconds or beats depending on `use_absolute_time`), program, velocity (if `include_velocity`), time, time (in seconds), annotation_class_name (if `include_annotation_class_name`))
     """
 
     # output columns
@@ -401,24 +400,8 @@ def extract_data(music: BetterMusic, use_implied_duration: bool = True, include_
     # time column index
     time_dim = output_columns.index("time")
 
-    # realize velocity information
-    # music = deepcopy(music) # don't alter the original object
-    for i in range(len(music.tracks)):
-        note_times = sorted(utils.unique(l = [note.time for note in music.tracks[i].notes])) # times of notes, sorted ascending, removing duplicates
-        expressive_features = get_expressive_features_per_note(note_times = note_times, all_annotations = music.tracks[i].annotations + music.annotations) # dictionary where keys are time and values are expressive feature annotation objects
-        for note in music.tracks[i].notes:
-            note.velocity = expressive_features[note.time][0].annotation.velocity # the first index is always the dynamic
-            for annotation in expressive_features[note.time][1:]: # skip the first index, since we just dealt with it
-                # HairPinSpanner and TempoSpanner; changes in velocity
-                if (annotation.annotation.__class__.__name__ in ("HairPinSpanner", "TempoSpanner")): # some TempoSpanners involve a velocity change, so that is included here as well
-                    if annotation.group is None: # since we aren't storing anything there anyways
-                        end_velocity = note.velocity # default is no change
-                        if any((annotation.annotation.subtype.startswith(prefix) for prefix in ("allarg", "cr"))): # increase-volume; allargando, crescendo
-                            end_velocity *= VELOCITY_INCREASE_FACTOR
-                        elif any((annotation.annotation.subtype.startswith(prefix) for prefix in ("smorz", "dim", "decr"))): # decrease-volume; smorzando, diminuendo, decrescendo
-                            end_velocity /= VELOCITY_INCREASE_FACTOR
-                        annotation.group = lambda time: (((end_velocity - note.velocity) / ((annotation.time + annotation.annotation.duration) - note.time)) * (time - note.time)) + note.velocity # we will use group to store a lambda function to calculate velocity
-                    note.velocity += annotation.group(time = note.time) # update velocity
+    # realize expressive features
+    music.realize_expressive_features()
 
     # scrape system level expressive features
     system_level_expressive_features = get_system_level_expressive_features(music = music, use_implied_duration = use_implied_duration, include_velocity = True, include_annotation_class_name = include_annotation_class_name)
@@ -440,7 +423,8 @@ def extract_data(music: BetterMusic, use_implied_duration: bool = True, include_
         data["velocity"] = data["velocity"].apply(lambda velocity: representation.NON_VELOCITY if (velocity is None) else velocity)
 
         # convert time to seconds for certain types of sorting that might require it
-        data["time.s"] = data["time"].apply(lambda time_steps: music.metrical_time_to_absolute_time(time_steps = time_steps)) # get time in seconds
+        absolute_time_helper = lambda time_steps: music.metrical_time_to_absolute_time(time_steps = time_steps)
+        data["time.s"] = data["time"].apply(absolute_time_helper) # get time in seconds
         # data = data.sort_values(by = "time").reset_index(drop = True) # sort by time
 
         # calculate beat and position values (time signature agnostic)
@@ -460,6 +444,10 @@ def extract_data(music: BetterMusic, use_implied_duration: bool = True, include_
         #         beat_index += 1 # increment beat index
         #     data.at[i, "beat"] = beat_index  # convert base to base 0
         #     data.at[i, "position"] = int((RESOLUTION * (data.at[i, "time"] - beats[beat_index])) / (beats[beat_index + 1] - beats[beat_index]))
+
+        # convert duration to absolute time if necessary
+        if use_absolute_time:
+            data["duration"] = (data["time"] + data["duration"]).apply(absolute_time_helper) - data["time.s"]
 
         # remove duplicates due to beat and position quantization
         data = data.drop_duplicates(subset = output_columns[:time_dim], keep = "first", ignore_index = True)
@@ -488,12 +476,12 @@ def extract_data(music: BetterMusic, use_implied_duration: bool = True, include_
     return output
 
 
-def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_CONDITIONING, sigma: float = SIGMA, include_velocity: bool = False) -> np.array:
+def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_CONDITIONING, sigma: float = SIGMA) -> np.array:
     """Encode a note sequence into a sequence of codes.
     Each row of the input is a note specified as follows.
-        (event_type, beat, position, value, duration, program, velocity (if `include_velocity`), time, time (in seconds))
+        (event_type, beat, position, value, duration (in seconds or beats), program, velocity (if velocity is included in encoding), time, time (in seconds))
     Each row of the output is encoded as follows.
-        (event_type, beat, position, value, duration, instrument, velocity (if `include_velocity`))
+        (event_type, (beat, position) or (time), value, duration (in seconds or beats), instrument, velocity (if velocity is included in encoding))
     """
 
     # LOAD IN DATA
@@ -501,29 +489,43 @@ def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_COND
     # load in npy file from path parameter
     # data = np.load(file = path, allow_pickle = True)
 
+    # determine include_velocity and use_absolute_time
+    include_velocity = ("velocity" in encoding["dimensions"])
+    use_absolute_time = not (("beat" in encoding["dimensions"]) and ("position" in encoding["dimensions"]))
+
     # some checks
     if include_velocity and (("velocity_code_map" not in encoding.keys()) or data.shape[1] < len(encoding["dimensions"])):
         raise ValueError("Try rerunning data.py with velocity values included. Or don't include velocity.")
 
     # get variables
-    max_beat = encoding["max_beat"]
     max_duration = encoding["max_duration"]
 
     # get maps
     type_code_map = encoding["type_code_map"]
-    beat_code_map = encoding["beat_code_map"]
-    position_code_map = encoding["position_code_map"]
     value_code_map = encoding["value_code_map"]
     duration_code_map = encoding["duration_code_map"]
     instrument_code_map = encoding["instrument_code_map"]
     program_instrument_map = encoding["program_instrument_map"]
 
     # get the dimension indices
-    beat_dim = encoding["dimensions"].index("beat")
-    position_dim = encoding["dimensions"].index("position")
     value_dim = encoding["dimensions"].index("value")
     duration_dim = encoding["dimensions"].index("duration")
     instrument_dim = encoding["dimensions"].index("instrument")
+
+    # timings
+    if use_absolute_time:
+        max_time = encoding["max_time"]
+        time_code_map = encoding["time_code_map"]
+        time_dim = encoding["dimensions"].index("time")
+        data = np.delete(arr = data, obj = [representation.DIMENSIONS.index("beat"), representation.DIMENSIONS.index("position")], axis = 1) # remove beat, position column
+        data = np.insert(arr = data, obj = time_dim, values = data[:, representation.DIMENSIONS.index("time.s")].reshape(data.shape[0], 1), axis = 1) # add time column
+    else:
+        max_beat = encoding["max_beat"]
+        max_position = encoding["resolution"]
+        beat_code_map = encoding["beat_code_map"]
+        position_code_map = encoding["position_code_map"]
+        beat_dim = encoding["dimensions"].index("beat")
+        position_dim = encoding["dimensions"].index("position")
 
     # if we are including velocity
     if include_velocity:
@@ -537,7 +539,7 @@ def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_COND
     # ENCODE
     
     # 0s tacked on to the end of sos, son, or eos tokens
-    empty_row_ending = [0 for _ in range(len(encoding["dimensions"]) - 1 - (1 if ((not include_velocity) and ("velocity" in encoding["dimensions"])) else 0))]
+    empty_row_ending = [0 for _ in range(len(encoding["dimensions"]) - 1)]
 
     # start the codes with an SOS row
     codes = np.array(object = [[type_code_map["start-of-song"],] + empty_row_ending], dtype = ENCODING_ARRAY_TYPE)
@@ -576,28 +578,33 @@ def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_COND
         return instrument
     
     # encode the notes / expressive features
-    data = data[data[:, beat_dim] <= max_beat] # filter out max beat
+    core_codes = core_codes[(core_codes[:, time_dim] <= max_time) if use_absolute_time else (core_codes[:, beat_dim] <= max_beat)] # remove data if beat greater than max beat/time
     core_codes = np.zeros(shape = (data.shape[0], codes.shape[1]), dtype = ENCODING_ARRAY_TYPE)
     core_codes[:, 0] = list(map(lambda type_: type_code_map[str(type_)], data[:, 0])) # encode type column
-    core_codes[:, beat_dim] = list(map(lambda beat: beat_code_map[max(0, int(beat))], data[:, beat_dim])) # encode beat
-    core_codes[:, position_dim] = list(map(lambda position: position_code_map[min(encoding["resolution"], max(0, int(position)))], data[:, position_dim])) # encode position
     core_codes[:, value_dim] = list(map(value_code_mapper, data[:, value_dim])) # encode value column
-    core_codes[:, duration_dim] = list(map(lambda duration: duration_code_map[min(max_duration, max(0, int(duration)))], data[:, duration_dim])) # encode duration
     core_codes[:, instrument_dim] = list(map(program_instrument_mapper, data[:, instrument_dim])) # encode instrument column
     if include_velocity:
         core_codes[:, velocity_dim] = list(map(lambda velocity: velocity_code_map[min(representation.MAX_VELOCITY, max(0, int(velocity))) if (not np.isnan(velocity)) else None], data[:, velocity_dim])) # encode velocity
-    core_codes = core_codes[core_codes[:, beat_dim] <= max_beat + 1] # remove data if beat greater than max beat
+    if use_absolute_time:
+        floor_time = lambda time: math.floor(time / representation.TIME_STEP) * representation.TIME_STEP
+        core_codes[:, duration_dim] = list(map(lambda duration: duration_code_map[floor_time(float(min(max_duration, max(0, duration))))], data[:, duration_dim])) # encode duration
+        core_codes[:, time_dim] = list(map(lambda time: time_code_map[floor_time(float(max(0, time)))], data[:, time_dim])) # encode time
+    else:
+        core_codes[:, duration_dim] = list(map(lambda duration: duration_code_map[int(min(max_duration, max(0, duration)))], data[:, duration_dim])) # encode duration
+        core_codes[:, beat_dim] = list(map(lambda beat: beat_code_map[max(0, int(beat))], data[:, beat_dim])) # encode beat
+        core_codes[:, position_dim] = list(map(lambda position: position_code_map[min(max_position, max(0, int(position)))], data[:, position_dim])) # encode position
     core_codes = core_codes[core_codes[:, instrument_dim] >= 0] # skip unknown instruments
 
     # apply conditioning to core_codes
+    time_steps_column, seconds_column = data.shape[1] - 2, data.shape[1] - 1
     if conditioning == CONDITIONINGS[0]: # sort-order
-        core_codes_with_time_steps = np.concatenate((core_codes, data[:, data.shape[1] - 2].reshape(data.shape[0], 1)[:len(core_codes)]), axis = 1) # add time steps column
+        core_codes_with_time_steps = np.concatenate((core_codes, data[:, time_steps_column].reshape(data.shape[0], 1)[:len(core_codes)]), axis = 1) # add time steps column
         time_steps_column = core_codes_with_time_steps.shape[1] - 1
         core_codes_with_time_steps = core_codes_with_time_steps[np.lexsort(keys = (core_codes_with_time_steps[:, 0], core_codes_with_time_steps[:, time_steps_column]), axis = 0)] # sort by time (time steps)
         core_codes = np.delete(arr = core_codes_with_time_steps, obj = time_steps_column, axis = 1).astype(ENCODING_ARRAY_TYPE) # remove time steps column
-        del core_codes_with_time_steps, time_steps_column
+        del core_codes_with_time_steps
     elif conditioning == CONDITIONINGS[1]: # prefix
-        core_codes_with_time_steps = np.concatenate((core_codes, data[:, data.shape[1] - 2].reshape(data.shape[0], 1)[:len(core_codes)]), axis = 1) # add time steps column
+        core_codes_with_time_steps = np.concatenate((core_codes, data[:, time_steps_column].reshape(data.shape[0], 1)[:len(core_codes)]), axis = 1) # add time steps column
         time_steps_column = core_codes_with_time_steps.shape[1] - 1
         expressive_feature_indicies = sorted(np.where(core_codes[:, 0] == type_code_map[representation.EXPRESSIVE_FEATURE_TYPE_STRING])[0]) # get indicies of expressive features
         expressive_features = core_codes_with_time_steps[expressive_feature_indicies] # extract expressive features
@@ -608,17 +615,18 @@ def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_COND
         notes = np.delete(arr = notes, obj = time_steps_column, axis = 1).astype(ENCODING_ARRAY_TYPE) # delete time steps column
         core_codes = np.concatenate((expressive_features, codes[len(codes) - 1].reshape(1, codes.shape[1]), notes), axis = 0, dtype = ENCODING_ARRAY_TYPE) # sandwich: expressive features, start of notes row, 
         codes = np.delete(arr = codes, obj = len(codes) - 1, axis = 0) # remove start of notes row from codes
-        del core_codes_with_time_steps, time_steps_column, expressive_feature_indicies, expressive_features, notes
+        del core_codes_with_time_steps, expressive_feature_indicies, expressive_features, notes
     elif conditioning == CONDITIONINGS[2]: # anticipation
         if sigma is None: # make sure sigma is not none
             warnings.warn(f"Encountered NoneValue sigma argument for anticipation conditioning. Using sigma = {SIGMA}.", RuntimeWarning)
             sigma = SIGMA
-        core_codes_with_seconds = np.concatenate((core_codes, data[:, data.shape[1] - 1].reshape(data.shape[0], 1)), axis = 1) # add seconds column
+        core_codes_with_seconds = np.concatenate((core_codes, data[:, seconds_column].reshape(data.shape[0], 1)), axis = 1) # add seconds column
         seconds_column = core_codes_with_seconds.shape[1] - 1 # get the index of the seconds column
         core_codes_with_seconds[:, seconds_column] -= (core_codes_with_seconds[:, 0] == type_code_map[representation.EXPRESSIVE_FEATURE_TYPE_STRING]) * sigma # subtract anticipation value from expressive features
         core_codes_with_seconds = core_codes_with_seconds[np.lexsort(keys = (core_codes_with_seconds[:, 0], core_codes_with_seconds[:, seconds_column]), axis = 0)] # sort by time (seconds)
         core_codes = np.delete(arr = core_codes_with_seconds, obj = seconds_column, axis = 1).astype(ENCODING_ARRAY_TYPE) # remove seconds column
-        del core_codes_with_seconds, seconds_column
+        del core_codes_with_seconds
+    del time_steps_column, seconds_column
 
     # add core_codes to the general codes matrix
     codes = np.concatenate((codes, core_codes), axis = 0) # append them to the code sequence
@@ -630,14 +638,18 @@ def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_COND
     return codes
 
 
-def encode(music: BetterMusic, use_implied_duration: bool = True, include_velocity: bool = False, encoding: dict = representation.get_encoding(), conditioning: str = DEFAULT_CONDITIONING, sigma: float = SIGMA) -> np.array:
+def encode(music: BetterMusic, use_implied_duration: bool = True, encoding: dict = representation.get_encoding(), conditioning: str = DEFAULT_CONDITIONING, sigma: float = SIGMA) -> np.array:
     """Given a BetterMusic object, encode it."""
 
+    # determine include_velocity and use_absolute_time
+    include_velocity = ("velocity" in encoding["dimensions"])
+    use_absolute_time = not (("beat" in encoding["dimensions"]) and ("position" in encoding["dimensions"]))
+
     # extract data
-    data = extract_data(music = music, use_implied_duration = use_implied_duration, include_velocity = include_velocity)
+    data = extract_data(music = music, use_implied_duration = use_implied_duration, include_velocity = include_velocity, use_absolute_time = use_absolute_time)
 
     # encode data
-    codes = encode_data(data = data, encoding = encoding, conditioning = conditioning, sigma = sigma, include_velocity = include_velocity)
+    codes = encode_data(data = data, encoding = encoding, conditioning = conditioning, sigma = sigma)
 
     return codes
 
@@ -671,6 +683,7 @@ if __name__ == "__main__":
     print(f"{'Example':=^40}")
     music = read_musescore(path = "/data2/pnlong/musescore/test_data/laufey/from_the_start.mscz")
     print(f"Music:\n{music}")
+    music.realize_expressive_features()
 
     encoded = encode(music = music, encoding = encoding)
     print("-" * 40)

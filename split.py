@@ -36,7 +36,7 @@ PARTITIONS = {"train": 0.8, "valid": 0.1, "test": 0.1}
 def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(prog = "Split", description = "Partition data into training-validation-testing sets.")
-    parser.add_argument("-i", "--input_filepath", default = INPUT_FILEPATH, type = str, help = "List of filepaths to semi-encoded data files")
+    parser.add_argument("-i", "--input_filepath", default = INPUT_FILEPATH, type = str, help = "Dataframe with a `path` column, which is the list of filepaths to semi-encoded data files")
     parser.add_argument("-o", "--output_dir", default = None, type = str, help = "Output directory")
     parser.add_argument("-v", "--ratio_valid", default = PARTITIONS["valid"], type = float, help = "Ratio of validation files")
     parser.add_argument("-t", "--ratio_test", default = PARTITIONS["test"], type = float, help = "Ratio of test files")

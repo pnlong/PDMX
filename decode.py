@@ -38,24 +38,31 @@ def decode_data(codes: np.array, encoding: dict = representation.get_encoding())
     Each row of the output is decoded the same way.
     """
 
-    # whether there is a velocity field
-    include_velocity = ("velocity" in encoding["dimensions"]) and (len(encoding["dimensions"]) == codes.shape[1])
+    # determine include_velocity and use_absolute_time
+    include_velocity = ("velocity" in encoding["dimensions"])
+    use_absolute_time = not (("beat" in encoding["dimensions"]) and ("position" in encoding["dimensions"]))
 
     # get variables and maps
     code_type_map = encoding["code_type_map"]
-    code_beat_map = encoding["code_beat_map"]
-    code_position_map = encoding["code_position_map"]
     code_value_map = encoding["code_value_map"]
     code_duration_map = encoding["code_duration_map"]
     code_instrument_map = encoding["code_instrument_map"]
     instrument_program_map = encoding["instrument_program_map"]
 
     # get the dimension indices
-    beat_dim = encoding["dimensions"].index("beat")
-    position_dim = encoding["dimensions"].index("position")
     value_dim = encoding["dimensions"].index("value")
     duration_dim = encoding["dimensions"].index("duration")
     instrument_dim = encoding["dimensions"].index("instrument")
+
+    # timings
+    if use_absolute_time:
+        code_time_map = encoding["code_time_map"]
+        time_dim = encoding["dimensions"].index("time")
+    else:
+        code_beat_map = encoding["code_beat_map"]
+        code_position_map = encoding["code_position_map"]
+        beat_dim = encoding["dimensions"].index("beat")
+        position_dim = encoding["dimensions"].index("position")
 
     # if we are including velocity
     if include_velocity:
@@ -71,16 +78,19 @@ def decode_data(codes: np.array, encoding: dict = representation.get_encoding())
         elif event_type == "end-of-song":
             break
         elif event_type in ("note", "grace-note", representation.EXPRESSIVE_FEATURE_TYPE_STRING):
-            beat = code_beat_map[int(row[beat_dim])]
-            position = code_position_map[int(row[position_dim])]
             value = code_value_map[max(int(row[value_dim]), 0)]
             duration = code_duration_map[int(row[duration_dim])]
             program = instrument_program_map[code_instrument_map[int(row[instrument_dim])]]
-            current_row = [event_type, beat, position, value, duration, program]
+            if use_absolute_time:
+                time = code_time_map[int(row[time_dim])]
+                current_row = [event_type, time, value, duration, program]
+            else:
+                beat = code_beat_map[int(row[beat_dim])]
+                position = code_position_map[int(row[position_dim])]
+                current_row = [event_type, beat, position, value, duration, program]
             if include_velocity:
                 current_row.append(code_velocity_map[int(row[velocity_dim])])
-            current_row = tuple(current_row)
-            data.append(current_row)
+            data.append(tuple(current_row))
         else:
             raise ValueError("Unknown event type.")
         
@@ -93,21 +103,36 @@ def reconstruct(data: np.array, resolution: int, encoding: dict = representation
     # construct the BetterMusic object with defaults
     music = BetterMusic(resolution = resolution, tempos = [Tempo(time = 0, qpm = representation.DEFAULT_QPM)], key_signatures = [KeySignature(time = 0)], time_signatures = [TimeSignature(time = 0)])
 
+    # determine include_velocity and use_absolute_time
+    include_velocity = ("velocity" in encoding["dimensions"])
+    use_absolute_time = not (("beat" in encoding["dimensions"]) and ("position" in encoding["dimensions"]))
+    if use_absolute_time:
+        raise NotImplementedError("Absolute-time functionality is currently being implemented for the decoder.")
+
     # append the tracks
-    programs = sorted(set(row[-1] for row in data)) # get programs
+    programs = sorted(set(row[-2 if include_velocity else -1] for row in data)) # get programs
     for program in programs:
         music.tracks.append(Track(program = program, is_drum = False, name = encoding["program_instrument_map"][program])) # append to tracks
 
     # append the notes
     ongoing_articulation_chunks = {track_index: {} for track_index in range(len(programs))}
     for row in data:
-        event_type, beat, position, value, duration, program = row[:6]
-        velocity = row[-1] if (len(row) > 6) else DEFAULT_VELOCITY # if there is a velocity value
-        if any(field is None for field in (beat, position, duration, program)): # skip if invalid
+        velocity = row.pop(-1) if include_velocity else DEFAULT_VELOCITY # if there is a velocity value
+        if use_absolute_time:
+            event_type, time, value, duration, program = row
+            is_valid_row = all(field is not None for field in (time, duration, program))
+        else:
+            event_type, beat, position, value, duration, program = row
+            is_valid_row = all(field is not None for field in (beat, position, duration, program))
+        if not is_valid_row: # skip if invalid
             continue
         track_index = programs.index(program) # get track index
-        time = (beat * resolution) + ((position / encoding["resolution"]) * resolution) # get time in time steps
-        duration = (resolution / encoding["resolution"]) * duration # get duration in time steps
+        if use_absolute_time:
+            time = None # get time in time steps
+            duration = None # get duration in time steps
+        else:
+            time = (beat * resolution) + ((position / encoding["resolution"]) * resolution) # get time in time steps
+            duration = (resolution / encoding["resolution"]) * duration # get duration in time steps
         if event_type in ("note", "grace-note"):
             try:
                 pitch = int(value) # make sure the pitch is in fact a pitch

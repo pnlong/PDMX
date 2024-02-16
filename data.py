@@ -13,14 +13,14 @@
 import argparse
 import pandas as pd
 import numpy as np
-from os import makedirs
-from os.path import exists, basename
+from os.path import exists, basename, dirname
 from tqdm import tqdm
 import logging
 from time import perf_counter, strftime, gmtime
 import multiprocessing
 import random
 from copy import copy
+import subprocess
 
 import utils
 import representation
@@ -53,6 +53,7 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("-o", "--output_dir", type = str, default = OUTPUT_DIR, help = "Output directory")
     parser.add_argument("-ed", "--explicit_duration", action = "store_true", help = "Whether or not to calculate the 'implied duration' of features without an explicitly-defined duration.")
     parser.add_argument("-v", "--velocity", action = "store_true", help = "Whether or not to include a velocity field that reflects expressive features.")
+    parser.add_argument("-a", "--absolute_time", action = "store_true", help = "Whether or not to use absolute (seconds) or metrical (beats) time.")
     parser.add_argument("-j", "--jobs", type = int, default = int(multiprocessing.cpu_count() / 4), help = "Number of Jobs")
     return parser.parse_args(args = args, namespace = namespace)
 
@@ -62,7 +63,7 @@ def parse_args(args = None, namespace = None):
 # EXTRACTION FUNCTION (EXTRACT RELEVANT DATA FROM A GIVEN MUSESCORE FILE
 ##################################################
 
-def extract(path: str, path_output_prefix: str, use_implied_duration: bool = True, include_velocity: bool = False) -> int:
+def extract(path: str, path_output_prefix: str, use_implied_duration: bool = True, include_velocity: bool = False, use_absolute_time: bool = False) -> tuple:
     """Extract relevant information from a .mscz file, output as tokens
 
     Parameters
@@ -105,6 +106,7 @@ def extract(path: str, path_output_prefix: str, use_implied_duration: bool = Tru
     # LOOP THROUGH TRACKS, SCRAPE OBJECTS
     ##################################################
     
+    n_tokens = 0
     for i, track in enumerate(music.tracks):
 
         # do not record if track is drum or is an unknown program
@@ -114,7 +116,7 @@ def extract(path: str, path_output_prefix: str, use_implied_duration: bool = Tru
         # create BetterMusic object with just one track (we are not doing multitrack)
         track_music = copy(x = music)
         track_music.tracks = [track,]
-        data = extract_data(music = track_music, use_implied_duration = use_implied_duration, include_velocity = include_velocity)
+        data = extract_data(music = track_music, use_implied_duration = use_implied_duration, include_velocity = include_velocity, use_absolute_time = use_absolute_time)
 
         # create output path from path_output_prefix
         path_output = f"{path_output_prefix}.{i}.npy"
@@ -132,6 +134,9 @@ def extract(path: str, path_output_prefix: str, use_implied_duration: bool = Tru
             "n" : len(data)
         }
 
+        # update n_tokens
+        n_tokens += len(data)
+
         # write mapping
         utils.write_to_file(info = current_output, output_filepath = MAPPING_OUTPUT_FILEPATH, columns = OUTPUT_COLUMNS)
 
@@ -146,7 +151,7 @@ def extract(path: str, path_output_prefix: str, use_implied_duration: bool = Tru
 
     utils.write_to_file(info = {"time": total_time}, output_filepath = TIMING_OUTPUT_FILEPATH)
 
-    return len(music.tracks)
+    return len(music.tracks), n_tokens
 
     ##################################################
 
@@ -165,7 +170,7 @@ if __name__ == "__main__":
     # parse arguments
     args = parse_args()
     if not exists(args.output_dir): # make output_dir if it doesn't yet exist
-        makedirs(args.output_dir)
+        subprocess.run(args = ["bash", f"{dirname(__file__)}/create_data_dir.sh", "-d", args.output_dir], check = True)
 
     # some constants
     METADATA_MAPPING_FILEPATH = f"{args.input_dir}/metadata_to_data.csv"
@@ -226,7 +231,8 @@ if __name__ == "__main__":
                                                               paths,
                                                               path_output_prefixes,
                                                               utils.rep(x = not bool(args.explicit_duration), times = len(paths)),
-                                                              utils.rep(x = args.velocity, times = len(paths))
+                                                              utils.rep(x = args.velocity, times = len(paths)),
+                                                              utils.rep(x = args.absolute_time, times = len(paths))
                                                               ),
                                                desc = "Extracting Data from MuseScore Files", total = len(paths)),
                                chunksize = chunk_size)
@@ -234,8 +240,17 @@ if __name__ == "__main__":
     total_time = end_time - start_time # compute total time elapsed
     total_time = strftime("%H:%M:%S", gmtime(total_time)) # convert into pretty string
     logging.info(f"Total time: {total_time}")
-    n_total = sum(results)
-    logging.info(f"Total Number of Tracks Processed: {n_total:,}")
+    n_tracks, n_tokens = list(zip(*results))
+    del results
+    logging.info(f"Total Number of Tracks: {sum(n_tracks):,}")
+    logging.info(f"Total Number of Tokens: {sum(n_tokens):,}")
+
+    # make encoding file
+    options = (["--velocity",] if args.velocity else []) + (["--absolute_time"] if args.absolute_time else [])
+    subprocess.run(args = ["python", f"{dirname(__file__)}/representation.py", "--output_dir", args.output_dir] + options, check = True)
+
+    # split into partitions
+    subprocess.run(args = ["python", f"{dirname(__file__)}/split.py", "--input_filepath", MAPPING_OUTPUT_FILEPATH, "--output_dir", args.output_dir], check = True)
 
     ##################################################
 
