@@ -8,7 +8,6 @@
 
 # IMPORTS
 ##################################################
-import pprint
 import numpy as np
 import utils
 import argparse
@@ -788,25 +787,6 @@ if __name__ == "__main__":
 
     # load encoding
     encoding = load_encoding(filepath = encoding_filepath)
-
-    # print the maps
-    print(f"{' Maps ':=^40}")
-    for key, value in encoding.items():
-        if key in (
-            "instrument_code_map",
-            "code_instrument_map",
-            "program_instrument_map",
-            "instrument_program_map",
-        ):
-            print("-" * 40)
-            print(f"{key}:")
-            pprint.pprint(value, indent = 2)
-
-    # print the variables
-    print(f"{' Variables ':=^40}")
-    print(f"resolution: {encoding['resolution']}")
-    print(f"max_beat: {encoding['max_beat']}")
-    print(f"max_duration: {encoding['max_duration']}")
 
     # print the number of tokens
     print(f"{' Number of tokens ':=^40}")
