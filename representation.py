@@ -685,7 +685,6 @@ def get_encoding(include_velocity: bool = False, use_absolute_time: bool = False
         encoding["code_velocity_map"] = CODE_VELOCITY_MAP
     else:
         encoding["dimensions"].remove("velocity") # remove velocity from dimensions
-        del encoding["n_tokens"]["velocity"] # remove token count for velocity
     
     # make sure encoding["n_tokens"] is a list
     encoding["n_tokens"] = [encoding["n_tokens"][dim] for dim in encoding["dimensions"]]
