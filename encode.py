@@ -541,7 +541,7 @@ def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_COND
     codes = np.array(object = [[type_code_map["start-of-song"],] + empty_row_ending], dtype = ENCODING_ARRAY_TYPE)
 
     # extract/encode instruments
-    programs = np.unique(ar = data[:, instrument_dim]) # get unique instrument values
+    programs = np.unique(ar = data[:, representation.DIMENSIONS.index("instrument")]) # get unique instrument values
     instrument_codes = np.zeros(shape = (len(programs), codes.shape[1]), dtype = ENCODING_ARRAY_TYPE) # create empty array
     for i, program in enumerate(programs):
         if program is None: # skip unknown programs
