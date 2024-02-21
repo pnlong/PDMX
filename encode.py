@@ -541,17 +541,13 @@ def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_COND
     codes = np.array(object = [[type_code_map["start-of-song"],] + empty_row_ending], dtype = ENCODING_ARRAY_TYPE)
 
     # extract/encode instruments
-    programs = np.unique(ar = data[:, representation.DIMENSIONS.index("instrument")]) # get unique instrument values
+    programs = np.unique(ar = data[:, instrument_dim]) # get unique instrument values
     instrument_codes = np.zeros(shape = (len(programs), codes.shape[1]), dtype = ENCODING_ARRAY_TYPE) # create empty array
     for i, program in enumerate(programs):
-        if program is None: # skip unknown programs
+        if program is None or np.isnan(program): # skip unknown programs
             continue
         instrument_codes[i, 0] = type_code_map["instrument"] # set the type to instrument
-        try:
-            instrument_codes[i, instrument_dim] = instrument_code_map[program_instrument_map[int(program)]] # encode the instrument value
-        except (KeyError):
-            print(program)
-            instrument_codes[i, instrument_dim] = instrument_code_map[program_instrument_map[0]]
+        instrument_codes[i, instrument_dim] = instrument_code_map[program_instrument_map[int(program)]] # encode the instrument value
     instrument_codes = instrument_codes[np.argsort(a = instrument_codes[:, instrument_dim], axis = 0)] # sort the instruments
     codes = np.concatenate((codes, instrument_codes), axis = 0) # append them to the code sequence
     del instrument_codes # clear up memory
