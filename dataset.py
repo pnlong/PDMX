@@ -17,6 +17,7 @@ import logging
 import argparse
 from tqdm import tqdm
 from typing import List
+import math
 from os.path import exists
 
 import representation
@@ -121,20 +122,20 @@ class MusicDataset(Dataset):
             if n_temporals > self.max_temporal: # make sure seq isn't too long
                 trial = 0
                 while trial < 10: # avoid section with too few notes
-                    start = np.random.randint(n_temporals - self.max_temporal) # randomly generate a start beat
+                    start = math.floor(np.random.rand(0, n_temporals - self.max_temporal) / representation.TIME_STEP) * representation.TIME_STEP if self.use_absolute_time else np.random.randint(0, n_temporals - self.max_temporal) # randomly generate a start beat
                     end = start + self.max_temporal # get end beat from start_beat
-                    data_slice = data[(data[:, self.temporal_dim].astype(encode.ENCODING_ARRAY_TYPE) >= start) & (data[:, self.temporal_dim].astype(encode.ENCODING_ARRAY_TYPE) < end)]
+                    data_slice = data[(data[:, self.temporal_dim] >= start) & (data[:, self.temporal_dim] < end)]
                     if len(data_slice) > 10: # get a sufficiently large slice of values
                         break
                     trial += 1 # iterate trial
-                data_slice[:, self.temporal_dim] = data_slice[:, self.temporal_dim].astype(encode.ENCODING_ARRAY_TYPE) - start # make sure slice beats start at 0
+                data_slice[:, self.temporal_dim] = data_slice[:, self.temporal_dim] - start # make sure slice beats start at 0
                 data = data_slice
                 del data_slice
 
         # trim seq to max_temporal
         elif self.max_temporal is not None:
             if n_temporals > self.max_temporal:
-                data = data[data[:, self.temporal_dim].astype(encode.ENCODING_ARRAY_TYPE) < self.max_temporal]
+                data = data[data[:, self.temporal_dim] < self.max_temporal]
         
         # encode the data
         seq = encode.encode_data(data = data[data[:, 0] != representation.EXPRESSIVE_FEATURE_TYPE_STRING] if self.is_baseline else data, encoding = self.encoding, conditioning = self.conditioning, sigma = self.sigma)
