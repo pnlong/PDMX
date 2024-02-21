@@ -52,7 +52,6 @@ DATA_DIR = "/data2/pnlong/musescore/data"
 OUTPUT_DIR = "/data2/pnlong/musescore/data"
 
 DEFAULT_MAX_SEQ_LEN = 1024
-DEFAULT_MAX_BEAT = 256
 
 NA_VALUE = "NA"
 ALL_STRING = "total"
@@ -92,7 +91,6 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("--baseline", action = "store_true", help = "Whether or not this is training the baseline model. The baseline ignores all expressive features.")
     # model
     parser.add_argument("--max_seq_len", default = DEFAULT_MAX_SEQ_LEN, type = int, help = "Maximum sequence length")
-    parser.add_argument("--max_beat", default = DEFAULT_MAX_BEAT, type = int, help = "Maximum number of beats")
     parser.add_argument("--dim", default = 512, type = int, help = "Model dimension")
     parser.add_argument("-l", "--layers", default = 6, type = int, help = "Number of layers")
     parser.add_argument("--heads", default = 8, type = int, help = "Number of attention heads")
@@ -220,8 +218,8 @@ if __name__ == "__main__":
     # create the dataset and data loader
     print(f"Creating the data loader...")
     dataset = {
-        RELEVANT_PARTITIONS[0]: MusicDataset(paths = args.paths_train, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, is_baseline = args.baseline, max_seq_len = args.max_seq_len, max_beat = args.max_beat, use_augmentation = args.aug),
-        RELEVANT_PARTITIONS[1]: MusicDataset(paths = args.paths_valid, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, is_baseline = args.baseline, max_seq_len = args.max_seq_len, max_beat = args.max_beat, use_augmentation = args.aug)
+        RELEVANT_PARTITIONS[0]: MusicDataset(paths = args.paths_train, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, is_baseline = args.baseline, max_seq_len = args.max_seq_len, use_augmentation = args.aug),
+        RELEVANT_PARTITIONS[1]: MusicDataset(paths = args.paths_valid, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, is_baseline = args.baseline, max_seq_len = args.max_seq_len, use_augmentation = args.aug)
         }
     data_loader = {
         RELEVANT_PARTITIONS[0]: torch.utils.data.DataLoader(dataset = dataset[RELEVANT_PARTITIONS[0]], batch_size = args.batch_size, shuffle = True, num_workers = args.jobs, collate_fn = MusicDataset.collate),
@@ -230,13 +228,14 @@ if __name__ == "__main__":
 
     # create the model
     print(f"Creating model...")
+    use_absolute_time = not (("beat" in encoding["dimensions"]) and ("position" in encoding["dimensions"]))
     model = music_x_transformers.MusicXTransformer(
         dim = args.dim,
         encoding = encoding,
         depth = args.layers,
         heads = args.heads,
         max_seq_len = args.max_seq_len,
-        max_beat = args.max_beat,
+        max_temporal = encoding["max_" + ("time" if use_absolute_time else "beat")],
         rotary_pos_emb = args.rel_pos_emb,
         use_abs_pos_emb = args.abs_pos_emb,
         embedding_dropout = args.dropout,

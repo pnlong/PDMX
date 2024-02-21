@@ -300,7 +300,7 @@ if __name__ == "__main__":
 
         # create the dataset
         logging.info(f"Creating the data loader...")
-        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = train.DEFAULT_MAX_SEQ_LEN, max_beat = train.DEFAULT_MAX_BEAT, use_augmentation = False)
+        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = train.DEFAULT_MAX_SEQ_LEN, use_augmentation = False)
 
     # load model if necessary
     else:
@@ -318,20 +318,19 @@ if __name__ == "__main__":
 
         # create the dataset
         logging.info(f"Creating the data loader...")
-        max_beat = train_args["max_beat"]
         max_seq_len = train_args["max_seq_len"]
-        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = max_seq_len, max_beat = max_beat, use_augmentation = False, is_baseline = ("baseline" in args.output_dir))
+        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = max_seq_len, use_augmentation = False, is_baseline = ("baseline" in args.output_dir))
 
         # create the model
         logging.info(f"Creating the model...")
-        
+        use_absolute_time = not (("beat" in encoding["dimensions"]) and ("position" in encoding["dimensions"]))
         model = music_x_transformers.MusicXTransformer(
             dim = train_args["dim"],
             encoding = encoding,
             depth = train_args["layers"],
             heads = train_args["heads"],
             max_seq_len = max_seq_len,
-            max_beat = max_beat,
+            max_temporal = encoding["max_" + ("time" if use_absolute_time else "beat")],
             rotary_pos_emb = train_args["rel_pos_emb"],
             use_abs_pos_emb = train_args["abs_pos_emb"],
             emb_dropout = train_args["dropout"],

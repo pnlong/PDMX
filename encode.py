@@ -513,14 +513,13 @@ def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_COND
     instrument_dim = encoding["dimensions"].index("instrument")
 
     # timings
+    max_temporal = encoding["max_" + ("time" if use_absolute_time else "beat")]
     if use_absolute_time:
-        max_time = encoding["max_time"]
         time_code_map = encoding["time_code_map"]
         time_dim = encoding["dimensions"].index("time")
         data = np.delete(arr = data, obj = [representation.DIMENSIONS.index("beat"), representation.DIMENSIONS.index("position")], axis = 1) # remove beat, position column
         data = np.insert(arr = data, obj = time_dim, values = data[:, representation.DIMENSIONS.index("time.s")].reshape(data.shape[0], 1), axis = 1) # add time column
     else:
-        max_beat = encoding["max_beat"]
         max_position = encoding["resolution"]
         beat_code_map = encoding["beat_code_map"]
         position_code_map = encoding["position_code_map"]
@@ -578,7 +577,7 @@ def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_COND
         return instrument
     
     # encode the notes / expressive features
-    core_codes = core_codes[(core_codes[:, time_dim] <= max_time) if use_absolute_time else (core_codes[:, beat_dim] <= max_beat)] # remove data if beat greater than max beat/time
+    core_codes = core_codes[((core_codes[:, time_dim] <= max_temporal) if use_absolute_time else (core_codes[:, beat_dim] <= max_temporal))] # remove data if beat greater than max beat/time
     core_codes = np.zeros(shape = (data.shape[0], codes.shape[1]), dtype = ENCODING_ARRAY_TYPE)
     core_codes[:, 0] = list(map(lambda type_: type_code_map[str(type_)], data[:, 0])) # encode type column
     core_codes[:, value_dim] = list(map(value_code_mapper, data[:, value_dim])) # encode value column

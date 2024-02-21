@@ -52,7 +52,7 @@ class MusicTransformerWrapper(nn.Module):
             max_seq_len: int,
             attn_layers: AttentionLayers,
             emb_dim: int = None,
-            max_beat: int = None,
+            max_temporal: int = None,
             max_mem_len: float = 0.0,
             shift_mem_down: int = 0,
             emb_dropout: int = 0.0,
@@ -77,9 +77,9 @@ class MusicTransformerWrapper(nn.Module):
 
         # adjust n_tokens
         n_tokens = encoding["n_tokens"]
-        if max_beat is not None:
-            beat_dim = encoding["dimensions"].index("beat")
-            n_tokens[beat_dim] = max_beat + 1
+        use_absolute_time = not (("beat" in encoding["dimensions"]) and ("position" in encoding["dimensions"]))
+        if max_temporal is not None:
+            n_tokens[encoding["dimensions"].index("time" if use_absolute_time else "beat")] = max_temporal + 1
 
         # deal with embedding
         self.l2norm_embed = l2norm_embed
@@ -468,7 +468,7 @@ class MusicXTransformer(nn.Module):
         assert "dim" not in kwargs, "dimension must be set with `dim` keyword"
         transformer_kwargs = {
             "max_seq_len": kwargs.pop("max_seq_len"),
-            "max_beat": kwargs.pop("max_beat"),
+            "max_temporal": kwargs.pop("max_temporal"),
             "emb_dropout": kwargs.pop("emb_dropout", 0),
             "use_abs_pos_emb": kwargs.pop("use_abs_pos_emb", True),
         }
@@ -526,7 +526,7 @@ if __name__ == "__main__":
         depth = 3,
         heads = 4,
         max_seq_len = 1024,
-        max_beat = 256,
+        max_temporal = 256,
         rel_pos_bias = True, # relative positional bias
         rotary_pos_emb = True, # rotary positional encoding
         emb_dropout = 0.1,

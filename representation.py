@@ -22,7 +22,7 @@ from sys import exit
 ##################################################
 
 RESOLUTION = 12
-MAX_BEAT = 1024 # in beats
+MAX_BEAT = 256 # in beats
 MAX_TIME = 100 # in seconds
 TIME_STEP = 0.01 # in seconds
 MAX_DURATION = 768  # remember to modify known durations as well!

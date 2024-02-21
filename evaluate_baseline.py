@@ -37,7 +37,7 @@ from representation import ENCODING_FILEPATH
 import encode
 import decode
 import utils
-from train import PARTITIONS, NA_VALUE, DEFAULT_MAX_SEQ_LEN, DEFAULT_MAX_BEAT
+from train import PARTITIONS, NA_VALUE, DEFAULT_MAX_SEQ_LEN
 
 ##################################################
 
@@ -322,7 +322,7 @@ if __name__ == "__main__":
 
         # create the dataset
         logging.info(f"Creating the data loader...")
-        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = DEFAULT_MAX_SEQ_LEN, max_beat = DEFAULT_MAX_BEAT, use_augmentation = False)
+        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = DEFAULT_MAX_SEQ_LEN, use_augmentation = False)
 
     # load model if necessary
     else:
@@ -340,24 +340,25 @@ if __name__ == "__main__":
 
         # create the dataset
         logging.info(f"Creating the data loader...")
-        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = train_args["max_seq_len"], max_beat = train_args["max_beat"], use_augmentation = False, is_baseline = ("baseline" in args.output_dir))
+        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = train_args["max_seq_len"], use_augmentation = False, is_baseline = ("baseline" in args.output_dir))
 
         # create the model
         logging.info(f"Creating the model...")
+        use_absolute_time = not (("beat" in encoding["dimensions"]) and ("position" in encoding["dimensions"]))
         model = music_x_transformers.MusicXTransformer(
             dim = train_args["dim"],
             encoding = encoding,
             depth = train_args["layers"],
             heads = train_args["heads"],
             max_seq_len = train_args["max_seq_len"],
-            max_beat = train_args["max_beat"],
+            max_temporal = encoding["max_" + ("time" if use_absolute_time else "beat")],
             rotary_pos_emb = train_args["rel_pos_emb"],
             use_abs_pos_emb = train_args["abs_pos_emb"],
             emb_dropout = train_args["dropout"],
             attn_dropout = train_args["dropout"],
             ff_dropout = train_args["dropout"],
         ).to(device)
-        # kwargs = {"depth": train_args["layers"], "heads": train_args["heads"], "max_seq_len": train_args["max_seq_len"], "max_beat": train_args["max_beat"], "rotary_pos_emb": train_args["rel_pos_emb"], "use_abs_pos_emb": train_args["abs_pos_emb"], "emb_dropout": train_args["dropout"], "attn_dropout": train_args["dropout"], "ff_dropout": train_args["dropout"]} # for debugging
+        # kwargs = {"depth": train_args["layers"], "heads": train_args["heads"], "max_seq_len": train_args["max_seq_len"], "max_temporal": encoding["max_" + ("time" if use_absolute_time else "beat")], "rotary_pos_emb": train_args["rel_pos_emb"], "use_abs_pos_emb": train_args["abs_pos_emb"], "emb_dropout": train_args["dropout"], "attn_dropout": train_args["dropout"], "ff_dropout": train_args["dropout"]} # for debugging
 
         # load the checkpoint
         CHECKPOINT_DIR = f"{args.output_dir}/checkpoints"

@@ -68,7 +68,7 @@ class MusicDataset(Dataset):
     # CONSTRUCTOR
     ##################################################
 
-    def __init__(self, paths: str, encoding: dict, conditioning: str = encode.DEFAULT_CONDITIONING, sigma: float = encode.SIGMA, is_baseline: bool = False, max_seq_len: int = None, max_beat: int = None, use_augmentation: bool = False):
+    def __init__(self, paths: str, encoding: dict, conditioning: str = encode.DEFAULT_CONDITIONING, sigma: float = encode.SIGMA, is_baseline: bool = False, max_seq_len: int = None, use_augmentation: bool = False):
         super().__init__()
         with open(paths) as file:
             self.paths = [line.strip() for line in file if line]
@@ -77,9 +77,12 @@ class MusicDataset(Dataset):
         self.sigma = sigma
         self.is_baseline = is_baseline
         self.max_seq_len = max_seq_len
-        self.max_beat = max_beat
         self.use_augmentation = use_augmentation
-        self.beat_dim, self.value_dim = self.encoding["dimensions"].index("beat"), self.encoding["dimensions"].index("value")
+        self.use_absolute_time = not (("beat" in self.encoding["dimensions"]) and ("position" in self.encoding["dimensions"]))
+        temporal = "time" if self.use_absolute_time else "beat"
+        self.max_temporal = self.encoding[f"max_{temporal}"]
+        self.temporal_dim = self.encoding["dimensions"].index(temporal)
+        self.value_dim = self.encoding["dimensions"].index("value")
 
     ##################################################
 
@@ -103,7 +106,7 @@ class MusicDataset(Dataset):
         data = np.load(file = path, allow_pickle = True)
 
         # get number of beats
-        n_beats = data[-1, self.beat_dim] + 1 if data.shape[0] > 0 else -1 # deal with 0 length data
+        n_temporals = data[-1, self.temporal_dim] + 1 if data.shape[0] > 0 else -1 # deal with 0 length data
 
         # data augmentation
         if self.use_augmentation:
@@ -115,23 +118,23 @@ class MusicDataset(Dataset):
             del pitch_shift
 
             # randomly select a starting beat
-            if n_beats > self.max_beat: # make sure seq isn't too long
+            if n_temporals > self.max_temporal: # make sure seq isn't too long
                 trial = 0
                 while trial < 10: # avoid section with too few notes
-                    start_beat = np.random.randint(n_beats - self.max_beat) # randomly generate a start beat
-                    end_beat = start_beat + self.max_beat # get end beat from start_beat
-                    data_slice = data[(data[:, self.beat_dim].astype(encode.ENCODING_ARRAY_TYPE) >= start_beat) & (data[:, self.beat_dim].astype(encode.ENCODING_ARRAY_TYPE) < end_beat)]
+                    start = np.random.randint(n_temporals - self.max_temporal) # randomly generate a start beat
+                    end = start + self.max_temporal # get end beat from start_beat
+                    data_slice = data[(data[:, self.temporal_dim].astype(encode.ENCODING_ARRAY_TYPE) >= start) & (data[:, self.temporal_dim].astype(encode.ENCODING_ARRAY_TYPE) < end)]
                     if len(data_slice) > 10: # get a sufficiently large slice of values
                         break
                     trial += 1 # iterate trial
-                data_slice[:, self.beat_dim] = data_slice[:, self.beat_dim].astype(encode.ENCODING_ARRAY_TYPE) - start_beat # make sure slice beats start at 0
+                data_slice[:, self.temporal_dim] = data_slice[:, self.temporal_dim].astype(encode.ENCODING_ARRAY_TYPE) - start # make sure slice beats start at 0
                 data = data_slice
                 del data_slice
 
-        # trim seq to max_beat
-        elif self.max_beat is not None:
-            if n_beats > self.max_beat:
-                data = data[data[:, self.beat_dim].astype(encode.ENCODING_ARRAY_TYPE) < self.max_beat]
+        # trim seq to max_temporal
+        elif self.max_temporal is not None:
+            if n_temporals > self.max_temporal:
+                data = data[data[:, self.temporal_dim].astype(encode.ENCODING_ARRAY_TYPE) < self.max_temporal]
         
         # encode the data
         seq = encode.encode_data(data = data[data[:, 0] != representation.EXPRESSIVE_FEATURE_TYPE_STRING] if self.is_baseline else data, encoding = self.encoding, conditioning = self.conditioning, sigma = self.sigma)
@@ -212,7 +215,7 @@ if __name__ == "__main__":
     encoding = representation.load_encoding(filepath = args.encoding) if exists(args.encoding) else representation.get_encoding()
 
     # create the dataset and data loader
-    dataset = MusicDataset(paths = args.paths, encoding = encoding, conditioning = "sort", max_seq_len = None, max_beat = encoding["max_beat"], use_augmentation = False)
+    dataset = MusicDataset(paths = args.paths, encoding = encoding, conditioning = "sort", max_seq_len = None, max_temporal = encoding["max_" + ("time" if "max_time" in encoding.keys() else "beat")], use_augmentation = False)
     data_loader = DataLoader(dataset = dataset, batch_size = args.batch_size, shuffle = True, collate_fn = MusicDataset.collate)
 
     ##################################################
