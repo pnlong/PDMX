@@ -359,7 +359,7 @@ CODE_DURATION_MAP = {
 CODE_DURATION_MAP[0] = None
 
 # absolute time
-DURATION_CODE_MAP_ABSOLUTE_TIME = {time: i + 1 for i, time in enumerate(np.arange(start = 0, stop = MAX_DURATION_ABSOLUTE_TIME, step = TIME_STEP))}
+DURATION_CODE_MAP_ABSOLUTE_TIME = {time: i + 1 for i, time in enumerate(np.arange(start = 0, stop = MAX_DURATION_ABSOLUTE_TIME + TIME_STEP, step = TIME_STEP))}
 DURATION_CODE_MAP_ABSOLUTE_TIME[None] = 0
 CODE_DURATION_MAP_ABSOLUTE_TIME = utils.inverse_dict(DURATION_CODE_MAP_ABSOLUTE_TIME)
 

@@ -94,6 +94,7 @@ def extract(path: str, path_output_prefix: str, use_implied_duration: bool = Tru
     # try to read musescore
     try:
         music = read_musescore(path = path, timeout = 10)
+        music.realize_expressive_features()
     except: # if that fails
         return # exit here
 
