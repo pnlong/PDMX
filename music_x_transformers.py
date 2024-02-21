@@ -83,7 +83,7 @@ class MusicTransformerWrapper(nn.Module):
 
         # deal with embedding
         self.l2norm_embed = l2norm_embed
-        self.token_embedding = nn.ModuleList([TokenEmbedding(dim = emb_dim, num_tokens = n, l2norm_embed = l2norm_embed) for n in n_tokens])
+        self.token_embedding = nn.ModuleList(modules = [TokenEmbedding(dim = emb_dim, num_tokens = n, l2norm_embed = l2norm_embed) for n in n_tokens])
         self.positional_embedding = AbsolutePositionalEmbedding(dim = emb_dim, max_seq_len = max_seq_len, l2norm_embed = l2norm_embed) if (use_abs_pos_emb and not attn_layers.has_pos_emb) else always(0)
 
         # dropout
