@@ -79,7 +79,9 @@ class MusicTransformerWrapper(nn.Module):
         n_tokens = encoding["n_tokens"]
         use_absolute_time = not (("beat" in encoding["dimensions"]) and ("position" in encoding["dimensions"]))
         if max_temporal is not None:
-            n_tokens[encoding["dimensions"].index("time" if use_absolute_time else "beat")] = max_temporal + 1
+            temporal_dim = encoding["dimensions"].index("time" if use_absolute_time else "beat")
+            n_tokens[temporal_dim] = int(max_temporal / (representation.TIME_STEP if use_absolute_time else 1)) + 1
+            del temporal_dim
 
         # deal with embedding
         self.l2norm_embed = l2norm_embed
