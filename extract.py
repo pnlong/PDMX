@@ -65,6 +65,7 @@ def extract(path: str, use_implied_duration: bool = True) -> np.array:
         track_music = copy(x = music)
         track_music.tracks = [track,]
         data = extract_data(music = track_music, use_implied_duration = use_implied_duration, include_velocity = False, use_absolute_time = True)
+        data = data[data[0, :] == representation.EXPRESSIVE_FEATURE_TYPE_STRING] # filter to just expressive features
         data = data[:, relevant_column_indicies] # extract only relevant columns
         output = np.concatenate((output, data), axis = 0) # concatenate
 
