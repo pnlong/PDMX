@@ -75,7 +75,7 @@ def extract(path: str, path_output_prefix: str, use_implied_duration: bool = Tru
 
     Returns
     -------
-    int: # of tracks processed
+    tuple: # of tracks processed, # of tokens processed
     """
     
     # LOAD IN MSCZ FILE, CONSTANTS
