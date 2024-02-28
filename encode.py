@@ -17,6 +17,7 @@ from re import sub, IGNORECASE
 import utils
 import representation
 import math
+from copy import copy
 from read_mscz.music import BetterMusic
 from read_mscz.classes import *
 from read_mscz.read_mscz import read_musescore
@@ -26,7 +27,7 @@ from read_mscz.read_mscz import read_musescore
 # CONSTANTS
 ##################################################
 
-CONDITIONINGS = ("sort", "prefix", "anticipation") # there are three options for conditioning 
+CONDITIONINGS = ("prefix", "anticipation") # there are three options for conditioning 
 DEFAULT_CONDITIONING = CONDITIONINGS[0]
 SIGMA = 5.0 # for anticipation conditioning
 ENCODING_ARRAY_TYPE = np.int64
@@ -592,15 +593,8 @@ def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_COND
     core_codes = core_codes[core_codes[:, instrument_dim] >= 0] # skip unknown instruments
 
     # apply conditioning to core_codes
-    time_steps_column, seconds_column = data.shape[1] - 2, data.shape[1] - 1
-    if conditioning == CONDITIONINGS[0]: # sort-order
-        core_codes_with_time_steps = np.concatenate((core_codes, data[:, time_steps_column].reshape(data.shape[0], 1)[:len(core_codes)]), axis = 1) # add time steps column
-        time_steps_column = core_codes_with_time_steps.shape[1] - 1
-        core_codes_with_time_steps = core_codes_with_time_steps[np.lexsort(keys = (core_codes_with_time_steps[:, 0], core_codes_with_time_steps[:, time_steps_column]), axis = 0)] # sort by time (time steps)
-        core_codes = np.delete(arr = core_codes_with_time_steps, obj = time_steps_column, axis = 1).astype(ENCODING_ARRAY_TYPE) # remove time steps column
-        del core_codes_with_time_steps
-    elif conditioning == CONDITIONINGS[1]: # prefix
-        core_codes_with_time_steps = np.concatenate((core_codes, data[:, time_steps_column].reshape(data.shape[0], 1)[:len(core_codes)]), axis = 1) # add time steps column
+    if conditioning == CONDITIONINGS[0]: # prefix
+        core_codes_with_time_steps = np.concatenate((core_codes, data[:, data.shape[1] - 2].reshape(data.shape[0], 1)[:len(core_codes)]), axis = 1) # add time steps column
         time_steps_column = core_codes_with_time_steps.shape[1] - 1
         expressive_feature_indicies = sorted(np.where(core_codes[:, 0] == type_code_map[representation.EXPRESSIVE_FEATURE_TYPE_STRING])[0]) # get indicies of expressive features
         expressive_features = core_codes_with_time_steps[expressive_feature_indicies] # extract expressive features
@@ -609,20 +603,26 @@ def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_COND
         notes = np.delete(arr = core_codes_with_time_steps, obj = expressive_feature_indicies, axis = 0) # delete expressive features from core
         notes = notes[np.lexsort(keys = (notes[:, 0], notes[:, time_steps_column]), axis = 0)] # sort by time
         notes = np.delete(arr = notes, obj = time_steps_column, axis = 1).astype(ENCODING_ARRAY_TYPE) # delete time steps column
-        core_codes = np.concatenate((expressive_features, codes[len(codes) - 1].reshape(1, codes.shape[1]), notes), axis = 0, dtype = ENCODING_ARRAY_TYPE) # sandwich: expressive features, start of notes row, 
+        core_codes = np.concatenate((expressive_features, codes[len(codes) - 1].reshape(1, codes.shape[1]), notes), axis = 0, dtype = ENCODING_ARRAY_TYPE) # sandwich: expressive features, start of notes row, notes
         codes = np.delete(arr = codes, obj = len(codes) - 1, axis = 0) # remove start of notes row from codes
-        del core_codes_with_time_steps, expressive_feature_indicies, expressive_features, notes
-    elif conditioning == CONDITIONINGS[2]: # anticipation
+        del core_codes_with_time_steps, expressive_feature_indicies, expressive_features, notes, time_steps_column
+    elif conditioning == CONDITIONINGS[1]: # anticipation
         if sigma is None: # make sure sigma is not none
             warnings.warn(f"Encountered NoneValue sigma argument for anticipation conditioning. Using sigma = {SIGMA}.", RuntimeWarning)
             sigma = SIGMA
-        core_codes_with_seconds = np.concatenate((core_codes, data[:, seconds_column].reshape(data.shape[0], 1)), axis = 1) # add seconds column
-        seconds_column = core_codes_with_seconds.shape[1] - 1 # get the index of the seconds column
-        core_codes_with_seconds[:, seconds_column] -= (core_codes_with_seconds[:, 0] == type_code_map[representation.EXPRESSIVE_FEATURE_TYPE_STRING]) * sigma # subtract anticipation value from expressive features
-        core_codes_with_seconds = core_codes_with_seconds[np.lexsort(keys = (core_codes_with_seconds[:, 0], core_codes_with_seconds[:, seconds_column]), axis = 0)] # sort by time (seconds)
-        core_codes = np.delete(arr = core_codes_with_seconds, obj = seconds_column, axis = 1).astype(ENCODING_ARRAY_TYPE) # remove seconds column
-        del core_codes_with_seconds
-    del time_steps_column, seconds_column
+        seconds = data[:, data.shape[1] - 1]
+        expressive_features = core_codes[:, 0] == type_code_map[representation.EXPRESSIVE_FEATURE_TYPE_STRING]
+        expressive_feature_indicies = np.where(expressive_features)[0]
+        note_indicies = np.where(np.bitwise_not(expressive_features))[0]
+        anticipation_indicies = copy(note_indicies)
+        note_times = seconds[note_indicies]
+        for i, expressive_feature_index in enumerate(expressive_feature_indicies):
+            time_differences = note_times - (seconds[expressive_feature_index] - sigma) # difference between each note time and the current expressive feature time (with anticipation constant accounted for)
+            valid_index = np.argmax(time_differences >= 0) + 1 # get the first index with a positive time difference (the first note occurs at or after the expressive feature with anticipation), and +1 because control goes after this event
+            anticipation_indicies = np.insert(arr = anticipation_indicies, obj = valid_index + i, values = expressive_feature_index, axis = 0) # +i to account for new insert each time
+        del i, expressive_feature_index, time_differences, valid_index
+        core_codes = core_codes[anticipation_indicies, :]
+        del expressive_features, expressive_feature_indicies, note_indicies, anticipation_indicies, note_times
 
     # add core_codes to the general codes matrix
     codes = np.concatenate((codes, core_codes), axis = 0) # append them to the code sequence
