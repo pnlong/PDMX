@@ -216,7 +216,7 @@ if __name__ == "__main__":
     encoding = representation.load_encoding(filepath = args.encoding) if exists(args.encoding) else representation.get_encoding()
 
     # create the dataset and data loader
-    dataset = MusicDataset(paths = args.paths, encoding = encoding, conditioning = "sort", max_seq_len = None, max_temporal = encoding["max_" + ("time" if "max_time" in encoding.keys() else "beat")], use_augmentation = False)
+    dataset = MusicDataset(paths = args.paths, encoding = encoding, conditioning = encode.DEFAULT_CONDITIONING, max_seq_len = None, max_temporal = encoding["max_" + ("time" if "max_time" in encoding.keys() else "beat")], use_augmentation = False)
     data_loader = DataLoader(dataset = dataset, batch_size = args.batch_size, shuffle = True, collate_fn = MusicDataset.collate)
 
     ##################################################

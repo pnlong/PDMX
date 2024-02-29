@@ -16,6 +16,7 @@ from encode import encode, ENCODING_ARRAY_TYPE
 from read_mscz.music import BetterMusic
 from read_mscz.classes import *
 from read_mscz.read_mscz import read_musescore
+from read_mscz.output import FERMATA_TEMPO_SLOWDOWN
 from muspy.utils import CIRCLE_OF_FIFTHS
 ##################################################
 
@@ -107,17 +108,34 @@ def reconstruct(data: np.array, resolution: int, encoding: dict = representation
     include_velocity = ("velocity" in encoding["dimensions"])
     use_absolute_time = not (("beat" in encoding["dimensions"]) and ("position" in encoding["dimensions"]))
     if use_absolute_time:
-        raise NotImplementedError("Absolute-time functionality is currently being implemented for the decoder.")
+        # helper function for converting absolute to metrical time
+        def get_absolute_to_metrical_time_func(start_time: int = 0, start_time_seconds: float = 0.0, qpm: float = representation.DEFAULT_QPM) -> int:
+            """Helper function that returns a function object that converts absolute to metrical time.
+            Logic:
+                - add start time (in metrical time)
+                - convert time from seconds to minutes
+                - multiply by qpm value to convert to quarter beats since start time
+                - multiply by BetterMusic resolution
+            """
+            return lambda time: int(start_time + ((((time - start_time_seconds) / 60) * qpm) * resolution))
 
     # append the tracks
     programs = sorted(set(row[-2 if include_velocity else -1] for row in data)) # get programs
     for program in programs:
         music.tracks.append(Track(program = program, is_drum = False, name = encoding["program_instrument_map"][program])) # append to tracks
 
-    # append the notes
+    # prepare for adding the notes and expressive features
     ongoing_articulation_chunks = {track_index: {} for track_index in range(len(programs))}
+    absolute_to_metrical_time = get_absolute_to_metrical_time_func(start_time = music.tempos[0].time, start_time_seconds = 0.0, qpm = music.tempos[0].qpm)
+    fermata_on, fermata_time = False, -1
+    
+    # iterate through data
     for row in data:
+
+        # get velocity
         velocity = row.pop(-1) if include_velocity else DEFAULT_VELOCITY # if there is a velocity value
+
+        # get different fields, and make sure valid
         if use_absolute_time:
             event_type, time, value, duration, program = row
             is_valid_row = all(field is not None for field in (time, duration, program))
@@ -126,13 +144,23 @@ def reconstruct(data: np.array, resolution: int, encoding: dict = representation
             is_valid_row = all(field is not None for field in (beat, position, duration, program))
         if not is_valid_row: # skip if invalid
             continue
+
+        # get the index of the track
         track_index = programs.index(program) # get track index
+
+        # deal with timings
         if use_absolute_time:
-            time = None # get time in time steps
-            duration = None # get duration in time steps
+            time_seconds, duration_seconds = time, duration # store the time and duration in seconds
+            if fermata_on and (time_seconds != fermata_time): # update tempo function if necessary
+                absolute_to_metrical_time = get_absolute_to_metrical_time_func(start_time = time + duration, start_time_seconds = time_seconds + duration_seconds, qpm = music.tempos[-1].qpm)
+                fermata_on = False
+            time = absolute_to_metrical_time(time = time) # get time in time steps
+            duration = absolute_to_metrical_time(time = duration) # get duration in time steps
         else:
             time = (beat * resolution) + ((position / encoding["resolution"]) * resolution) # get time in time steps
             duration = (resolution / encoding["resolution"]) * duration # get duration in time steps
+
+        # if the event is a note
         if event_type in ("note", "grace-note"):
             try:
                 pitch = int(value) # make sure the pitch is in fact a pitch
@@ -144,6 +172,8 @@ def reconstruct(data: np.array, resolution: int, encoding: dict = representation
                     music.tracks[track_index].annotations.append(Annotation(time = time, annotation = Articulation(subtype = ongoing_articulation_chunk)))
                 else: # duration is over, delete this chunk, since it is no longer ongoing
                     del ongoing_articulation_chunks[track_index][ongoing_articulation_chunk]
+        
+        # if the event is an expressive feature
         elif event_type == representation.EXPRESSIVE_FEATURE_TYPE_STRING:
             if value in representation.EXPRESSIVE_FEATURE_TYPE_MAP.keys(): # as to not cause a KeyError
                 expressive_feature_type = representation.EXPRESSIVE_FEATURE_TYPE_MAP[value]
@@ -180,18 +210,21 @@ def reconstruct(data: np.array, resolution: int, encoding: dict = representation
                         music.time_signatures[0] = time_signature_obj
                     else:
                         music.time_signatures.append(time_signature_obj)
-                case "Fermata":
-                    music.annotations.append(Annotation(time = time, annotation = Fermata()))
                 case "SlurSpanner":
                     music.tracks[track_index].annotations.append(Annotation(time = time, annotation = SlurSpanner(duration = duration, is_slur = True)))
                 case "PedalSpanner":
                     music.tracks[track_index].annotations.append(Annotation(time = time, annotation = PedalSpanner(duration = duration)))
+                case "Fermata":
+                    music.annotations.append(Annotation(time = time, annotation = Fermata()))
+                    absolute_to_metrical_time = get_absolute_to_metrical_time_func(start_time = time, start_time_seconds = time_seconds, qpm = music.tempos[-1].qpm / FERMATA_TEMPO_SLOWDOWN)
+                    fermata_on, fermata_time = True, time_seconds
                 case "Tempo":
                     tempo_obj = Tempo(time = time, qpm = representation.TEMPO_QPM_MAP[value], text = value)
                     if time == 0:
                         music.tempos[0] = tempo_obj
                     else:
                         music.tempos.append(tempo_obj)
+                    absolute_to_metrical_time = get_absolute_to_metrical_time_func(start_time = tempo_obj.time, start_time_seconds = time_seconds, qpm = tempo_obj.qpm)
                 case "TempoSpanner":
                     if value == representation.DEFAULT_EXPRESSIVE_FEATURE_VALUES["TempoSpanner"]: # skip if unknown TempoSpanner
                         continue

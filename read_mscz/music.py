@@ -525,7 +525,7 @@ class BetterMusic(muspy.music.Music):
 
     def realize_expressive_features(self):
         """Changes note velocities and durations to reflect expressive features.
-        BE CAREFUL USING BEFORE WRITE(), AS WRITE IMPLEMENTS ITS ONLY EXPRESSIVE FEATURE REALIZATION!!!
+        BE CAREFUL USING BEFORE WRITE(), AS WRITE IMPLEMENTS ITS OWN EXPRESSIVE FEATURE REALIZATION!!!
         """
 
         # realize velocity information
