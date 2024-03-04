@@ -576,7 +576,7 @@ def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_COND
     
     # encode the notes / expressive features
     data = data[data[:, (time_dim if use_absolute_time else beat_dim)] <= max_temporal] # remove data if beat greater than max beat/time
-    data = data[data[:, instrument_dim].apply(program_instrument_mapper) >= 0] # skip unknown instruments
+    data = data[np.array(object = list(map(program_instrument_mapper, data[:, instrument_dim]))) >= 0] # skip unknown instruments
     core_codes = np.zeros(shape = (data.shape[0], codes.shape[1]), dtype = ENCODING_ARRAY_TYPE)
     core_codes[:, 0] = list(map(lambda type_: type_code_map[str(type_)], data[:, 0])) # encode type column
     core_codes[:, value_dim] = list(map(value_code_mapper, data[:, value_dim])) # encode value column
