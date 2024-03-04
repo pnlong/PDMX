@@ -639,7 +639,6 @@ def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_COND
             time_differences = note_times - (seconds[expressive_feature_index] - sigma) # difference between each note time and the current expressive feature time (with anticipation constant accounted for)
             valid_index = np.argmax(time_differences >= 0) + 1 # get the first index with a positive time difference (the first note occurs at or after the expressive feature with anticipation), and +1 because control goes after this event
             anticipation_indicies = np.insert(arr = anticipation_indicies, obj = valid_index + i, values = expressive_feature_index, axis = 0) # +i to account for new insert each time
-        del i, expressive_feature_index, time_differences, valid_index
         core_codes = core_codes[anticipation_indicies, :]
         del expressive_features, expressive_feature_indicies, note_indicies, anticipation_indicies, note_times
     del expressive_feature_code
