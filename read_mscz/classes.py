@@ -65,16 +65,16 @@ class Tempo(muspy.classes.Tempo):
         Start time of the tempo, in time steps.
     qpm : float
         Tempo in qpm (quarters per minute).
-    text : str
+    text : str, optional, default: ""
         Text associated with the tempo (if applicable)
     measure : int, optional, default: None
         Measure number where this element is found.
     """
 
     _attributes = OrderedDict([("time", int), ("qpm", (float, int)), ("text", str), ("measure", int)])
-    _optional_attributes = ["measure"]
+    _optional_attributes = ["text", "measure"]
 
-    def __init__(self, time: int, qpm: float, text: str = None, measure: int = None):
+    def __init__(self, time: int, qpm: float, text: str = "", measure: int = None):
         super().__init__(time = time, qpm = qpm)
         self.measure = measure
         self.text = text
