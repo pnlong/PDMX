@@ -458,7 +458,7 @@ if __name__ == "__main__":
                             temperature = args.temperature,
                             filter_logits_fn = args.filter,
                             filter_thres = args.filter_threshold,
-                            monotonicity_dim = ("type", "beat"),
+                            monotonicity_dim = ("type", "time" if use_absolute_time else "beat"),
                             notes_only = notes_only
                         )
                         generated = torch.cat(tensors = (prefix, generated), dim = 1).cpu().numpy() # wrangle a bit

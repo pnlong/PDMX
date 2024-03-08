@@ -133,6 +133,7 @@ def reconstruct(data: np.array, resolution: int, encoding: dict = representation
     for row in data:
 
         # get velocity
+        row = list(row)
         velocity = row.pop(-1) if include_velocity else DEFAULT_VELOCITY # if there is a velocity value
 
         # get different fields, and make sure valid
