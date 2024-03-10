@@ -15,7 +15,9 @@ import logging
 from os.path import exists as file_exists
 import sys
 from typing import Union, List
+from warnings import warn
 
+from encode import SIGMA
 import torch
 import torch.nn.functional as F
 from einops import repeat
@@ -225,6 +227,7 @@ class MusicAutoregressiveWrapper(nn.Module):
         self.ignore_index = ignore_index
         self.net = net
         self.max_seq_len = net.max_seq_len
+        self.use_absolute_time = not (("beat" in encoding["dimensions"]) and ("position" in encoding["dimensions"]))
 
         # get the type codes
         self.sos_type_code = encoding["type_code_map"]["start-of-song"]
@@ -262,11 +265,13 @@ class MusicAutoregressiveWrapper(nn.Module):
         return_attn: bool = False,
         return_logits: bool = False,
         notes_only: bool = False,
+        is_anticipation: bool = False,
+        sigma: float = SIGMA,
         **kwargs,
     ):
         
         # get shape from start_tokens
-        _, t, dim = start_tokens.shape
+        n_sequences_in_batch, t, dim = start_tokens.shape
 
         # convert temperature to list
         if isinstance(temperature, (float, int)):
@@ -311,6 +316,14 @@ class MusicAutoregressiveWrapper(nn.Module):
         # deal with current values
         current_values = {d: torch.max(input = start_tokens[:, :, d], dim = 1)[0] for d in monotonicity_dim} if monotonicity_dim is not None else None
 
+        # get expressive features (controls) for anticipation
+        if is_anticipation and self.use_absolute_time:
+            time_dim = self.dimensions.index("time")
+            current_time = [start_tokens[seq_index][start_tokens[seq_index, :, 0] != self.expressive_feature_type_code][:, time_dim].max().item() for seq_index in n_sequences_in_batch]
+            expressive_features = [start_tokens[seq_index][torch.logical_and((start_tokens[seq_index, :, 0] == self.expressive_feature_type_code), (start_tokens[seq_index, :, time_dim] >= current_time[seq_index]))] for seq_index in n_sequences_in_batch] # filter expressive features so that its only the features after the last note in the prefix
+        elif is_anticipation and (not self.use_absolute_time):
+            warn(message = "Anticipation sampling not implemented for metrical time.")
+
         # logits to return
         if return_logits:
             logits_to_return = [[] for _ in range(dim)]
@@ -319,6 +332,10 @@ class MusicAutoregressiveWrapper(nn.Module):
         value_dim = self.dimensions["value"]
         instrument_dim = self.dimensions["instrument"] # get index of instrument
         for _ in range(seq_len):
+
+            # for anticipation
+            if is_anticipation:
+                output# add relevant expressive feature controls
 
             # get current x and mask
             x = output[:, -self.max_seq_len :]
@@ -342,59 +359,62 @@ class MusicAutoregressiveWrapper(nn.Module):
                     logits[0][i, :v] = -float("inf")
 
             # filter out sos token
-            logits[0][0, 0] = -float("inf")
+            logits[0][:, 0] = -float("inf")
 
             # sample from the logits
-            sample_type = sample(logits = logits[0], kind = filter_logits_fn[0], threshold = filter_thres[0], temperature = temperature[0], min_p_pow = min_p_pow, min_p_ratio = min_p_ratio)
+            event_types = sample(logits = logits[0], kind = filter_logits_fn[0], threshold = filter_thres[0], temperature = temperature[0], min_p_pow = min_p_pow, min_p_ratio = min_p_ratio)
 
             # update current values
             if (monotonicity_dim is not None) and (0 in monotonicity_dim):
-                current_values[0] = torch.maximum(input = current_values[0], other = sample_type.reshape(-1))
+                current_values[0] = torch.maximum(input = current_values[0], other = event_types.reshape(-1))
 
-            if notes_only: # don't allow for sampling of expressive features
+            # don't allow for sampling of expressive features
+            if notes_only:
                 logits[0][:, self.expressive_feature_type_code] = -float("inf") # don't allow for the expressive feature type
                 logits[value_dim][:, self.expressive_feature_value_codes] = -float("inf") # don't allow for expressive feature values
 
             # iterate after each sample
-            samples = [[s_type] for s_type in sample_type]
-            for i, s_type in enumerate(sample_type):
-                sample_type_code = s_type.item()
+            events = [[event_type] for event_type in event_types]
+            for seq_index, event_type in enumerate(event_types): # seq_index is the sequence index within the batch
+                event_type_code = event_type.item()
 
                 # a start-of-song, end-of-song or start-of-notes code
-                if sample_type_code in {self.sos_type_code, self.eos_type_code, self.son_type_code}:
-                    samples[i] += [torch.zeros_like(input = s_type)] * (len(logits) - 1)
+                if event_type_code in {self.sos_type_code, self.eos_type_code, self.son_type_code}:
+                    events[seq_index] += [torch.zeros_like(input = event_type)] * (len(logits) - 1)
 
                 # an instrument code
-                elif sample_type_code == self.instrument_type_code:
-                    samples[i] += [torch.zeros_like(input = s_type)] * (len(logits) - 2)
-                    logits[instrument_dim][:, 0] = -float("inf") # avoid none
-                    sampled = sample(logits = logits[instrument_dim][i : i + 1], kind = filter_logits_fn[instrument_dim], threshold = filter_thres[instrument_dim], temperature = temperature[instrument_dim], min_p_pow = min_p_pow, min_p_ratio = min_p_ratio)[0]
-                    samples[i].append(sampled)
+                elif event_type_code == self.instrument_type_code:
+                    events[seq_index] += [torch.zeros_like(input = event_type)] * (len(logits) - 2)
+                    logits[instrument_dim][:, 0] = -float("inf") # avoid none in instrument dim
+                    sampled = sample(logits = logits[instrument_dim][seq_index : seq_index + 1], kind = filter_logits_fn[instrument_dim], threshold = filter_thres[instrument_dim], temperature = temperature[instrument_dim], min_p_pow = min_p_pow, min_p_ratio = min_p_ratio)[0]
+                    events[seq_index].append(sampled)
 
                 # a value code
-                elif sample_type_code in self.value_type_codes:
+                elif event_type_code in self.value_type_codes:
                     for d in range(1, dim):
                         # enforce monotonicity
                         if (monotonicity_dim is not None) and (d in monotonicity_dim):
-                            logits[d][i, : current_values[d][i]] = -float("inf")
+                            logits[d][seq_index, : current_values[d][seq_index]] = -float("inf")
                         # sample from the logits
                         logits[d][:, 0] = -float("inf") # avoid none
-                        sampled = sample(logits = logits[d][i : i + 1], kind = filter_logits_fn[d], threshold = filter_thres[d], temperature = temperature[d], min_p_pow = min_p_pow, min_p_ratio = min_p_ratio)[0]
-                        samples[i].append(sampled)
+                        sampled = sample(logits = logits[d][seq_index : seq_index + 1], kind = filter_logits_fn[d], threshold = filter_thres[d], temperature = temperature[d], min_p_pow = min_p_pow, min_p_ratio = min_p_ratio)[0]
+                        events[seq_index].append(sampled)
+                        if is_anticipation and self.use_absolute_time and (d == time_dim):
+                            current_time[seq_index] = sampled
                         # update current values
                         if (monotonicity_dim is not None) and (d in monotonicity_dim):
-                            current_values[d][i] = torch.max(input = current_values[d][i], other = sampled)[0]
+                            current_values[d][seq_index] = torch.max(input = current_values[d][seq_index], other = sampled)[0]
                 else:
-                    raise ValueError(f"Unknown event type code: {sample_type_code}")
+                    raise ValueError(f"Unknown event type code: {event_type_code}")
 
             # wrangle output a bit
-            stacked = torch.stack(tensors = [torch.cat(s).expand(1, -1) for s in samples], dim = 0)
+            stacked = torch.stack(tensors = [torch.cat(event).expand(1, -1) for event in events], dim = 0)
             output = torch.cat(tensors = (output, stacked), dim = 1)
             mask = F.pad(input = mask, pad = (0, 1), value = True)
 
             # if end of song token
             if exists(eos_token):
-                is_eos_tokens = output[..., 0] == eos_token
+                is_eos_tokens = (output[..., 0] == eos_token)
                 # mask out everything after the eos tokens
                 if is_eos_tokens.any(dim = 1).all():
                     for i, is_eos_token in enumerate(is_eos_tokens):

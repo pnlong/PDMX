@@ -319,7 +319,8 @@ if __name__ == "__main__":
         # create the dataset
         logging.info(f"Creating the data loader...")
         max_seq_len = train_args["max_seq_len"]
-        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = max_seq_len, use_augmentation = False, is_baseline = ("baseline" in args.output_dir))
+        conditioning = train_args["conditioning"]
+        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, conditioning = conditioning, max_seq_len = max_seq_len, use_augmentation = False, is_baseline = ("baseline" in args.output_dir))
 
         # create the model
         logging.info(f"Creating the model...")
@@ -349,7 +350,9 @@ if __name__ == "__main__":
         sos = encoding["type_code_map"]["start-of-song"]
         eos = encoding["type_code_map"]["end-of-song"]
         note_token, grace_note_token = encoding["type_code_map"]["note"], encoding["type_code_map"]["grace-note"]
-        expressive_token = encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING]
+        expressive_feature_token = encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING]
+        is_anticipation = (conditioning == encode.CONDITIONINGS[-1])
+        sigma = encoding["time_code_map"][train_args["sigma"]] if use_absolute_time else train_args["sigma"]
 
     ##################################################
 
@@ -435,7 +438,7 @@ if __name__ == "__main__":
                         conditional_type, generation_type = eval_type.split("_")[1:]
                         notes_only = (generation_type != train.ALL_STRING)
                         if conditional_type == CONDITIONAL_TYPES[1]: # conditional on notes only
-                            prefix = pad(data = [prefix_conditional[(prefix_conditional[:, 0] != expressive_token), :] for prefix_conditional in prefix_conditional_default]).to(device)
+                            prefix = pad(data = [prefix_conditional[(prefix_conditional[:, 0] != expressive_feature_token), :] for prefix_conditional in prefix_conditional_default]).to(device)
                         elif conditional_type == CONDITIONAL_TYPES[2]: # conditional on expressive features only
                             prefix = pad(data = [prefix_conditional[((prefix_conditional[:, 0] != note_token) & (prefix_conditional[:, 0] != grace_note_token)), :] for prefix_conditional in prefix_conditional_default]).to(device)
                         else: # conditional on everything
@@ -459,7 +462,9 @@ if __name__ == "__main__":
                             filter_logits_fn = args.filter,
                             filter_thres = args.filter_threshold,
                             monotonicity_dim = ("type", "time" if use_absolute_time else "beat"),
-                            notes_only = notes_only
+                            notes_only = notes_only,
+                            is_anticipation = is_anticipation,
+                            sigma = sigma
                         )
                         generated = torch.cat(tensors = (prefix, generated), dim = 1).cpu().numpy() # wrangle a bit
 

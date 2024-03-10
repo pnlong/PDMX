@@ -91,8 +91,8 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("--baseline", action = "store_true", help = "Whether or not this is training the baseline model. The baseline ignores all expressive features.")
     # model
     parser.add_argument("--max_seq_len", default = DEFAULT_MAX_SEQ_LEN, type = int, help = "Maximum sequence length")
-    parser.add_argument("--dim", default = 512, type = int, help = "Model dimension")
-    parser.add_argument("-l", "--layers", default = 6, type = int, help = "Number of layers")
+    parser.add_argument("--dim", default = 768, type = int, help = "Model dimension")
+    parser.add_argument("-l", "--layers", default = 10, type = int, help = "Number of layers")
     parser.add_argument("--heads", default = 8, type = int, help = "Number of attention heads")
     parser.add_argument("--dropout", default = 0.2, type = float, help = "Dropout rate")
     parser.add_argument("--abs_pos_emb", action = argparse.BooleanOptionalAction, default = True, help = "Whether to use absolute positional embedding")

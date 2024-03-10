@@ -417,7 +417,6 @@ def extract_data(music: BetterMusic, use_implied_duration: bool = True, include_
         data = pd.concat(objs = (pd.DataFrame(columns = output_columns), system_level_expressive_features, staff_level_expressive_features), axis = 0, ignore_index = True) # combine system and staff expressive features
         data["type"] = data["type"].apply(lambda type_: type_ if type_ is not None else representation.EXPRESSIVE_FEATURE_TYPE_STRING) # make sure no missing type values
         data["instrument"] = utils.rep(x = track.program, times = len(data)) # add the instrument column
-        data["duration"] = (representation.RESOLUTION / music.resolution) * data["duration"].apply(lambda duration: duration if not np.isnan(duration) else 0) # semi-encode duration, checking for missing values
         data["velocity"] = data["velocity"].apply(lambda velocity: representation.NON_VELOCITY if (velocity is None) else velocity)
 
         # convert time to seconds for certain types of sorting that might require it
@@ -446,6 +445,8 @@ def extract_data(music: BetterMusic, use_implied_duration: bool = True, include_
         # convert duration to absolute time if necessary
         if use_absolute_time:
             data["duration"] = (data["time"] + data["duration"]).apply(absolute_time_helper) - data["time.s"]
+        else:
+            data["duration"] = (representation.RESOLUTION / music.resolution) * data["duration"].apply(lambda duration: duration if not np.isnan(duration) else 0) # semi-encode duration, checking for missing values
 
         # remove duplicates due to beat and position quantization
         data = data.drop_duplicates(subset = output_columns[:time_dim], keep = "first", ignore_index = True)

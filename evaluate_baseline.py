@@ -323,6 +323,7 @@ if __name__ == "__main__":
         # create the dataset
         logging.info(f"Creating the data loader...")
         test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = DEFAULT_MAX_SEQ_LEN, use_augmentation = False)
+        expressive_feature_token = encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING]
 
     # load model if necessary
     else:
@@ -340,7 +341,9 @@ if __name__ == "__main__":
 
         # create the dataset
         logging.info(f"Creating the data loader...")
-        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = train_args["max_seq_len"], use_augmentation = False, is_baseline = ("baseline" in args.output_dir))
+        max_seq_len = train_args["max_seq_len"]
+        conditioning = train_args["conditioning"]
+        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, conditioning = conditioning, max_seq_len = max_seq_len, use_augmentation = False, is_baseline = ("baseline" in args.output_dir))
 
         # create the model
         logging.info(f"Creating the model...")
@@ -350,7 +353,7 @@ if __name__ == "__main__":
             encoding = encoding,
             depth = train_args["layers"],
             heads = train_args["heads"],
-            max_seq_len = train_args["max_seq_len"],
+            max_seq_len = max_seq_len,
             max_temporal = encoding["max_" + ("time" if use_absolute_time else "beat")],
             rotary_pos_emb = train_args["rel_pos_emb"],
             use_abs_pos_emb = train_args["abs_pos_emb"],
@@ -358,7 +361,7 @@ if __name__ == "__main__":
             attn_dropout = train_args["dropout"],
             ff_dropout = train_args["dropout"],
         ).to(device)
-        # kwargs = {"depth": train_args["layers"], "heads": train_args["heads"], "max_seq_len": train_args["max_seq_len"], "max_temporal": encoding["max_" + ("time" if use_absolute_time else "beat")], "rotary_pos_emb": train_args["rel_pos_emb"], "use_abs_pos_emb": train_args["abs_pos_emb"], "emb_dropout": train_args["dropout"], "attn_dropout": train_args["dropout"], "ff_dropout": train_args["dropout"]} # for debugging
+        # kwargs = {"depth": train_args["layers"], "heads": train_args["heads"], "max_seq_len": max_seq_len, "max_temporal": encoding["max_" + ("time" if use_absolute_time else "beat")], "rotary_pos_emb": train_args["rel_pos_emb"], "use_abs_pos_emb": train_args["abs_pos_emb"], "emb_dropout": train_args["dropout"], "attn_dropout": train_args["dropout"], "ff_dropout": train_args["dropout"]} # for debugging
 
         # load the checkpoint
         CHECKPOINT_DIR = f"{args.output_dir}/checkpoints"
@@ -370,7 +373,8 @@ if __name__ == "__main__":
         # get special tokens
         sos = encoding["type_code_map"]["start-of-song"]
         eos = encoding["type_code_map"]["end-of-song"]
-    expressive_token = encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING]
+        is_anticipation = (conditioning == encode.CONDITIONINGS[-1])
+        sigma = encoding["time_code_map"][train_args["sigma"]] if use_absolute_time else train_args["sigma"]
 
     # to output evaluation metrics
     output_filepath = f"{EVAL_DIR}/{basename(EVAL_DIR)}.csv"
@@ -420,7 +424,7 @@ if __name__ == "__main__":
 
                 # get ground truth
                 truth = batch["seq"]
-                truth = pad(data = [truth[j][truth[j, :, 0] != expressive_token] for j in range(len(truth))]) # filter out expressive features
+                truth = pad(data = [truth[j][truth[j, :, 0] != expressive_feature_token] for j in range(len(truth))]) # filter out expressive features
 
                 # add to results
                 def evaluate_helper(j: int) -> dict:
@@ -450,10 +454,12 @@ if __name__ == "__main__":
                         temperature = args.temperature,
                         filter_logits_fn = args.filter,
                         filter_thres = args.filter_thres,
-                        monotonicity_dim = ("type", "beat"),
-                        notes_only = True
+                        monotonicity_dim = ("type", "time" if use_absolute_time else "beat"),
+                        notes_only = True,
+                        is_anticipation = is_anticipation,
+                        sigma = sigma
                     )
-                    # kwargs = {"eos_token": eos, "temperature": args.temperature, "filter_logits_fn": args.filter, "filter_thres": args.filter_thres, "monotonicity_dim": ("type", "beat")}
+                    # kwargs = {"eos_token": eos, "temperature": args.temperature, "filter_logits_fn": args.filter, "filter_thres": args.filter_thres, "monotonicity_dim": ("type", "time" if use_absolute_time else "beat")}
                     generated = torch.cat(tensors = (prefix, generated), dim = 1).cpu().numpy()
 
                 else:
