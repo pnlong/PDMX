@@ -266,7 +266,7 @@ class MusicAutoregressiveWrapper(nn.Module):
         return_logits: bool = False,
         notes_only: bool = False,
         is_anticipation: bool = False,
-        sigma: float = SIGMA,
+        sigma: float = SIGMA, # NOT IN SECONDS, tokenized SIGMA value
         **kwargs,
     ):
         
@@ -306,23 +306,34 @@ class MusicAutoregressiveWrapper(nn.Module):
         if n_dims == 2:
             start_tokens = start_tokens[None, :, :]
 
-        # deal with masking
-        self.net.eval()
-        output = start_tokens
-        mask = kwargs.pop("mask", None)
-        if mask is None:
-            mask = torch.ones(size = output.shape[:2], dtype = torch.bool, device = output.device)
-
-        # deal with current values
-        current_values = {d: torch.max(input = start_tokens[:, :, d], dim = 1)[0] for d in monotonicity_dim} if monotonicity_dim is not None else None
-
         # get expressive features (controls) for anticipation
         if is_anticipation and self.use_absolute_time:
-            time_dim = self.dimensions.index("time")
-            current_time = [start_tokens[seq_index][start_tokens[seq_index, :, 0] != self.expressive_feature_type_code][:, time_dim].max().item() for seq_index in n_sequences_in_batch]
-            expressive_features = [start_tokens[seq_index][torch.logical_and((start_tokens[seq_index, :, 0] == self.expressive_feature_type_code), (start_tokens[seq_index, :, time_dim] >= current_time[seq_index]))] for seq_index in n_sequences_in_batch] # filter expressive features so that its only the features after the last note in the prefix
+            time_dim = self.dimensions["time"]
+            current_time = [0 for _ in range(n_sequences_in_batch)]
+            expressive_features = [[] for _ in range(n_sequences_in_batch)]
+            for seq_index in range(len(expressive_features)): # filter expressive features so that its only the features after the last note in the prefix
+                for i in range(len(start_tokens[seq_index]) - 1, -1, -1):
+                    if start_tokens[seq_index, i, 0] != self.expressive_feature_type_code: # if we encounter a note, stop the for loop
+                        current_time[seq_index] = start_tokens[seq_index, i, time_dim].item()
+                        break
+                    expressive_features[seq_index].append(start_tokens[seq_index, i].unsqueeze(dim = 0))
         elif is_anticipation and (not self.use_absolute_time):
             warn(message = "Anticipation sampling not implemented for metrical time.")
+
+        # deal with masking
+        self.net.eval()
+        output = [seq.unsqueeze(dim = 0) for seq in start_tokens]
+        if is_anticipation and self.use_absolute_time: # if anticipation, remove relevant controls from prefix
+            for seq_index in range(len(output)): # remove relevant controls from prefix
+                n_expressive_features_remaining = len(expressive_features[seq_index])
+                if n_expressive_features_remaining > 0:
+                    output[seq_index] = output[seq_index][:, :-n_expressive_features_remaining]
+        mask = kwargs.pop("mask", None)
+        if mask is None:
+            mask = torch.ones(size = (start_tokens.shape[:2]), dtype = torch.bool, device = start_tokens.device)
+
+        # deal with current values
+        current_values = {d: torch.max(input = start_tokens[:, :, d], dim = 1)[0] for d in monotonicity_dim} if (monotonicity_dim is not None) else None
 
         # logits to return
         if return_logits:
@@ -333,13 +344,20 @@ class MusicAutoregressiveWrapper(nn.Module):
         instrument_dim = self.dimensions["instrument"] # get index of instrument
         for _ in range(seq_len):
 
-            # for anticipation
-            if is_anticipation:
-                output# add relevant expressive feature controls
-
+            # for anticipation, add relevant expressive features
+            if is_anticipation and self.use_absolute_time:
+                for seq_index in range(len(output)):
+                    n_expressive_features_remaining = len(expressive_features[seq_index])
+                    for i in range(n_expressive_features_remaining - 1, -1, -1):
+                        if expressive_features[seq_index][i][:, time_dim].item() <= (current_time[seq_index] + sigma):
+                            control = expressive_features[seq_index].pop(-1) # pop expressive feature
+                            output[seq_index] = torch.cat(tensors = (output, control.unsqueeze(dim = 0)), dim = 1) # add to output
+                            
             # get current x and mask
-            x = output[:, -self.max_seq_len :]
-            mask = mask[:, -self.max_seq_len :]
+            mask = mask[:, -self.max_seq_len:]
+            x = [seq[:, -self.max_seq_len:] for seq in output]
+            longest_seq_len = max((seq.shape[1] for seq in x)) # get the longest sequence length so we can front pad sequences of unequal length
+            x = torch.cat(tensors = [F.pad(input = seq, pad = (0, 0, longest_seq_len - seq.shape[1], 0), mode = "constant", value = self.pad_value) for seq in x], dim = 0).to(mask.device)
 
             # get logits (and perhaps attn)
             if return_attn:
@@ -408,21 +426,26 @@ class MusicAutoregressiveWrapper(nn.Module):
                     raise ValueError(f"Unknown event type code: {event_type_code}")
 
             # wrangle output a bit
-            stacked = torch.stack(tensors = [torch.cat(event).expand(1, -1) for event in events], dim = 0)
-            output = torch.cat(tensors = (output, stacked), dim = 1)
+            for seq_index in range(len(output)):
+                output[seq_index] = torch.cat(tensors = (output[seq_index], torch.cat(tensors = events[seq_index]).expand(1, -1).unsqueeze(dim = 0)), dim = 1)
+            # stacked = torch.stack(tensors = [torch.cat(tensors = event).expand(1, -1) for event in events], dim = 0)
+            # output = torch.cat(tensors = (output, stacked), dim = 1)
             mask = F.pad(input = mask, pad = (0, 1), value = True)
 
-            # if end of song token
+            # if end of song token is provided
             if exists(eos_token):
-                is_eos_tokens = (output[..., 0] == eos_token)
+                is_eos_tokens = [(seq[:, :, 0] == eos_token).squeeze(dim = 0) for seq in output]
                 # mask out everything after the eos tokens
-                if is_eos_tokens.any(dim = 1).all():
-                    for i, is_eos_token in enumerate(is_eos_tokens):
-                        i = torch.argmax(input = is_eos_token.byte(), dim = None).item()
-                        output[:, i + 1:] = self.pad_value # pad after eos token
+                if all([is_eos_tokens_seq.any() for is_eos_tokens_seq in is_eos_tokens]): # if all sequences in the batch have an eos token, pad out everything after
+                    longest_seq_len = max((seq.shape[1] for seq in output)) # get the longest sequence length
+                    for seq_index, is_eos_tokens_seq in enumerate(is_eos_tokens):
+                        first_eos_token_index = torch.argmax(input = is_eos_tokens_seq.byte(), dim = None).item() # index of the first eos token
+                        output[seq_index][:, first_eos_token_index + 1:] = self.pad_value # pad after eos token
+                        output[seq_index] = F.pad(input = output[seq_index], pad = (0, 0, 0, longest_seq_len - output[seq_index].shape[1]), mode = "constant", value = self.pad_value) # make sure all sequences are the same length
                     break
 
         # wrangle output
+        output = torch.cat(tensors = output, dim = 0).to(start_tokens.device)
         output = output[:, t:]
         if n_dims == 1:
             output = output.squeeze(0)

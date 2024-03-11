@@ -174,6 +174,8 @@ class BetterMusic(muspy.music.Music):
         self.metadata = metadata if metadata is not None else Metadata()
         self.resolution = resolution if resolution is not None else muspy.DEFAULT_RESOLUTION
         self.tempos = tempos if tempos is not None else []
+        if not any((tempo.time == 0 for tempo in self.tempos)):
+            self.tempos.insert(0, Tempo(time = 0, qpm = 120))
         self.key_signatures = key_signatures if key_signatures is not None else []
         self.time_signatures = time_signatures if time_signatures is not None else []
         self.beats = beats if beats is not None else []

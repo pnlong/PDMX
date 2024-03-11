@@ -443,10 +443,11 @@ def extract_data(music: BetterMusic, use_implied_duration: bool = True, include_
         #     data.at[i, "position"] = int((RESOLUTION * (data.at[i, "time"] - beats[beat_index])) / (beats[beat_index + 1] - beats[beat_index]))
 
         # convert duration to absolute time if necessary
+        data["duration"] = data["duration"].apply(lambda duration: duration if not np.isnan(duration) else 0) # semi-encode duration, checking for missing values
         if use_absolute_time:
             data["duration"] = (data["time"] + data["duration"]).apply(absolute_time_helper) - data["time.s"]
         else:
-            data["duration"] = (representation.RESOLUTION / music.resolution) * data["duration"].apply(lambda duration: duration if not np.isnan(duration) else 0) # semi-encode duration, checking for missing values
+            data["duration"] = (representation.RESOLUTION / music.resolution) * data["duration"]
 
         # remove duplicates due to beat and position quantization
         data = data.drop_duplicates(subset = output_columns[:time_dim], keep = "first", ignore_index = True)
