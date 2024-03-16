@@ -374,8 +374,8 @@ if __name__ == "__main__":
         sos = encoding["type_code_map"]["start-of-song"]
         eos = encoding["type_code_map"]["end-of-song"]
         is_anticipation = (conditioning == encode.CONDITIONINGS[-1])
-        sigma = encoding["time_code_map"][train_args["sigma"]] if use_absolute_time else train_args["sigma"]
-
+        sigma = train_args["sigma"] if use_absolute_time else encode.SIGMA_METRICAL
+        
     # to output evaluation metrics
     output_filepath = f"{EVAL_DIR}/{basename(EVAL_DIR)}.csv"
     output_columns_must_be_written = not (exists(output_filepath) and args.resume)

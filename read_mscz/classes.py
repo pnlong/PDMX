@@ -15,6 +15,7 @@ from collections import OrderedDict
 from typing import Any, List
 
 DEFAULT_VELOCITY = 64
+DEFAULT_QPM = 120
 
 ##################################################
 
@@ -63,7 +64,7 @@ class Tempo(muspy.classes.Tempo):
     ----------
     time : int
         Start time of the tempo, in time steps.
-    qpm : float
+    qpm : float, optional, default: DEFAULT_QPM = 120
         Tempo in qpm (quarters per minute).
     text : str, optional, default: ""
         Text associated with the tempo (if applicable)
@@ -72,9 +73,9 @@ class Tempo(muspy.classes.Tempo):
     """
 
     _attributes = OrderedDict([("time", int), ("qpm", (float, int)), ("text", str), ("measure", int)])
-    _optional_attributes = ["text", "measure"]
+    _optional_attributes = ["qpm", "text", "measure"]
 
-    def __init__(self, time: int, qpm: float, text: str = "", measure: int = None):
+    def __init__(self, time: int, qpm: float = DEFAULT_QPM, text: str = "", measure: int = None):
         super().__init__(time = time, qpm = qpm)
         self.measure = measure
         self.text = text

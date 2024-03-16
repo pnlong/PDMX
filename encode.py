@@ -29,7 +29,8 @@ from read_mscz.read_mscz import read_musescore
 
 CONDITIONINGS = ("prefix", "anticipation") # there are three options for conditioning 
 DEFAULT_CONDITIONING = CONDITIONINGS[0]
-SIGMA = 5.0 # for anticipation conditioning
+SIGMA = 5.0 # for anticipation conditioning, in seconds
+SIGMA_METRICAL = 4 # for anticipation conditioning, in beats
 ENCODING_ARRAY_TYPE = np.int64
 ANNOTATION_CLASS_NAME_STRING = "annotation_class_name"
 
@@ -575,6 +576,7 @@ def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_COND
         if instrument is None:
             return -1
         return instrument
+    floor_time = lambda time: math.floor(time / representation.TIME_STEP) * representation.TIME_STEP
     
     # encode the notes / expressive features
     data = data[data[:, (time_dim if use_absolute_time else beat_dim)] <= max_temporal] # remove data if beat greater than max beat/time
@@ -586,7 +588,6 @@ def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_COND
     if include_velocity:
         core_codes[:, velocity_dim] = list(map(lambda velocity: velocity_code_map[min(representation.MAX_VELOCITY, max(0, int(velocity))) if (not np.isnan(velocity)) else None], data[:, velocity_dim])) # encode velocity
     if use_absolute_time:
-        floor_time = lambda time: math.floor(time / representation.TIME_STEP) * representation.TIME_STEP
         core_codes[:, duration_dim] = list(map(lambda duration: duration_code_map[floor_time(float(min(max_duration, max(0, duration))))], data[:, duration_dim])) # encode duration
         core_codes[:, time_dim] = list(map(lambda time: time_code_map[floor_time(float(max(0, time)))], data[:, time_dim])) # encode time
     else:

@@ -352,7 +352,7 @@ if __name__ == "__main__":
         note_token, grace_note_token = encoding["type_code_map"]["note"], encoding["type_code_map"]["grace-note"]
         expressive_feature_token = encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING]
         is_anticipation = (conditioning == encode.CONDITIONINGS[-1])
-        sigma = encoding["time_code_map"][train_args["sigma"]] if use_absolute_time else train_args["sigma"]
+        sigma = train_args["sigma"] if use_absolute_time else encode.SIGMA_METRICAL
 
     ##################################################
 

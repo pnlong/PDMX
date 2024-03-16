@@ -12,7 +12,7 @@ import numpy as np
 import utils
 import argparse
 from itertools import combinations
-from read_mscz.classes import DEFAULT_VELOCITY
+from read_mscz.classes import DEFAULT_VELOCITY, DEFAULT_QPM
 from utils import unique
 from sys import exit
 ##################################################
@@ -110,7 +110,6 @@ TEMPO_QPM_MAP = { # each value is the maximum BPM before we go up a tempo, found
     "prestissimo": float("inf"), # some arbitrary large number
 }
 QPM_TEMPO_MAP = utils.inverse_dict(TEMPO_QPM_MAP)
-DEFAULT_QPM = 112
 def QPM_TEMPO_MAPPER(qpm: float) -> str:
     if qpm is None: # default if qpm argument is none
         qpm = DEFAULT_QPM # default bpm
@@ -619,15 +618,15 @@ CODE_VELOCITY_MAP = utils.inverse_dict(VELOCITY_CODE_MAP)
 ##################################################
 
 N_TOKENS = {
-    "type": len(TYPE_CODE_MAP),
-    "beat": len(BEAT_CODE_MAP),
-    "position": len(POSITION_CODE_MAP),
-    "time": len(TIME_CODE_MAP),
-    "value": len(VALUE_CODE_MAP),
-    "duration": len(DURATION_CODE_MAP),
-    "duration_absolute_time": len(DURATION_CODE_MAP_ABSOLUTE_TIME),
-    "instrument": len(INSTRUMENT_CODE_MAP),
-    "velocity": len(VELOCITY_CODE_MAP),
+    "type": len(CODE_TYPE_MAP),
+    "beat": len(CODE_BEAT_MAP),
+    "position": len(CODE_POSITION_MAP),
+    "time": len(CODE_TIME_MAP),
+    "value": len(CODE_VALUE_MAP),
+    "duration": len(CODE_DURATION_MAP),
+    "duration_absolute_time": len(CODE_DURATION_MAP_ABSOLUTE_TIME),
+    "instrument": len(CODE_INSTRUMENT_MAP),
+    "velocity": len(CODE_VELOCITY_MAP),
 }
 
 ##################################################
@@ -666,7 +665,7 @@ def get_encoding(include_velocity: bool = False, use_absolute_time: bool = False
         }
         encoding["dimensions"].remove("position") # remove position column
         encoding["dimensions"][encoding["dimensions"].index("beat")] = "time" # rename beat column to time
-        encoding["n_tokens"]["duration"] = encoding["n_tokens"]["duration_absolute_time"] # set the number of tokens duration to absolute time
+        encoding["n_tokens"]["duration"] = encoding["n_tokens"].pop("duration_absolute_time") # set the number of tokens duration to absolute time
     else: # beats and position
         temporals = {
             "max_beat": int(MAX_BEAT),
@@ -757,8 +756,8 @@ def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(prog = "Representation", description = "Test Encoding/Decoding mechanisms for MuseScore data.")
     parser.add_argument("-o", "--output_dir", type = str, default = None, help = "Directory in which to store the encoding file")
-    parser.add_argument("-v", "--velocity", action = "store_true", help = "Whether to add a velocity field.")
-    parser.add_argument("-a", "--absolute_time", action = "store_true", help = "Whether or not to use absolute (seconds) or metrical (beats) time.")
+    parser.add_argument("-v", "--velocity", action = "store_true", help = "Add a velocity field.")
+    parser.add_argument("-a", "--absolute_time", action = "store_true", help = "Use absolute (seconds) time, as opposed to metrical (beats).")
     return parser.parse_args(args = args, namespace = namespace)
 ##################################################
 

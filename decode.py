@@ -91,10 +91,17 @@ def decode_data(codes: np.array, encoding: dict = representation.get_encoding())
                 current_row = [event_type, beat, position, value, duration, program]
             if include_velocity:
                 current_row.append(code_velocity_map[int(row[velocity_dim])])
-            data.append(tuple(current_row))
+            data.append(current_row)
         else:
             raise ValueError("Unknown event type.")
-        
+    
+    # resort data in sort-order
+    if use_absolute_time:
+        data = sorted(data, key = lambda row: row[time_dim])
+    else:
+        data = sorted(data, key = lambda row: row[position_dim])
+        data = sorted(data, key = lambda row: row[beat_dim])
+    
     return data
 
 
@@ -107,8 +114,9 @@ def reconstruct(data: np.array, resolution: int, encoding: dict = representation
     # determine include_velocity and use_absolute_time
     include_velocity = ("velocity" in encoding["dimensions"])
     use_absolute_time = not (("beat" in encoding["dimensions"]) and ("position" in encoding["dimensions"]))
+    music.infer_velocity = (not include_velocity)
+    # helper function for converting absolute to metrical time
     if use_absolute_time:
-        # helper function for converting absolute to metrical time
         def get_absolute_to_metrical_time_func(start_time: int = 0, start_time_seconds: float = 0.0, qpm: float = representation.DEFAULT_QPM) -> int:
             """Helper function that returns a function object that converts absolute to metrical time.
             Logic:
@@ -126,14 +134,14 @@ def reconstruct(data: np.array, resolution: int, encoding: dict = representation
 
     # prepare for adding the notes and expressive features
     ongoing_articulation_chunks = {track_index: {} for track_index in range(len(programs))}
-    absolute_to_metrical_time = get_absolute_to_metrical_time_func(start_time = music.tempos[0].time, start_time_seconds = 0.0, qpm = music.tempos[0].qpm)
-    fermata_on, fermata_time = False, -1
+    if use_absolute_time:
+        absolute_to_metrical_time = get_absolute_to_metrical_time_func(start_time = music.tempos[0].time, start_time_seconds = 0.0, qpm = music.tempos[0].qpm)
+        fermata_on, fermata_time = False, -1
     
     # iterate through data
     for row in data:
 
         # get velocity
-        row = list(row)
         velocity = row.pop(-1) if include_velocity else DEFAULT_VELOCITY # if there is a velocity value
 
         # get different fields, and make sure valid
@@ -155,11 +163,11 @@ def reconstruct(data: np.array, resolution: int, encoding: dict = representation
             if fermata_on and (time_seconds != fermata_time): # update tempo function if necessary
                 absolute_to_metrical_time = get_absolute_to_metrical_time_func(start_time = time + duration, start_time_seconds = time_seconds + duration_seconds, qpm = music.tempos[-1].qpm)
                 fermata_on = False
-            time = absolute_to_metrical_time(time = time) # get time in time steps
-            duration = absolute_to_metrical_time(time = duration) # get duration in time steps
+            time = int(absolute_to_metrical_time(time = time)) # get time in time steps
+            duration = int(absolute_to_metrical_time(time = duration)) # get duration in time steps
         else:
-            time = (beat * resolution) + ((position / encoding["resolution"]) * resolution) # get time in time steps
-            duration = (resolution / encoding["resolution"]) * duration # get duration in time steps
+            time = int((beat * resolution) + ((position / encoding["resolution"]) * resolution)) # get time in time steps
+            duration = int((resolution / encoding["resolution"]) * duration) # get duration in time steps
 
         # if the event is a note
         if event_type in ("note", "grace-note"):
@@ -217,15 +225,17 @@ def reconstruct(data: np.array, resolution: int, encoding: dict = representation
                     music.tracks[track_index].annotations.append(Annotation(time = time, annotation = PedalSpanner(duration = duration)))
                 case "Fermata":
                     music.annotations.append(Annotation(time = time, annotation = Fermata()))
-                    absolute_to_metrical_time = get_absolute_to_metrical_time_func(start_time = time, start_time_seconds = time_seconds, qpm = music.tempos[-1].qpm / FERMATA_TEMPO_SLOWDOWN)
-                    fermata_on, fermata_time = True, time_seconds
+                    if use_absolute_time:
+                        absolute_to_metrical_time = get_absolute_to_metrical_time_func(start_time = time, start_time_seconds = time_seconds, qpm = music.tempos[-1].qpm / FERMATA_TEMPO_SLOWDOWN)
+                        fermata_on, fermata_time = True, time_seconds
                 case "Tempo":
                     tempo_obj = Tempo(time = time, qpm = representation.TEMPO_QPM_MAP[value], text = value)
                     if time == 0:
                         music.tempos[0] = tempo_obj
                     else:
                         music.tempos.append(tempo_obj)
-                    absolute_to_metrical_time = get_absolute_to_metrical_time_func(start_time = tempo_obj.time, start_time_seconds = time_seconds, qpm = tempo_obj.qpm)
+                    if use_absolute_time:
+                        absolute_to_metrical_time = get_absolute_to_metrical_time_func(start_time = tempo_obj.time, start_time_seconds = time_seconds, qpm = tempo_obj.qpm)
                 case "TempoSpanner":
                     if value == representation.DEFAULT_EXPRESSIVE_FEATURE_VALUES["TempoSpanner"]: # skip if unknown TempoSpanner
                         continue

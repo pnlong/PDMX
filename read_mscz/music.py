@@ -170,12 +170,12 @@ class BetterMusic(muspy.music.Music):
     # INITIALIZER
     ##################################################
 
-    def __init__(self, metadata: Metadata = None, resolution: int = None, tempos: List[Tempo] = None, key_signatures: List[KeySignature] = None, time_signatures: List[TimeSignature] = None, barlines: List[Barline] = None, beats: List[Beat] = None, lyrics: List[Lyric] = None, annotations: List[Annotation] = None, tracks: List[Track] = None, song_length: int = None):
+    def __init__(self, metadata: Metadata = None, resolution: int = None, tempos: List[Tempo] = None, key_signatures: List[KeySignature] = None, time_signatures: List[TimeSignature] = None, barlines: List[Barline] = None, beats: List[Beat] = None, lyrics: List[Lyric] = None, annotations: List[Annotation] = None, tracks: List[Track] = None, song_length: int = None, infer_velocity: bool = True):
         self.metadata = metadata if metadata is not None else Metadata()
         self.resolution = resolution if resolution is not None else muspy.DEFAULT_RESOLUTION
         self.tempos = tempos if tempos is not None else []
         if not any((tempo.time == 0 for tempo in self.tempos)):
-            self.tempos.insert(0, Tempo(time = 0, qpm = 120))
+            self.tempos.insert(0, Tempo(time = 0, qpm = DEFAULT_QPM))
         self.key_signatures = key_signatures if key_signatures is not None else []
         self.time_signatures = time_signatures if time_signatures is not None else []
         self.beats = beats if beats is not None else []
@@ -184,6 +184,7 @@ class BetterMusic(muspy.music.Music):
         self.annotations = annotations if annotations is not None else []
         self.tracks = tracks if tracks is not None else []
         self.song_length = self.get_song_length() if song_length is None else song_length
+        self.infer_velocity = infer_velocity
 
     ##################################################
 
@@ -416,6 +417,7 @@ class BetterMusic(muspy.music.Music):
         self.annotations = music.annotations
         self.tracks = music.tracks
         self.song_length = music.song_length
+        self.infer_velocity = music.infer_velocity
 
     ##################################################
 
@@ -537,14 +539,15 @@ class BetterMusic(muspy.music.Music):
             expressive_features = get_expressive_features_per_note(note_times = note_times, all_annotations = self.tracks[i].annotations + self.annotations) # dictionary where keys are time and values are expressive feature annotation objects
             # note on and note off messages
             for note in self.tracks[i].notes:
-                note.velocity = expressive_features[note.time][0].annotation.velocity # the first index is always the dynamic
+                if self.infer_velocity:
+                    note.velocity = expressive_features[note.time][0].annotation.velocity # the first index is always the dynamic
                 for annotation in expressive_features[note.time][1:]: # skip the first index, since we just dealt with it
                     # ensure that values are valid
                     if hasattr(annotation.annotation, "subtype"): # make sure subtype field is not none
                         if annotation.annotation.subtype is None:
                             continue
                     # HairPinSpanner and TempoSpanner; changes in velocity
-                    if (annotation.annotation.__class__.__name__ in ("HairPinSpanner", "TempoSpanner")): # some TempoSpanners involve a velocity change, so that is included here as well
+                    if (annotation.annotation.__class__.__name__ in ("HairPinSpanner", "TempoSpanner")) and self.infer_velocity: # some TempoSpanners involve a velocity change, so that is included here as well
                         if annotation.group is None: # since we aren't storing anything there anyways
                             end_velocity = note.velocity # default is no change
                             if any((annotation.annotation.subtype.startswith(prefix) for prefix in ("allarg", "cr"))): # increase-volume; allargando, crescendo
@@ -567,9 +570,9 @@ class BetterMusic(muspy.music.Music):
                     elif annotation.annotation.__class__.__name__ == "Articulation":
                         if any((keyword in annotation.annotation.subtype for keyword in ("staccato", "staccatissimo", "spiccato", "pizzicato", "plucked", "marcato", "sforzato"))): # shortens note length
                             note.duration /= STACCATO_DURATION_CHANGE_FACTOR
-                        if any((keyword in annotation.annotation.subtype for keyword in ("marcato", "sforzato", "accent"))): # increases velocity
+                        if any((keyword in annotation.annotation.subtype for keyword in ("marcato", "sforzato", "accent"))) and self.infer_velocity: # increases velocity
                             note.velocity += note.velocity * (max((ACCENT_VELOCITY_INCREASE_FACTOR * (0.8 if "soft" in annotation.annotation.subtype else 1)), 1) - 1)
-                        if "spiccato" in annotation.annotation.subtype: # decreases velocity
+                        if ("spiccato" in annotation.annotation.subtype) and self.infer_velocity: # decreases velocity
                             note.velocity /= ACCENT_VELOCITY_INCREASE_FACTOR
                         if "tenuto" in annotation.annotation.subtype:
                             pass # the duration is full duration
@@ -588,20 +591,6 @@ class BetterMusic(muspy.music.Music):
                     # TechAnnotation
                     # elif annotation.annotation.__class__.__name__ == "TechAnnotation":
                     #     pass # currently no implementation since we so rarely encounter these
-
-            for note in self.tracks[i].notes:
-                note.velocity = expressive_features[note.time][0].annotation.velocity # the first index is always the dynamic
-                for annotation in expressive_features[note.time][1:]: # skip the first index, since we just dealt with it
-                    # HairPinSpanner and TempoSpanner; changes in velocity
-                    if (annotation.annotation.__class__.__name__ in ("HairPinSpanner", "TempoSpanner")): # some TempoSpanners involve a velocity change, so that is included here as well
-                        if annotation.group is None: # since we aren't storing anything there anyways
-                            end_velocity = note.velocity # default is no change
-                            if any((annotation.annotation.subtype.startswith(prefix) for prefix in ("allarg", "cr"))): # increase-volume; allargando, crescendo
-                                end_velocity *= VELOCITY_INCREASE_FACTOR
-                            elif any((annotation.annotation.subtype.startswith(prefix) for prefix in ("smorz", "dim", "decr"))): # decrease-volume; smorzando, diminuendo, decrescendo
-                                end_velocity /= VELOCITY_INCREASE_FACTOR
-                            annotation.group = lambda time: (((end_velocity - note.velocity) / ((annotation.time + annotation.annotation.duration) - note.time)) * (time - note.time)) + note.velocity # we will use group to store a lambda function to calculate velocity
-                        note.velocity += annotation.group(time = note.time) # update velocity
 
     ##################################################
 
