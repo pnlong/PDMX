@@ -50,6 +50,8 @@ import utils
 
 DATA_DIR = "/home/pnlong/musescore/datav"
 OUTPUT_DIR = "/home/pnlong/musescore/datav"
+PROJECT_NAME = "ExpressionNet-Train"
+INFER_RUN_NAME_STRING = "-1"
 
 DEFAULT_MAX_SEQ_LEN = 1024
 
@@ -300,15 +302,14 @@ if __name__ == "__main__":
             print(logging_output.read())
 
     # start a new wandb run to track the script
-    project_name = "ExpressionNet-Train"
     group_name = ("absolute" if use_absolute_time else "metrical") + ("-unidimensional" if args.unidimensional else "") # basename(dirname(args.output_dir))
-    if (run_name == ""):
-        run_name = next(filter(lambda run: run.name.startswith(basename(args.output_dir)), wandb.Api().runs(f"philly/{project_name}", filters = {"group": group_name})), None) # try to infer the run name
+    if (run_name == INFER_RUN_NAME_STRING):
+        run_name = next(filter(lambda run: run.name.startswith(basename(args.output_dir)), wandb.Api().runs(f"philly/{PROJECT_NAME}", filters = {"group": group_name})), None) # try to infer the run name
         args.resume = (run_name != None) # redefine args.resume in the event that no run name was supplied, but we can't infer one either
     if (run_name is None): # in the event we need to create a new run name
         current_datetime = datetime.datetime.now().strftime("%m%d%y%H%M")
         run_name = f"{basename(args.output_dir)}-{current_datetime}"
-    run = wandb.init(config = dict(vars(args), **{"n_parameters": n_parameters, "n_parameters_trainable": n_parameters_trainable}), resume = not log_hyperparameters, project = project_name, group = group_name, name = run_name, id = run_name) # set project title, configure with hyperparameters
+    run = wandb.init(config = dict(vars(args), **{"n_parameters": n_parameters, "n_parameters_trainable": n_parameters_trainable}), resume = not log_hyperparameters, project = PROJECT_NAME, group = group_name, name = run_name, id = run_name) # set project title, configure with hyperparameters
 
     # load previous model and summarize if needed
     best_model_filepath = {partition: f"{CHECKPOINTS_DIR}/best_model.{partition}.pth" for partition in RELEVANT_PARTITIONS}

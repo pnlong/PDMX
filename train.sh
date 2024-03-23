@@ -43,7 +43,7 @@ while getopts ':d:u:r:s:m:l:g:h' opt; do
       unidimensional="--unidimensional"
       ;;
     r) # whether to resume runs
-      resume="--resume"
+      resume="--resume -1"
       ;;
     s) # small
       dim=512 # dimension
