@@ -26,7 +26,7 @@ from utils import unique
 import representation
 
 # midi
-from mido import Message, MetaMessage, MidiFile, MidiTrack, bpm2tempo, MAX_PITCHWHEEL
+from mido import Message, MetaMessage, MidiFile, MidiTrack, bpm2tempo, second2tick, MAX_PITCHWHEEL
 
 # audio
 import tempfile
@@ -60,6 +60,7 @@ STACCATO_DURATION_CHANGE_FACTOR = 5 # factor by which a staccato decreases the d
 VELOCITY_INCREASE_FACTOR = 2 # factor by which to increase velocity when an expressive feature GRADUALLY increases velocity
 ACCENT_VELOCITY_INCREASE_FACTOR = 1.5 # factor by which to increase velocity when an accent INSTANTANEOUSLY increases velocity
 FRACTION_TO_WIGGLE = 0.34 # fraction of MAX/MIN_PITCHWHEEL to bend notes for wiggle articulations (vibratos and sawtooths)
+DEFAULT_TEMPO = bpm2tempo(bpm = DEFAULT_QPM)
 
 ##################################################
 
@@ -100,10 +101,6 @@ def to_mido_note_on_note_off(note: Note, channel: int, use_note_off_message: boo
 
     """
 
-    # deal with timings
-    # note.time = int(note.time)
-    # note.duration = int(note.duration)
-
     # deal with velocity
     velocity = note.velocity # copy of velocity as to not alter the music object
     if velocity is None:
@@ -127,7 +124,7 @@ def to_mido_note_on_note_off(note: Note, channel: int, use_note_off_message: boo
     return note_on_msg, note_off_msg
 
 
-def to_delta_time(midi_track: MidiTrack):
+def to_delta_time(midi_track: MidiTrack, ticks_per_beat: int, absolute_time: bool = False):
     """Convert a mido MidiTrack object from absolute time to delta time.
 
     Parameters
@@ -139,6 +136,11 @@ def to_delta_time(midi_track: MidiTrack):
 
     # sort messages by absolute time
     midi_track.sort(key = lambda message: message.time)
+    
+    # convert seconds to ticks if necessary
+    if absolute_time:
+        for message in midi_track:
+            message.time = second2tick(second = message.time, ticks_per_beat = ticks_per_beat, tempo = DEFAULT_TEMPO)
 
     # convert to delta time
     time = 0
@@ -171,17 +173,20 @@ def to_mido_meta_track(music: "BetterMusic") -> MidiTrack:
         meta_track.append(MetaMessage(type = "track_name", name = music.metadata.title))
 
     # tempos and time signatures
-    combined_temporal_features = sorted(music.tempos + music.time_signatures, key = lambda temporal_feature: temporal_feature.time) # get sorted list of tempos and time signatures
-    current_time_signature = music.time_signatures[0] if len(music.time_signatures) > 0 else TimeSignature(time = 0) # instantiate current_time_signature
-    tempo_changes = [] # keep track of tempo changes to deal with tempo spanners later
-    for temporal_feature in combined_temporal_features:
-        if isinstance(temporal_feature, Tempo): # if tempo feature
-            current_tempo = bpm2tempo(bpm = temporal_feature.qpm, time_signature = (current_time_signature.numerator, current_time_signature.denominator))
-            meta_track.append(MetaMessage(type = "set_tempo", time = temporal_feature.time, tempo = current_tempo))
-            tempo_changes.append({"time": temporal_feature.time, "tempo": current_tempo})
-        elif isinstance(temporal_feature, TimeSignature): # if time signature
-            meta_track.append(MetaMessage(type = "time_signature", time = temporal_feature.time, numerator = temporal_feature.numerator, denominator = temporal_feature.denominator))
-            current_time_signature = temporal_feature # update current_time_signature
+    if not music.absolute_time:
+        combined_temporal_features = sorted(music.tempos + music.time_signatures, key = lambda temporal_feature: temporal_feature.time) # get sorted list of tempos and time signatures
+        current_time_signature = music.time_signatures[0] if len(music.time_signatures) > 0 else TimeSignature(time = 0) # instantiate current_time_signature
+        tempo_changes = [] # keep track of tempo changes to deal with tempo spanners later
+        for temporal_feature in combined_temporal_features:
+            if isinstance(temporal_feature, Tempo): # if tempo feature
+                current_tempo = bpm2tempo(bpm = temporal_feature.qpm, time_signature = (current_time_signature.numerator, current_time_signature.denominator))
+                meta_track.append(MetaMessage(type = "set_tempo", time = temporal_feature.time, tempo = current_tempo))
+                tempo_changes.append({"time": temporal_feature.time, "tempo": current_tempo})
+            elif isinstance(temporal_feature, TimeSignature): # if time signature
+                meta_track.append(MetaMessage(type = "time_signature", time = temporal_feature.time, numerator = temporal_feature.numerator, denominator = temporal_feature.denominator))
+                current_time_signature = temporal_feature # update current_time_signature
+    else:
+        meta_track.append(MetaMessage(type = "set_tempo", time = 0, tempo = DEFAULT_TEMPO))
 
     # key signatures
     for key_signature in music.key_signatures:
@@ -206,44 +211,45 @@ def to_mido_meta_track(music: "BetterMusic") -> MidiTrack:
         if current_tempo_index < len(tempo_changes) - 1: # avoid index error later on at last element in tempo_changes
             if tempo_changes[current_tempo_index + 1]["time"] <= annotation.time: # update current_tempo_index if necessary
                 current_tempo_index += 1 # increment
-        # Fermata and fermatas stored inside of Articulation
-        if annotation.annotation.__class__.__name__ in ("Fermata", "Articulation"):
-            if annotation.annotation.__class__.__name__ == "Articulation": # looking for fermatas
-                if "fermata" not in annotation.annotation.subtype: # hidden as articulations
-                    continue # if not a fermata-articulation, skip
-            longest_note_duration_at_current_time = max((note.duration for note in all_notes if note.time == annotation.time)) # go through notes and find longest duration note at the time of the fermata
-            meta_track.append(MetaMessage(type = "set_tempo", time = annotation.time, tempo = tempo_changes[current_tempo_index]["tempo"] * FERMATA_TEMPO_SLOWDOWN)) # start of fermata
-            meta_track.append(MetaMessage(type = "set_tempo", time = annotation.time + longest_note_duration_at_current_time, tempo = tempo_changes[current_tempo_index]["tempo"])) # end of fermata
-            del longest_note_duration_at_current_time
-        # TempoSpanner
-        elif annotation.annotation.__class__.__name__ == "TempoSpanner":
-            tempo_change_factor_magnitude = 1 # amount to multiply the tempo by
-            for time in range(annotation.time, annotation.time + annotation.annotation.duration, int(annotation.annotation.duration / 5)):
-                tempo_change_factor = 1 # default, unknown TempoSpanner subtype
-                if any((annotation.annotation.subtype.startswith(prefix) for prefix in ("lent", "rall", "rit", "smorz", "sost", "allarg"))): # slow-downs; lentando, rallentando, ritardando, smorzando, sostenuto, allargando
-                    tempo_change_factor = tempo_change_factor_magnitude
-                elif any((annotation.annotation.subtype.startswith(prefix) for prefix in ("accel", "leg"))): # speed-ups; accelerando, leggiero
-                    tempo_change_factor = 1 / tempo_change_factor_magnitude
-                meta_track.append(MetaMessage(type = "set_tempo", time = time, tempo = int(tempo_changes[current_tempo_index]["tempo"] * tempo_change_factor))) # add tempo change
-                tempo_change_factor_magnitude += 1 # update the magnitude of the tempo change
-            end_tempo_spanner_tempo_index = current_tempo_index
-            if current_tempo_index < len(tempo_changes) - 1:
-                end_tempo_spanner_tempo_index += int(annotation.time + annotation.annotation.duration > tempo_changes[current_tempo_index + 1]["time"]) # if the tempo changed during the tempo spanner
-            meta_track.append(MetaMessage(type = "set_tempo", time = annotation.time + annotation.annotation.duration, tempo = tempo_changes[end_tempo_spanner_tempo_index]["tempo"])) # reset tempo
-            del time, tempo_change_factor_magnitude, tempo_change_factor, end_tempo_spanner_tempo_index
         # Text and TextSpanner
-        elif annotation.annotation.__class__.__name__ in ("Text", "TextSpanner"):
+        if annotation.annotation.__class__.__name__ in ("Text", "TextSpanner"):
             meta_track.append(MetaMessage(type = "text", time = annotation.time, text = annotation.annotation.text))
         # RehearsalMark
         elif annotation.annotation.__class__.__name__ == "RehearsalMark":
             meta_track.append(MetaMessage(type = "marker", time = annotation.time, text = annotation.annotation.text))
+        elif not music.absolute_time:
+            # Fermata and fermatas stored inside of Articulation
+            if annotation.annotation.__class__.__name__ in ("Fermata", "Articulation"):
+                if annotation.annotation.__class__.__name__ == "Articulation": # looking for fermatas
+                    if "fermata" not in annotation.annotation.subtype: # hidden as articulations
+                        continue # if not a fermata-articulation, skip
+                longest_note_duration_at_current_time = max((note.duration for note in all_notes if note.time == annotation.time)) # go through notes and find longest duration note at the time of the fermata
+                meta_track.append(MetaMessage(type = "set_tempo", time = annotation.time, tempo = tempo_changes[current_tempo_index]["tempo"] * FERMATA_TEMPO_SLOWDOWN)) # start of fermata
+                meta_track.append(MetaMessage(type = "set_tempo", time = annotation.time + longest_note_duration_at_current_time, tempo = tempo_changes[current_tempo_index]["tempo"])) # end of fermata
+                del longest_note_duration_at_current_time
+            # TempoSpanner
+            elif annotation.annotation.__class__.__name__ == "TempoSpanner":
+                tempo_change_factor_magnitude = 1 # amount to multiply the tempo by
+                for time in range(annotation.time, annotation.time + annotation.annotation.duration, int(annotation.annotation.duration / 5)):
+                    tempo_change_factor = 1 # default, unknown TempoSpanner subtype
+                    if any((annotation.annotation.subtype.startswith(prefix) for prefix in ("lent", "rall", "rit", "smorz", "sost", "allarg"))): # slow-downs; lentando, rallentando, ritardando, smorzando, sostenuto, allargando
+                        tempo_change_factor = tempo_change_factor_magnitude
+                    elif any((annotation.annotation.subtype.startswith(prefix) for prefix in ("accel", "leg"))): # speed-ups; accelerando, leggiero
+                        tempo_change_factor = 1 / tempo_change_factor_magnitude
+                    meta_track.append(MetaMessage(type = "set_tempo", time = time, tempo = int(tempo_changes[current_tempo_index]["tempo"] * tempo_change_factor))) # add tempo change
+                    tempo_change_factor_magnitude += 1 # update the magnitude of the tempo change
+                end_tempo_spanner_tempo_index = current_tempo_index
+                if current_tempo_index < len(tempo_changes) - 1:
+                    end_tempo_spanner_tempo_index += int(annotation.time + annotation.annotation.duration > tempo_changes[current_tempo_index + 1]["time"]) # if the tempo changed during the tempo spanner
+                meta_track.append(MetaMessage(type = "set_tempo", time = annotation.time + annotation.annotation.duration, tempo = tempo_changes[end_tempo_spanner_tempo_index]["tempo"])) # reset tempo
+                del time, tempo_change_factor_magnitude, tempo_change_factor, end_tempo_spanner_tempo_index
     del current_tempo_index, all_notes
 
     # end of track message
     meta_track.append(MetaMessage(type = "end_of_track"))
 
     # convert to delta time
-    to_delta_time(midi_track = meta_track)
+    to_delta_time(midi_track = meta_track, ticks_per_beat = music.resolution, absolute_time = music.absolute_time)
 
     return meta_track
 
@@ -422,7 +428,7 @@ def to_mido_track(track: Track, music: "BetterMusic", channel: int = None, use_n
     midi_track.append(MetaMessage(type = "end_of_track"))
 
     # convert to delta time
-    to_delta_time(midi_track = midi_track)
+    to_delta_time(midi_track = midi_track, ticks_per_beat = music.resolution, absolute_time = music.absolute_time)
 
     return midi_track
 

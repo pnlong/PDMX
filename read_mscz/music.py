@@ -27,6 +27,7 @@ import json
 import gzip
 import utils
 import numpy as np
+from warnings import warn
 
 from .output import write_midi, write_audio, write_musicxml, get_expressive_features_per_note, VELOCITY_INCREASE_FACTOR, ACCENT_VELOCITY_INCREASE_FACTOR, PEDAL_DURATION_CHANGE_FACTOR, STACCATO_DURATION_CHANGE_FACTOR
 ##################################################
@@ -154,6 +155,10 @@ class BetterMusic(muspy.music.Music):
         Music tracks.
     song_length : int
         The length of the song (in time steps).
+    infer_velocity : bool
+        Should the velocity values of notes be altered to reflect expressive features?
+    absolute_time : bool
+        Are the times of different objects in seconds?
 
     Note
     ----
@@ -162,15 +167,30 @@ class BetterMusic(muspy.music.Music):
     """
 
 
-    _attributes = OrderedDict([("metadata", Metadata), ("resolution", int), ("tempos", Tempo), ("key_signatures", KeySignature), ("time_signatures", TimeSignature), ("barlines", Barline), ("beats", Beat), ("lyrics", Lyric), ("annotations", Annotation), ("tracks", Track), ("song_length", int)])
-    _optional_attributes = ["metadata", "resolution", "tempos", "key_signatures", "time_signatures", "barlines", "beats", "lyrics", "annotations", "tracks", "song_length"]
+    _attributes = OrderedDict([("metadata", Metadata), ("resolution", int), ("tempos", Tempo), ("key_signatures", KeySignature), ("time_signatures", TimeSignature), ("barlines", Barline), ("beats", Beat), ("lyrics", Lyric), ("annotations", Annotation), ("tracks", Track), ("song_length", int), ("infer_velocity", bool), ("absolute_time", bool)])
+    _optional_attributes = ["metadata", "resolution", "tempos", "key_signatures", "time_signatures", "barlines", "beats", "lyrics", "annotations", "tracks", "song_length", "infer_velocity", "absolute_time"]
     _list_attributes = ["tempos", "key_signatures", "time_signatures", "barlines", "beats", "lyrics", "annotations", "tracks"]
 
 
     # INITIALIZER
     ##################################################
 
-    def __init__(self, metadata: Metadata = None, resolution: int = None, tempos: List[Tempo] = None, key_signatures: List[KeySignature] = None, time_signatures: List[TimeSignature] = None, barlines: List[Barline] = None, beats: List[Beat] = None, lyrics: List[Lyric] = None, annotations: List[Annotation] = None, tracks: List[Track] = None, song_length: int = None, infer_velocity: bool = True):
+    def __init__(
+            self,
+            metadata: Metadata = None,
+            resolution: int = None,
+            tempos: List[Tempo] = None,
+            key_signatures: List[KeySignature] = None,
+            time_signatures: List[TimeSignature] = None,
+            barlines: List[Barline] = None,
+            beats: List[Beat] = None,
+            lyrics: List[Lyric] = None,
+            annotations: List[Annotation] = None,
+            tracks: List[Track] = None,
+            song_length: int = None,
+            infer_velocity: bool = True,
+            absolute_time: bool = False
+        ):
         self.metadata = metadata if metadata is not None else Metadata()
         self.resolution = resolution if resolution is not None else muspy.DEFAULT_RESOLUTION
         self.tempos = tempos if tempos is not None else []
@@ -185,6 +205,7 @@ class BetterMusic(muspy.music.Music):
         self.tracks = tracks if tracks is not None else []
         self.song_length = self.get_song_length() if song_length is None else song_length
         self.infer_velocity = infer_velocity
+        self.absolute_time = absolute_time
 
     ##################################################
 
@@ -254,6 +275,10 @@ class BetterMusic(muspy.music.Music):
         time_steps : int
             The time_steps value to convert
         """
+
+        if self.absolute_time:
+            warn("Time values are already in absolute time (`absolute_time` = True). Returning unaltered time value.", RuntimeWarning)
+            return time_steps
 
         # create list of temporal features (tempo and time_signature)
         temporal_features = sorted(self.time_signatures + self.tempos, key = lambda obj: obj.time)
@@ -370,7 +395,9 @@ class BetterMusic(muspy.music.Music):
             "lyrics": to_dict(obj = self.lyrics),
             "annotations": to_dict(obj = self.annotations),
             "tracks": to_dict(obj = self.tracks),
-            "song_length": self.song_length
+            "song_length": self.song_length,
+            "infer_velocity": self.infer_velocity,
+            "absolute_time": self.absolute_time
         }
 
         # convert dictionary to json obj
@@ -418,6 +445,7 @@ class BetterMusic(muspy.music.Music):
         self.tracks = music.tracks
         self.song_length = music.song_length
         self.infer_velocity = music.infer_velocity
+        self.absolute_time = music.absolute_time
 
     ##################################################
 
@@ -714,7 +742,10 @@ def load_json(path: str) -> BetterMusic:
         barlines = barlines,
         lyrics = lyrics,
         annotations = annotations,
-        tracks = tracks
+        tracks = tracks,
+        song_length = int(data["song_length"]),
+        infer_velocity = bool(data["infer_velocity"]),
+        absolute_time = bool(data["absolute_time"])
     )
 
 ##################################################

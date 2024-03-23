@@ -94,6 +94,7 @@ def extract(path: str, path_output_prefix: str, use_implied_duration: bool = Tru
     # try to read musescore
     try:
         music = read_musescore(path = path, timeout = 10)
+        music.infer_velocity = True
         music.realize_expressive_features()
     except: # if that fails
         return # exit here
@@ -181,7 +182,7 @@ if __name__ == "__main__":
 
     # for getting metadata
     METADATA = pd.read_csv(filepath_or_buffer = METADATA_MAPPING_FILEPATH, sep = ",", header = 0, index_col = False)
-    METADATA = {data : (metadata if not pd.isna(metadata) else None) for data, metadata in zip(METADATA["data_path"], METADATA["metadata_path"])}
+    METADATA = {data_path : (metadata_path if not pd.isna(metadata_path) else None) for data_path, metadata_path in zip(METADATA["data_path"], METADATA["metadata_path"])}
 
     # set up logging
     logging.basicConfig(level = logging.INFO, format = "%(message)s")

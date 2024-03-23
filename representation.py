@@ -15,6 +15,8 @@ from itertools import combinations
 from read_mscz.classes import DEFAULT_VELOCITY, DEFAULT_QPM
 from utils import unique
 from sys import exit
+from copy import deepcopy
+from typing import Tuple, List, Callable
 ##################################################
 
 
@@ -32,7 +34,7 @@ DEFAULT_VALUE_CODE = -1
 N_NOTES = 128
 NA_VALUES = ("null", "None", None) # for loading encodings
 
-ENCODING_DIR = "/data2/pnlong/musescore/data"
+ENCODING_DIR = "/home/pnlong/musescore/datav"
 ENCODING_BASENAME = "encoding.json"
 ENCODING_FILEPATH = f"{ENCODING_DIR}/{ENCODING_BASENAME}"
 
@@ -46,6 +48,7 @@ ENCODING_FILEPATH = f"{ENCODING_DIR}/{ENCODING_BASENAME}"
 # (NOTE: Remember to modify N_TOKENS as well!)
 DIMENSIONS = ["type", "beat", "position", "value", "duration", "instrument", "velocity", "time", "time.s"] # last 2 columns are for sorting, and will be discarded later
 assert DIMENSIONS[0] == "type"
+UNIDIMENSIONAL_ENCODING_ORDER = ["type", "instrument", "time", "beat", "position", "value", "velocity", "duration"]
 
 ##################################################
 
@@ -606,7 +609,7 @@ CODE_INSTRUMENT_MAP = utils.inverse_dict(INSTRUMENT_CODE_MAP)
 # VELOCITY
 ##################################################
 
-NON_VELOCITY = 0
+NONE_VELOCITY = 0
 VELOCITY_CODE_MAP = {i: i + 1 for i in range(MAX_VELOCITY + 1)}
 VELOCITY_CODE_MAP[None] = 0
 CODE_VELOCITY_MAP = utils.inverse_dict(VELOCITY_CODE_MAP)
@@ -632,6 +635,84 @@ N_TOKENS = {
 ##################################################
 
 
+# UNIDIMENSIONAL ENCODING ORDER
+##################################################
+
+def get_unidimensional_encoding_order(include_velocity: bool = False, use_absolute_time: bool = False) -> List[str]:
+    """
+    Returns the unidimensional encoding order given the encoding.
+    """
+
+    # fix the encoding order based on those booleans
+    unidimensional_encoding_order = deepcopy(UNIDIMENSIONAL_ENCODING_ORDER)
+    if use_absolute_time:
+        unidimensional_encoding_order.remove("beat")
+        unidimensional_encoding_order.remove("position")
+    else:
+        unidimensional_encoding_order.remove("time")
+    if not include_velocity:
+        unidimensional_encoding_order.remove("velocity")
+    
+    return unidimensional_encoding_order
+
+
+def get_unidimensional_dimension_indicies(encoding: dict) -> Tuple[List[int], List[int]]:
+    """
+    Returns two lists:
+    - The list is the indicies of the dimensions in the order in which those dimensions should be flattened
+    - The list of indicies to return a reshaped unidimensional matrix to the normal encoding dimensions
+    """
+
+    # get the unidimensional encoding order
+    unidimensional_encoding_order = get_unidimensional_encoding_order(include_velocity = encoding["include_velocity"], use_absolute_time = encoding["use_absolute_time"])
+    
+    # get n tokens per field in the correct order
+    dimension_indicies = {dimension_index: encoding["dimensions"].index(dimension) for dimension_index, dimension in enumerate(unidimensional_encoding_order)} # keys are the indicies in unidimensional_encoding_order, values are the indicies in encoding["dimensions"]
+    encoding_dimension_indicies = [dimension_indicies[i] for i in range(len(dimension_indicies))]
+    dimension_indicies = utils.inverse_dict(dimension_indicies) # keys are the indicies in unidimensional_encoding_order, values are the indicies in encoding["dimensions"]
+    decoding_dimension_indicies = [dimension_indicies[i] for i in range(len(dimension_indicies))]
+
+    # return the two lists
+    return encoding_dimension_indicies, decoding_dimension_indicies
+
+
+def get_unidimensional_coding_functions(encoding: dict) -> Tuple[Callable, Callable]:
+    """
+    Returns two functions, an encoding and decoding function.
+    - Given the dimension name and code, the encoding function returns a single code for a unidimensional encoding scheme
+    - Given the unidimensional code, returns the decoded value
+    """
+
+    # get cumulative sum
+    dimension_code_range_starts = [0] + np.cumsum(a = encoding["n_tokens"], axis = 0).tolist()[:-1] # in the encoded order
+
+    # create a function that given the field and code, returns the unidimensional code
+    code_maps = [sorted(list(encoding[f"code_{dimension}_map"].keys())) for dimension in encoding["dimensions"]]
+    encoding_map = {(dimension_index, code): (dimension_code_range_starts[dimension_index] + code) for dimension_index in range(len(encoding["dimensions"])) for code in code_maps[dimension_index]}
+    def encoding_function(code: int, dimension_index: int) -> int:
+        """
+        `dimension_index` refers to the dimension index in `encoding["dimensions"]`, not `unidimensional_encoding_order`.
+        Apply function before changing the order of columns for unidimensional flattening.
+        """
+        return encoding_map[(dimension_index, code)]
+    encoding_function = np.vectorize(encoding_function, excluded = ["dimension_index"])
+
+    # create dictionary associating unidimensional codes with the dimension-specific codes
+    decoding_map = utils.inverse_dict(encoding_map)
+    def decoding_function(code: int) -> int:
+        """
+        Given the unidimensional code, returns the dimension-specific code associated with the unidimensional code.
+        Does not return original dimension index, as that is not necessary.
+        """
+        return decoding_map[code][1] # decoding_map[code][0] is the original dimension index
+    decoding_function = np.vectorize(decoding_function)
+
+    # return the dimension indicies list and the two functions
+    return encoding_function, decoding_function
+
+##################################################
+
+
 # ENCODING-GENERATING FUNCTIONS
 ##################################################
 
@@ -641,6 +722,8 @@ def get_encoding(include_velocity: bool = False, use_absolute_time: bool = False
     # base
     encoding = {
         "resolution": RESOLUTION,
+        "include_velocity": include_velocity,
+        "use_absolute_time": use_absolute_time,
         "max_duration": float(MAX_DURATION_ABSOLUTE_TIME) if use_absolute_time else int(MAX_DURATION),
         "n_tokens": N_TOKENS,
         "dimensions": DIMENSIONS[:DIMENSIONS.index("time")],
@@ -687,7 +770,11 @@ def get_encoding(include_velocity: bool = False, use_absolute_time: bool = False
     
     # make sure encoding["n_tokens"] is a list
     encoding["n_tokens"] = [encoding["n_tokens"][dim] for dim in encoding["dimensions"]]
-    
+
+    # add encoding order for unidimensional encoding as well as dimension indicies
+    encoding["unidimensional_encoding_order"] = get_unidimensional_encoding_order(include_velocity = include_velocity, use_absolute_time = use_absolute_time)
+    encoding["unidimensional_encoding_dimension_indicies"], encoding["unidimensional_decoding_dimension_indicies"] = get_unidimensional_dimension_indicies(encoding = encoding)
+
     return encoding
 
 
@@ -698,13 +785,16 @@ def load_encoding(filepath: str) -> dict:
     encoding = utils.load_json(filepath = filepath)
 
     # determine include_velocity and use_absolute_time
-    include_velocity = ("velocity" in encoding["dimensions"])
-    use_absolute_time = not (("beat" in encoding["dimensions"]) and ("position" in encoding["dimensions"]))
+    include_velocity = bool(encoding["include_velocity"])
+    use_absolute_time = bool(encoding["use_absolute_time"])
 
     # constant values
     encoding["resolution"] = int(encoding["resolution"])
     encoding["n_tokens"] = list(map(int, encoding["n_tokens"]))
     encoding["dimensions"] = list(map(str, encoding["dimensions"]))
+    encoding["unidimensional_encoding_order"] = list(map(str, encoding["unidimensional_encoding_order"]))
+    encoding["unidimensional_encoding_dimension_indicies"] = list(map(int, encoding["unidimensional_encoding_dimension_indicies"]))
+    encoding["unidimensional_decoding_dimension_indicies"] = list(map(int, encoding["unidimensional_decoding_dimension_indicies"]))
 
     # type-code
     encoding["type_code_map"] = {str(k): int(v) for k, v in encoding["type_code_map"].items()}
@@ -775,7 +865,6 @@ if __name__ == "__main__":
 
     # save the encoding
     if args.output_dir is None:
-
         print(encoding) # print to stdout
         exit(0)
 

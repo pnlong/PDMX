@@ -12,7 +12,7 @@ import pandas as pd
 import warnings
 import argparse
 from unidecode import unidecode
-from typing import List
+from typing import List, Callable, Union
 from re import sub, IGNORECASE
 import utils
 import representation
@@ -30,9 +30,10 @@ from read_mscz.read_mscz import read_musescore
 CONDITIONINGS = ("prefix", "anticipation") # there are three options for conditioning 
 DEFAULT_CONDITIONING = CONDITIONINGS[0]
 SIGMA = 5.0 # for anticipation conditioning, in seconds
-SIGMA_METRICAL = 4 # for anticipation conditioning, in beats
+SIGMA_METRICAL = 8 # for anticipation conditioning, in beats
 ENCODING_ARRAY_TYPE = np.int64
 ANNOTATION_CLASS_NAME_STRING = "annotation_class_name"
+DEFAULT_ENCODING = representation.get_encoding()
 
 ##################################################
 
@@ -387,7 +388,13 @@ def get_staff_level_expressive_features(track: Track, music: BetterMusic, use_im
 # ENCODER FUNCTIONS
 ##################################################
 
-def extract_data(music: BetterMusic, use_implied_duration: bool = True, include_velocity: bool = False, use_absolute_time: bool = False, include_annotation_class_name: bool = False) -> np.array:
+def extract_data(
+        music: BetterMusic,
+        use_implied_duration: bool = True,
+        include_velocity: bool = False,
+        use_absolute_time: bool = False,
+        include_annotation_class_name: bool = False
+    ) -> np.array:
     """Return a BetterMusic object as a data sequence.
     Each row of the output is a note specified as follows.
         (event_type, beat, position, value, duration (in seconds or beats depending on `use_absolute_time`), program, velocity (if `include_velocity`), time, time (in seconds), annotation_class_name (if `include_annotation_class_name`))
@@ -418,7 +425,7 @@ def extract_data(music: BetterMusic, use_implied_duration: bool = True, include_
         data = pd.concat(objs = (pd.DataFrame(columns = output_columns), system_level_expressive_features, staff_level_expressive_features), axis = 0, ignore_index = True) # combine system and staff expressive features
         data["type"] = data["type"].apply(lambda type_: type_ if type_ is not None else representation.EXPRESSIVE_FEATURE_TYPE_STRING) # make sure no missing type values
         data["instrument"] = utils.rep(x = track.program, times = len(data)) # add the instrument column
-        data["velocity"] = data["velocity"].apply(lambda velocity: representation.NON_VELOCITY if (velocity is None) else velocity)
+        data["velocity"] = data["velocity"].apply(lambda velocity: representation.NONE_VELOCITY if (velocity is None) else velocity)
 
         # convert time to seconds for certain types of sorting that might require it
         absolute_time_helper = lambda time_steps: music.metrical_time_to_absolute_time(time_steps = time_steps)
@@ -477,7 +484,14 @@ def extract_data(music: BetterMusic, use_implied_duration: bool = True, include_
     return output
 
 
-def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_CONDITIONING, sigma: float = SIGMA) -> np.array:
+def encode_data(
+        data: np.array,
+        encoding: dict = DEFAULT_ENCODING,
+        conditioning: str = DEFAULT_CONDITIONING,
+        sigma: Union[float, int] = SIGMA,
+        unidimensional: bool = False,
+        unidimensional_encoding_function: Callable = representation.get_unidimensional_coding_functions(encoding = DEFAULT_ENCODING)[0]
+    ) -> np.array:
     """Encode a note sequence into a sequence of codes.
     Each row of the input is a note specified as follows.
         (event_type, beat, position, value, duration (in seconds or beats), program, velocity (if velocity is included in encoding), time, time (in seconds))
@@ -491,8 +505,8 @@ def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_COND
     # data = np.load(file = path, allow_pickle = True)
 
     # determine include_velocity and use_absolute_time
-    include_velocity = ("velocity" in encoding["dimensions"])
-    use_absolute_time = not (("beat" in encoding["dimensions"]) and ("position" in encoding["dimensions"]))
+    include_velocity = encoding["include_velocity"]
+    use_absolute_time = encoding["use_absolute_time"]
 
     # some checks
     if include_velocity and (("velocity_code_map" not in encoding.keys()) or data.shape[1] < len(encoding["dimensions"])):
@@ -512,6 +526,8 @@ def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_COND
     value_dim = encoding["dimensions"].index("value")
     duration_dim = encoding["dimensions"].index("duration")
     instrument_dim = encoding["dimensions"].index("instrument")
+    if unidimensional:
+        unidimensional_encoding_order = encoding["unidimensional_encoding_dimension_indicies"]
 
     # timings
     max_temporal = encoding["max_" + ("time" if use_absolute_time else "beat")]
@@ -560,6 +576,7 @@ def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_COND
     codes = np.append(arr = codes, values = [[type_code_map["start-of-notes"],] + empty_row_ending], axis = 0)
 
     # helper functions for mapping
+    type_code_mapper = lambda type_: type_code_map[str(type_)]
     def value_code_mapper(value) -> int:
         try:
             code = value_code_map[None if value == "" else value]
@@ -576,24 +593,38 @@ def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_COND
         if instrument is None:
             return -1
         return instrument
-    floor_time = lambda time: math.floor(time / representation.TIME_STEP) * representation.TIME_STEP
+    if include_velocity:
+        def velocity_code_mapper(velocity) -> int:
+            if np.isnan(velocity):
+                velocity = None
+            else:
+                velocity = int(min(representation.MAX_VELOCITY, max(0, velocity)))
+            return velocity_code_map[velocity]
+    if use_absolute_time:
+        floor_time = lambda time: math.floor(time / representation.TIME_STEP) * representation.TIME_STEP
+        duration_code_mapper = lambda duration: duration_code_map[floor_time(float(min(max_duration, max(0, duration))))]
+        time_code_mapper = lambda time: time_code_map[floor_time(float(max(0, time)))]
+    else:
+        duration_code_mapper = lambda duration: duration_code_map[int(min(max_duration, max(0, duration)))]
+        beat_code_mapper = lambda beat: beat_code_map[max(0, int(beat))]
+        position_code_mapper = lambda position: position_code_map[min(max_position, max(0, int(position)))]
     
     # encode the notes / expressive features
     data = data[data[:, (time_dim if use_absolute_time else beat_dim)] <= max_temporal] # remove data if beat greater than max beat/time
     data = data[np.array(object = list(map(program_instrument_mapper, data[:, instrument_dim]))) >= 0] # skip unknown instruments
     core_codes = np.zeros(shape = (data.shape[0], codes.shape[1]), dtype = ENCODING_ARRAY_TYPE)
-    core_codes[:, 0] = list(map(lambda type_: type_code_map[str(type_)], data[:, 0])) # encode type column
+    core_codes[:, 0] = list(map(type_code_mapper, data[:, 0])) # encode type column
     core_codes[:, value_dim] = list(map(value_code_mapper, data[:, value_dim])) # encode value column
     core_codes[:, instrument_dim] = list(map(program_instrument_mapper, data[:, instrument_dim])) # encode instrument column
     if include_velocity:
-        core_codes[:, velocity_dim] = list(map(lambda velocity: velocity_code_map[min(representation.MAX_VELOCITY, max(0, int(velocity))) if (not np.isnan(velocity)) else None], data[:, velocity_dim])) # encode velocity
+        core_codes[:, velocity_dim] = list(map(velocity_code_mapper, data[:, velocity_dim])) # encode velocity
     if use_absolute_time:
-        core_codes[:, duration_dim] = list(map(lambda duration: duration_code_map[floor_time(float(min(max_duration, max(0, duration))))], data[:, duration_dim])) # encode duration
-        core_codes[:, time_dim] = list(map(lambda time: time_code_map[floor_time(float(max(0, time)))], data[:, time_dim])) # encode time
+        core_codes[:, duration_dim] = list(map(duration_code_mapper, data[:, duration_dim])) # encode duration
+        core_codes[:, time_dim] = list(map(time_code_mapper, data[:, time_dim])) # encode time
     else:
-        core_codes[:, duration_dim] = list(map(lambda duration: duration_code_map[int(min(max_duration, max(0, duration)))], data[:, duration_dim])) # encode duration
-        core_codes[:, beat_dim] = list(map(lambda beat: beat_code_map[max(0, int(beat))], data[:, beat_dim])) # encode beat
-        core_codes[:, position_dim] = list(map(lambda position: position_code_map[min(max_position, max(0, int(position)))], data[:, position_dim])) # encode position
+        core_codes[:, duration_dim] = list(map(duration_code_mapper, data[:, duration_dim])) # encode duration
+        core_codes[:, beat_dim] = list(map(beat_code_mapper, data[:, beat_dim])) # encode beat
+        core_codes[:, position_dim] = list(map(position_code_mapper, data[:, position_dim])) # encode position
 
     # apply conditioning to core_codes
     expressive_feature_code = type_code_map[representation.EXPRESSIVE_FEATURE_TYPE_STRING]
@@ -612,41 +643,23 @@ def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_COND
         del core_codes_with_time_steps, expressive_feature_indicies, expressive_features, notes, time_steps_column
     elif conditioning == CONDITIONINGS[1]: # anticipation
         if sigma is None: # make sure sigma is not none
-            warnings.warn(f"Encountered NoneValue sigma argument for anticipation conditioning. Using sigma = {SIGMA}.", RuntimeWarning)
-            sigma = SIGMA
-        # core_codes_with_seconds = np.concatenate((core_codes, data[:, data.shape[1] - 1].reshape(data.shape[0], 1)), axis = 1) # add seconds column
-        # seconds_column = core_codes_with_seconds.shape[1] - 1 # get the index of the seconds column
-        # np.subtract(core_codes_with_seconds[:, seconds_column],
-        #             sigma * np.ones(shape = core_codes_with_seconds.shape[0]),
-        #             out = core_codes_with_seconds[:, seconds_column],
-        #             where = (core_codes_with_seconds[:, 0] == expressive_feature_code)) # subtract anticipation value from expressive features
-        # core_codes_with_seconds = core_codes_with_seconds[np.lexsort(keys = (core_codes_with_seconds[:, 0], core_codes_with_seconds[:, seconds_column]), axis = 0)] # sort by time (seconds)
-        # core_codes = np.delete(arr = core_codes_with_seconds, obj = seconds_column, axis = 1).astype(ENCODING_ARRAY_TYPE) # remove seconds column
-        # del core_codes_with_seconds
-        # for i in range(core_codes.shape[0]):
-        #     if (core_codes[i, 0] == expressive_feature_code) and (i < core_codes.shape[0] - 1):
-        #         j = 1
-        #         while (core_codes[i + j, 0] == expressive_feature_code) and (i + j < core_codes.shape[0] - 1):
-        #             j += 1
-        #         if (i + j == core_codes.shape[0] - 1) and (core_codes[-1, 0] == expressive_feature_code): # ends on an expressive feature
-        #             break
-        #         core_codes[list(range(i, i + j + 1))] = core_codes[[i + j] + list(range(i, i + j))]
-        #         i += j # account for swap
-        seconds = data[:, data.shape[1] - 1]
+            sigma = SIGMA if use_absolute_time else SIGMA_METRICAL
+            warnings.warn(f"Encountered NoneValue sigma argument for anticipation conditioning. Using sigma = {sigma} {'seconds' if use_absolute_time else 'beats'}.", RuntimeWarning)
+        temporals = data[:, (data.shape[1] - 1) if use_absolute_time else beat_dim]
         expressive_features = (core_codes[:, 0] == expressive_feature_code)
         expressive_feature_indicies = np.where(expressive_features)[0]
         note_indicies = np.where(np.bitwise_not(expressive_features))[0]
         anticipation_indicies = copy(note_indicies)
-        note_times = seconds[note_indicies]
+        note_times = temporals[note_indicies]
         if len(note_times) > 0:
             for i, expressive_feature_index in enumerate(expressive_feature_indicies):
-                time_differences = note_times - (seconds[expressive_feature_index] - sigma) # difference between each note time and the current expressive feature time (with anticipation constant accounted for)
+                time_differences = note_times - (temporals[expressive_feature_index] - sigma) # difference between each note time and the current expressive feature time (with anticipation constant accounted for)
                 valid_index = np.argmax(time_differences >= 0) + 1 # get the first index with a positive time difference (the first note occurs at or after the expressive feature with anticipation), and +1 because control goes after this event
                 anticipation_indicies = np.insert(arr = anticipation_indicies, obj = valid_index + i, values = expressive_feature_index, axis = 0) # +i to account for new insert each time
         else:
             anticipation_indicies = expressive_feature_indicies
         core_codes = core_codes[anticipation_indicies, :]
-        del expressive_features, expressive_feature_indicies, note_indicies, anticipation_indicies, note_times
+        del temporals, expressive_features, expressive_feature_indicies, note_indicies, anticipation_indicies, note_times
     del expressive_feature_code
 
     # add core_codes to the general codes matrix
@@ -656,21 +669,39 @@ def encode_data(data: np.array, encoding: dict, conditioning: str = DEFAULT_COND
     # end the codes with an EOS row
     codes = np.append(arr = codes, values = [[type_code_map["end-of-song"],] + empty_row_ending], axis = 0)
 
+    # for now, trim off unknown text
+    codes = codes[codes[:, value_dim] != representation.DEFAULT_VALUE_CODE]
+
+    # if we want a unidimensional token sequence, do that
+    if unidimensional:
+        for dimension_index in range(codes.shape[1]): # make sure to do before the reordering of fields
+            codes[:, dimension_index] = unidimensional_encoding_function(code = codes[:, dimension_index], dimension_index = dimension_index)
+        codes = codes[:, unidimensional_encoding_order] # force codes to be in correct order for flattening
+        codes = codes.flatten() # flatten into a single dimension
+    
     return codes
 
 
-def encode(music: BetterMusic, use_implied_duration: bool = True, encoding: dict = representation.get_encoding(), conditioning: str = DEFAULT_CONDITIONING, sigma: float = SIGMA) -> np.array:
+def encode(
+        music: BetterMusic,
+        use_implied_duration: bool = True,
+        encoding: dict = DEFAULT_ENCODING,
+        conditioning: str = DEFAULT_CONDITIONING,
+        sigma: Union[float, int] = SIGMA,
+        unidimensional: bool = False,
+        unidimensional_encoding_function: Callable = representation.get_unidimensional_coding_functions(encoding = DEFAULT_ENCODING)[0]
+    ) -> np.array:
     """Given a BetterMusic object, encode it."""
 
     # determine include_velocity and use_absolute_time
-    include_velocity = ("velocity" in encoding["dimensions"])
-    use_absolute_time = not (("beat" in encoding["dimensions"]) and ("position" in encoding["dimensions"]))
+    include_velocity = encoding["include_velocity"]
+    use_absolute_time = encoding["use_absolute_time"]
 
     # extract data
     data = extract_data(music = music, use_implied_duration = use_implied_duration, include_velocity = include_velocity, use_absolute_time = use_absolute_time)
 
     # encode data
-    codes = encode_data(data = data, encoding = encoding, conditioning = conditioning, sigma = sigma)
+    codes = encode_data(data = data, encoding = encoding, conditioning = conditioning, sigma = sigma, unidimensional = unidimensional, unidimensional_encoding_function = unidimensional_encoding_function)
 
     return codes
 
@@ -680,9 +711,9 @@ def encode(music: BetterMusic, use_implied_duration: bool = True, encoding: dict
 # SAVE DATA
 ##################################################
 
-def save_csv_codes(filepath: str, data: np.array):
+def save_csv_codes(filepath: str, data: np.array, dimensions: List[str] = DEFAULT_ENCODING["dimensions"]):
     """Save the representation as a CSV file."""
-    np.savetxt(fname = filepath, X = data, fmt = "%d", delimiter = ",", header = ",".join(representation.get_encoding()["dimensions"][:data.shape[1]]), comments = "")
+    np.savetxt(fname = filepath, X = data, fmt = "%d", delimiter = ",", header = ",".join(dimensions), comments = "")
 
 ##################################################
 

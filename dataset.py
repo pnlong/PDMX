@@ -55,7 +55,7 @@ def get_mask(data: List[np.array]) -> np.array:
     max_seq_len = max(len(seq) for seq in data) # get the maximum seq length
     mask = torch.zeros(size = (len(data), max_seq_len), dtype = torch.bool) # instantiate mask
     for i, seq in enumerate(data):
-        mask[i, :len(seq)] = 1 # mask values
+        mask[i, :len(seq)] = True # mask values
     return mask # return the mask
 
 ##################################################
@@ -69,7 +69,7 @@ class MusicDataset(Dataset):
     # CONSTRUCTOR
     ##################################################
 
-    def __init__(self, paths: str, encoding: dict, conditioning: str = encode.DEFAULT_CONDITIONING, sigma: float = encode.SIGMA, is_baseline: bool = False, max_seq_len: int = None, use_augmentation: bool = False):
+    def __init__(self, paths: str, encoding: dict, conditioning: str = encode.DEFAULT_CONDITIONING, sigma: float = encode.SIGMA, is_baseline: bool = False, max_seq_len: int = None, use_augmentation: bool = False, unidimensional: bool = False):
         super().__init__()
         with open(paths) as file:
             self.paths = [line.strip() for line in file if line]
@@ -79,11 +79,16 @@ class MusicDataset(Dataset):
         self.is_baseline = is_baseline
         self.max_seq_len = max_seq_len
         self.use_augmentation = use_augmentation
-        self.use_absolute_time = not (("beat" in self.encoding["dimensions"]) and ("position" in self.encoding["dimensions"]))
+        self.use_absolute_time = encoding["use_absolute_time"]
         temporal = "time" if self.use_absolute_time else "beat"
         self.max_temporal = self.encoding[f"max_{temporal}"]
         self.temporal_dim = self.encoding["dimensions"].index(temporal)
         self.value_dim = self.encoding["dimensions"].index("value")
+        self.unidimensional = unidimensional
+        self.n_tokens_per_event = len(self.encoding["dimensions"]) if unidimensional else 1
+        self.unidimensional_encoding_function, _ = representation.get_unidimensional_coding_functions(encoding = self.encoding)
+        if self.unidimensional:
+            self.value_dim_unidimensional = self.encoding["unidimensional_encoding_order"].index("value")
 
     ##################################################
 
@@ -138,14 +143,20 @@ class MusicDataset(Dataset):
                 data = data[data[:, self.temporal_dim] < self.max_temporal]
         
         # encode the data
-        seq = encode.encode_data(data = data[data[:, 0] != representation.EXPRESSIVE_FEATURE_TYPE_STRING] if self.is_baseline else data, encoding = self.encoding, conditioning = self.conditioning, sigma = self.sigma)
-
-        # FOR NOW, TRIM OFF UNKNOWN TEXT (-1)
-        seq = seq[seq[:, self.value_dim] != representation.DEFAULT_VALUE_CODE]
+        seq = encode.encode_data(data = data[data[:, 0] != representation.EXPRESSIVE_FEATURE_TYPE_STRING] if self.is_baseline else data,
+                                 encoding = self.encoding,
+                                 conditioning = self.conditioning,
+                                 sigma = self.sigma,
+                                 unidimensional = self.unidimensional,
+                                 unidimensional_encoding_function = self.unidimensional_encoding_function)
 
         # trim seq to max_seq_len
         if (self.max_seq_len is not None) and (len(seq) > self.max_seq_len):
-            seq = np.delete(arr = seq, obj = range(self.max_seq_len - 1, seq.shape[0] - 1), axis = 0)
+            seq = np.delete(
+                arr = seq,
+                obj = range(self.max_seq_len - (self.max_seq_len % self.n_tokens_per_event) - self.n_tokens_per_event, seq.shape[0] - self.n_tokens_per_event),
+                axis = 0
+            )
 
         return {"path": path, "seq": seq}
 

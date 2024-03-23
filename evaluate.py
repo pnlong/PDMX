@@ -16,7 +16,7 @@ import pprint
 import sys
 from os.path import exists, dirname
 from os import makedirs
-from typing import Union
+from typing import Union, Callable
 import math
 import multiprocessing
 from glob import iglob
@@ -171,7 +171,8 @@ def evaluate(
         model: music_x_transformers.MusicXTransformer = None, # for loss for perplexity
         seq: torch.tensor = None, # for loss for perplexity
         mask: torch.tensor = None, # for loss for perplexity
-        loss_for_perplexity_columns: list = None # for loss for perplexity
+        loss_for_perplexity_columns: list = None, # for loss for perplexity
+        unidimensional_decoding_function: Callable = representation.get_unidimensional_coding_functions(encoding = encode.DEFAULT_ENCODING)[-1],
         ):
     """
     Evaluate the results by calculating expressive feature density and sparsity as well as what types of features are present.
@@ -182,8 +183,8 @@ def evaluate(
     path = f"{eval_dir}/{stem}"
     np.save(file = f"{path}.npy", arr = data) # save as a numpy array
     # encode.save_csv_codes(filepath = f"{path}.csv", data = data) # save as a .csv file
-    music = decode.decode(codes = data, encoding = encoding) # convert to a BetterMusic object
-    music.trim(end = music.resolution * 64) # trim the music
+    music = decode.decode(codes = data, encoding = encoding, unidimensional_decoding_function = unidimensional_decoding_function) # convert to a BetterMusic object
+    # music.trim(end = music.resolution * 64) # trim the music
 
     # extract data
     data = encode.extract_data(music = music, use_implied_duration = False, include_annotation_class_name = True) # duration doesn't matter for our purposes here
@@ -300,7 +301,7 @@ if __name__ == "__main__":
 
         # create the dataset
         logging.info(f"Creating the data loader...")
-        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = train.DEFAULT_MAX_SEQ_LEN, use_augmentation = False)
+        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = train.DEFAULT_MAX_SEQ_LEN, use_augmentation = False, unidimensional = False)
 
     # load model if necessary
     else:
@@ -320,11 +321,12 @@ if __name__ == "__main__":
         logging.info(f"Creating the data loader...")
         max_seq_len = train_args["max_seq_len"]
         conditioning = train_args["conditioning"]
-        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, conditioning = conditioning, max_seq_len = max_seq_len, use_augmentation = False, is_baseline = ("baseline" in args.output_dir))
+        unidimensional = train_args.get("unidimensional", False)
+        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, conditioning = conditioning, max_seq_len = max_seq_len, use_augmentation = False, is_baseline = ("baseline" in args.output_dir), unidimensional = unidimensional)
 
         # create the model
         logging.info(f"Creating the model...")
-        use_absolute_time = not (("beat" in encoding["dimensions"]) and ("position" in encoding["dimensions"]))
+        use_absolute_time = encoding["use_absolute_time"]
         model = music_x_transformers.MusicXTransformer(
             dim = train_args["dim"],
             encoding = encoding,
@@ -337,6 +339,7 @@ if __name__ == "__main__":
             emb_dropout = train_args["dropout"],
             attn_dropout = train_args["dropout"],
             ff_dropout = train_args["dropout"],
+            unidimensional = unidimensional,
         ).to(device)
 
         # load the checkpoint
@@ -347,12 +350,17 @@ if __name__ == "__main__":
         model.eval()
         
         # get special tokens
+        if unidimensional:
+            unidimensional_encoding_order = encoding["unidimensional_encoding_order"]
+        type_dim = (unidimensional_encoding_order if unidimensional else encoding["dimensions"]).index("type")
         sos = encoding["type_code_map"]["start-of-song"]
         eos = encoding["type_code_map"]["end-of-song"]
         note_token, grace_note_token = encoding["type_code_map"]["note"], encoding["type_code_map"]["grace-note"]
         expressive_feature_token = encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING]
         is_anticipation = (conditioning == encode.CONDITIONINGS[-1])
-        sigma = train_args["sigma"] if use_absolute_time else encode.SIGMA_METRICAL
+        sigma = train_args["sigma"] # if use_absolute_time else encode.SIGMA_METRICAL
+        unidimensional_encoding_function, unidimensional_decoding_function = representation.get_unidimensional_coding_functions(encoding = encoding)
+        get_type_field = lambda prefix_conditional: prefix_conditional[type_dim::model.decoder.net.n_tokens_per_event] if unidimensional else prefix_conditional[:, type_dim] # helper function for quickly accessing the type field
 
     ##################################################
 
@@ -377,8 +385,8 @@ if __name__ == "__main__":
                 n_samples = args.n_samples % args.batch_size
                 if (n_samples == 0):
                     n_samples = args.batch_size
-                batch["seq"] = batch["seq"][:n_samples, :, :]
-                batch["mask"] = batch["mask"][:n_samples, :]
+                batch["seq"] = batch["seq"][:n_samples]
+                batch["mask"] = batch["mask"][:n_samples]
                 batch["seq_len"] = batch["seq_len"][:n_samples]
                 batch["path"] = batch["path"][:n_samples]
 
@@ -410,20 +418,25 @@ if __name__ == "__main__":
 
                 # default prefix sequence
                 prefix_default = torch.repeat_interleave(input = torch.tensor(data = [sos] + ([0] * (len(encoding["dimensions"]) - 1)), dtype = torch.long, device = device).reshape(1, 1, len(encoding["dimensions"])), repeats = batch["seq"].shape[0], dim = 0)
-                n_notes_so_far = utils.rep(x = 0, times = batch["seq"].shape[0])
-                last_prefix_indicies = utils.rep(x = -1, times = batch["seq"].shape[0])
-                for j in range(len(last_prefix_indicies)):
-                    for k in range(batch["seq"].shape[1]):
-                        if (n_notes_so_far[j] > args.prefix_len) or (batch["seq"][j, k, 0] == eos): # make sure the prefix isn't too long, or if end of song token, no end of song tokens in prefix
-                            last_prefix_indicies[j] = k - 1
+                if unidimensional:
+                    for dimension_index in range(prefix_default.shape[-1]):
+                        prefix_default[..., dimension_index] = unidimensional_encoding_function(code = prefix_default[..., dimension_index], dimension_index = dimension_index)
+                    prefix_default = prefix_default[..., unidimensional_encoding_order].reshape(prefix_default.shape[0], -1)
+                n_notes_so_far = utils.rep(x = 0, times = len(batch["seq"]))
+                last_prefix_indicies = utils.rep(x = -1, times = len(batch["seq"]))
+                for seq_index in range(len(last_prefix_indicies)):
+                    for j in range(type_dim, batch["seq"].shape[1], model.decoder.net.n_tokens_per_event):
+                        current_event_type = batch["seq"][seq_index, j + type_dim] if unidimensional else batch["seq"][seq_index, j, type_dim]
+                        if (n_notes_so_far[seq_index] > args.prefix_len) or (current_event_type == eos): # make sure the prefix isn't too long, or if end of song token, no end of song tokens in prefix
+                            last_prefix_indicies[seq_index] = j - model.decoder.net.n_tokens_per_event
                             break
-                        elif batch["seq"][j, k, 0] in (note_token, grace_note_token): # if event is a note
-                            n_notes_so_far[j] += 1 # increment
-                            last_prefix_indicies[j] = k # update last prefix index
-                prefix_conditional_default = [batch["seq"][j, :(last_prefix_indicies[j] + 1), :] for j in range(len(last_prefix_indicies))] # truncate to last prefix for each sequence in batch
-                for j in range(len(prefix_conditional_default)):
-                    if prefix_conditional_default[j].shape[0] == 0: # make sure the prefix conditional default is not just empty
-                        prefix_conditional_default[j] = prefix_default[0]
+                        elif current_event_type in (note_token, grace_note_token): # if event is a note
+                            n_notes_so_far[seq_index] += 1 # increment
+                            last_prefix_indicies[seq_index] = j # update last prefix index
+                prefix_conditional_default = [batch["seq"][seq_index, :(last_prefix_indicies[seq_index] + model.decoder.net.n_tokens_per_event)] for seq_index in range(len(last_prefix_indicies))] # truncate to last prefix for each sequence in batch
+                for seq_index in range(len(prefix_conditional_default)):
+                    if len(prefix_conditional_default[seq_index]) == 0: # make sure the prefix conditional default is not just empty
+                        prefix_conditional_default[seq_index] = prefix_default[0]
                 prefix_conditional_default = pad(data = prefix_conditional_default).to(device) # pad
 
                 for eval_type in EVAL_TYPES:
@@ -437,10 +450,11 @@ if __name__ == "__main__":
                     else: # conditional
                         conditional_type, generation_type = eval_type.split("_")[1:]
                         notes_only = (generation_type != train.ALL_STRING)
+                        
                         if conditional_type == CONDITIONAL_TYPES[1]: # conditional on notes only
-                            prefix = pad(data = [prefix_conditional[(prefix_conditional[:, 0] != expressive_feature_token), :] for prefix_conditional in prefix_conditional_default]).to(device)
+                            prefix = pad(data = [prefix_conditional[(get_type_field(prefix_conditional = prefix_conditional) != expressive_feature_token)] for prefix_conditional in prefix_conditional_default]).to(device)
                         elif conditional_type == CONDITIONAL_TYPES[2]: # conditional on expressive features only
-                            prefix = pad(data = [prefix_conditional[((prefix_conditional[:, 0] != note_token) & (prefix_conditional[:, 0] != grace_note_token)), :] for prefix_conditional in prefix_conditional_default]).to(device)
+                            prefix = pad(data = [prefix_conditional[torch.logical_and(input = (get_type_field(prefix_conditional = prefix_conditional) != note_token), other = (get_type_field(prefix_conditional = prefix_conditional) != grace_note_token))] for prefix_conditional in prefix_conditional_default]).to(device)
                         else: # conditional on everything
                             prefix = prefix_conditional_default
 
@@ -479,9 +493,9 @@ if __name__ == "__main__":
                         seq = batch["seq"][j].unsqueeze(dim = 0).to(device)
                         mask = batch["mask"][j].unsqueeze(dim = 0).to(device)
                         if notes_only:
-                            loss_query = (seq[:, :, 0] != encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING]) # filter out expressive features
-                            seq = seq[loss_query, :].unsqueeze(dim = 0)
-                            mask = mask[loss_query].unsqueeze(dim = 0)
+                            loss_query = ((seq[:, 0::model.decoder.net.n_tokens_per_event] if unidimensional else seq[..., 0]) != encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING]) # filter out expressive features
+                            seq = (loss_query if unidimensional else torch.repeat_interleave(input = loss_query.unsqueeze(dim = -1), repeats = seq.shape[-1], dim = -1)) * seq
+                            mask = loss_query * mask
                             del loss_query
                         # evaluate
                         evaluate(data = generated[j],
@@ -490,7 +504,9 @@ if __name__ == "__main__":
                                  eval_dir = eval_dir,
                                  output_filepaths = output_filepaths[eval_type],
                                  calculate_loss_for_perplexity = True,
-                                 model = model, seq = seq, mask = mask, loss_for_perplexity_columns = LOSS_FOR_PERPLEXITY_COLUMNS)
+                                 model = model, seq = seq, mask = mask, loss_for_perplexity_columns = LOSS_FOR_PERPLEXITY_COLUMNS,
+                                 unidimensional_decoding_function = unidimensional_decoding_function
+                                 )
                     for j in range(len(generated)):
                         evaluate_helper(j = j)
                     

@@ -17,7 +17,7 @@ import pprint
 import sys
 from os.path import exists, basename, dirname
 from os import mkdir, makedirs
-from typing import Union, List
+from typing import Union, List, Callable
 import math
 import multiprocessing
 from glob import iglob
@@ -85,7 +85,7 @@ def parse_args(args = None, namespace = None):
 
 def pad(data: List[torch.tensor]) -> torch.tensor:
     max_seq_len = max(len(seq) for seq in data) # get the longest length of a sequence
-    padded = [torch.from_numpy(np.pad(array = seq.cpu(), pad_width = ((max_seq_len - len(seq), 0), (0, 0)))) for seq in data] # pad so all of same length
+    padded = [torch.from_numpy(np.pad(array = seq.cpu(), pad_width = [(max_seq_len - len(seq), 0)] + [() if (len(seq.shape) == 1) else (0, 0)])) for seq in data] # pad so all of same length
     padded = torch.stack(tensors = padded, dim = 0) # combine into a single tensor
     return padded
 
@@ -254,15 +254,15 @@ def groove_consistency(music: BetterMusic, measure_resolution: int) -> float:
 # EVALUATE FUNCTION
 ##################################################
 
-def evaluate(data: Union[np.array, torch.tensor], encoding: dict, stem: str, eval_dir: str) -> dict:
+def evaluate(data: Union[np.array, torch.tensor], encoding: dict, stem: str, eval_dir: str, unidimensional_decoding_function: Callable = representation.get_unidimensional_coding_functions(encoding = encode.DEFAULT_ENCODING)[-1]) -> dict:
     """Evaluate the results."""
 
     # save results
     path = f"{eval_dir}/{stem}"
     np.save(file = f"{path}.npy", arr = data) # save as a numpy array
     # encode.save_csv_codes(filepath = f"{path}.csv", data = data) # save as a .csv file
-    music = decode.decode(codes = data, encoding = encoding) # convert to a BetterMusic object
-    music.trim(end = music.resolution * 64) # trim the music
+    music = decode.decode(codes = data, encoding = encoding, unidimensional_decoding_function = unidimensional_decoding_function) # convert to a BetterMusic object
+    # music.trim(end = music.resolution * 64) # trim the music
 
     # return a dictionary
     if len(music.tracks) == 0:
@@ -322,7 +322,7 @@ if __name__ == "__main__":
 
         # create the dataset
         logging.info(f"Creating the data loader...")
-        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = DEFAULT_MAX_SEQ_LEN, use_augmentation = False)
+        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, max_seq_len = DEFAULT_MAX_SEQ_LEN, use_augmentation = False, unidimensional = False)
         expressive_feature_token = encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING]
 
     # load model if necessary
@@ -343,11 +343,12 @@ if __name__ == "__main__":
         logging.info(f"Creating the data loader...")
         max_seq_len = train_args["max_seq_len"]
         conditioning = train_args["conditioning"]
-        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, conditioning = conditioning, max_seq_len = max_seq_len, use_augmentation = False, is_baseline = ("baseline" in args.output_dir))
+        unidimensional = train_args.get("unidimensional", False)
+        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, conditioning = conditioning, max_seq_len = max_seq_len, use_augmentation = False, is_baseline = ("baseline" in args.output_dir), unidimensional = unidimensional)
 
         # create the model
         logging.info(f"Creating the model...")
-        use_absolute_time = not (("beat" in encoding["dimensions"]) and ("position" in encoding["dimensions"]))
+        use_absolute_time = encoding["use_absolute_time"]
         model = music_x_transformers.MusicXTransformer(
             dim = train_args["dim"],
             encoding = encoding,
@@ -360,6 +361,7 @@ if __name__ == "__main__":
             emb_dropout = train_args["dropout"],
             attn_dropout = train_args["dropout"],
             ff_dropout = train_args["dropout"],
+            unidimensional = unidimensional,
         ).to(device)
         # kwargs = {"depth": train_args["layers"], "heads": train_args["heads"], "max_seq_len": max_seq_len, "max_temporal": encoding["max_" + ("time" if use_absolute_time else "beat")], "rotary_pos_emb": train_args["rel_pos_emb"], "use_abs_pos_emb": train_args["abs_pos_emb"], "emb_dropout": train_args["dropout"], "attn_dropout": train_args["dropout"], "ff_dropout": train_args["dropout"]} # for debugging
 
@@ -371,10 +373,13 @@ if __name__ == "__main__":
         model.eval()
         
         # get special tokens
+        if unidimensional:
+            unidimensional_encoding_order = encoding["unidimensional_encoding_order"]
         sos = encoding["type_code_map"]["start-of-song"]
         eos = encoding["type_code_map"]["end-of-song"]
         is_anticipation = (conditioning == encode.CONDITIONINGS[-1])
-        sigma = train_args["sigma"] if use_absolute_time else encode.SIGMA_METRICAL
+        sigma = train_args["sigma"] # if use_absolute_time else encode.SIGMA_METRICAL
+        unidimensional_encoding_function, unidimensional_decoding_function = representation.get_unidimensional_coding_functions(encoding = encoding)
         
     # to output evaluation metrics
     output_filepath = f"{EVAL_DIR}/{basename(EVAL_DIR)}.csv"
@@ -412,8 +417,8 @@ if __name__ == "__main__":
                 n_samples = args.n_samples % args.batch_size
                 if (n_samples == 0):
                     n_samples = args.batch_size
-                batch["seq"] = batch["seq"][:n_samples, :, :]
-                batch["mask"] = batch["mask"][:n_samples, :]
+                batch["seq"] = batch["seq"][:n_samples]
+                batch["mask"] = batch["mask"][:n_samples]
                 batch["seq_len"] = batch["seq_len"][:n_samples]
                 batch["path"] = batch["path"][:n_samples]
             
@@ -445,6 +450,10 @@ if __name__ == "__main__":
 
                     # get output start tokens
                     prefix = torch.repeat_interleave(input = torch.tensor(data = [sos] + ([0] * (len(encoding["dimensions"]) - 1)), dtype = torch.long, device = device).reshape(1, 1, len(encoding["dimensions"])), repeats = args.batch_size, dim = 0)
+                    if unidimensional:
+                        for dimension_index in range(prefix.shape[-1]):
+                            prefix[..., dimension_index] = unidimensional_encoding_function(code = prefix[..., dimension_index], dimension_index = dimension_index)
+                        prefix = prefix[..., unidimensional_encoding_order].reshape(prefix.shape[0], -1)
 
                     # generate new samples
                     generated = model.generate(
@@ -469,7 +478,7 @@ if __name__ == "__main__":
 
                 # add to results
                 def evaluate_helper(j: int) -> dict:
-                    return evaluate(data = generated[j], encoding = encoding, stem = f"{stem}_{j}", eval_dir = eval_dir)
+                    return evaluate(data = generated[j], encoding = encoding, stem = f"{stem}_{j}", eval_dir = eval_dir, unidimensional_decoding_function = unidimensional_decoding_function)
                 with multiprocessing.Pool(processes = args.jobs) as pool:
                     results = pool.map(func = evaluate_helper, iterable = range(len(generated)), chunksize = chunk_size)
 

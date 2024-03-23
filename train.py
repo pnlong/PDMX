@@ -48,8 +48,8 @@ import utils
 # CONSTANTS
 ##################################################
 
-DATA_DIR = "/data2/pnlong/musescore/data"
-OUTPUT_DIR = "/data2/pnlong/musescore/data"
+DATA_DIR = "/home/pnlong/musescore/datav"
+OUTPUT_DIR = "/home/pnlong/musescore/datav"
 
 DEFAULT_MAX_SEQ_LEN = 1024
 
@@ -91,15 +91,16 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("--baseline", action = "store_true", help = "Whether or not this is training the baseline model. The baseline ignores all expressive features.")
     # model
     parser.add_argument("--max_seq_len", default = DEFAULT_MAX_SEQ_LEN, type = int, help = "Maximum sequence length")
-    parser.add_argument("--dim", default = 768, type = int, help = "Model dimension")
-    parser.add_argument("-l", "--layers", default = 10, type = int, help = "Number of layers")
+    parser.add_argument("--dim", default = 512, type = int, help = "Model dimension")
+    parser.add_argument("-l", "--layers", default = 6, type = int, help = "Number of layers")
     parser.add_argument("--heads", default = 8, type = int, help = "Number of attention heads")
     parser.add_argument("--dropout", default = 0.2, type = float, help = "Dropout rate")
     parser.add_argument("--abs_pos_emb", action = argparse.BooleanOptionalAction, default = True, help = "Whether to use absolute positional embedding")
     parser.add_argument("--rel_pos_emb", action = argparse.BooleanOptionalAction, default = False, help = "Whether to use relative positional embedding")
     parser.add_argument("--conditional", action = "store_true", help = "Do we want to train in a purely conditional way (i.e. masking out the loss on expressive-feature tokens)?")
+    parser.add_argument("--unidimensional", action = "store_true", help = "Should we train a model with unidimensional, as opposed to multidimensional, inputs?")
     # training
-    parser.add_argument("--steps", default = 200000, type = int, help = "Number of steps")
+    parser.add_argument("--steps", default = 100000, type = int, help = "Number of steps")
     parser.add_argument("--valid_steps", default = 1000, type = int, help = "Validation frequency")
     parser.add_argument("--early_stopping", action = argparse.BooleanOptionalAction, default = True, help = "Whether to use early stopping")
     parser.add_argument("--early_stopping_tolerance", default = 20, type = int, help = "Number of extra validation rounds before early stopping")
@@ -135,48 +136,68 @@ def get_lr_multiplier(step: int, warmup_steps: int, decay_end_steps: int, decay_
     position = (step - warmup_steps) / (decay_end_steps - warmup_steps)
     return 1 - (1 - decay_end_multiplier) * position
 
-def get_accuracies(model_output: torch.tensor, expected: torch.tensor) -> torch.tensor:
+def get_accuracies(model_output: torch.tensor, seq: torch.tensor, unidimensional: bool = False, n_tokens_per_event: int = 1) -> torch.tensor:
     """Get the matrix of accuracies for correctly predicted tokens."""
-    predicted = torch.cat(tensors = [torch.argmax(input = output_field, dim = -1, keepdim = True) for output_field in model_output], dim = -1) # convert model output into a matrix of (greedy) predictions
+    if unidimensional:
+        predicted = torch.argmax(input = model_output, dim = -1, keepdim = False)
+        expected = seq[:, n_tokens_per_event:]
+    else:
+        # predicted = torch.argmax(input = model_output, dim = -1, keepdim = False).transpose(dim0 = 0, dim1 = 1).transpose(dim0 = 1, dim1 = 2) # would work for constant vocabulary size
+        predicted = torch.cat(tensors = [torch.argmax(input = output_field, dim = -1, keepdim = True) for output_field in model_output], dim = -1) # convert model output into a matrix of (greedy) predictions
+        expected = seq[:, n_tokens_per_event:, :]
     return torch.eq(input = predicted, other = expected) # compare predicted to expected values
 
-def generate_note_expressive_mask(seq: torch.tensor, encoding: dict = representation.get_encoding()) -> Dict[str, torch.tensor]:
+def generate_note_expressive_mask(seq: torch.tensor, encoding: dict = representation.get_encoding(), unidimensional: bool = False, n_tokens_per_event: int = 1) -> Dict[str, torch.tensor]:
     """Generate both a note and expressive-feature mask over a sequence, return as a dictionary using MASKS as keys."""
-    ones_mask = torch.ones_like(input = seq[:, 1:, 0]).to(device)
+    event_types = seq[:, (n_tokens_per_event + encoding["unidimensional_encoding_order"].index("type"))::n_tokens_per_event] if unidimensional else seq[:, n_tokens_per_event:, encoding["dimensions"].index("type")]
+    ones_mask = torch.ones_like(input = event_types).to(device)
     mask = {
-            MASKS[0]: ones_mask.type(torch.bool), # no mask
-            MASKS[1]: torch.logical_or(input = torch.eq(input = seq[:, 1:, 0], other = encoding["type_code_map"]["note"] * ones_mask), other = torch.eq(input = seq[:, 1:, 0], other = encoding["type_code_map"]["grace-note"] * ones_mask)), # mask_note is true if the type is a note
-            MASKS[2]: torch.eq(input = seq[:, 1:, 0], other = encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING] * ones_mask) # mask_expressive is true if the type is an expressive feature
-        }
+        MASKS[0]: torch.repeat_interleave(input = ones_mask.type(torch.bool), repeats = n_tokens_per_event, dim = -1), # no mask
+        MASKS[1]: torch.repeat_interleave(input = torch.logical_or(input = (event_types == encoding["type_code_map"]["note"]), other = (event_types == encoding["type_code_map"]["grace-note"])), repeats = n_tokens_per_event, dim = -1), # mask_note is true if the type is a note
+        MASKS[2]: torch.repeat_interleave(input = (event_types == encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING]), repeats = n_tokens_per_event, dim = -1) # mask_expressive is true if the type is an expressive feature
+    }
     return mask
 
-def calculate_loss_statistics(losses: torch.tensor, mask: torch.tensor = None) -> Dict[str, float]:
-    """Calculate total loss and loss per field."""
+def calculate_loss_statistics(losses: torch.tensor, mask: torch.tensor = None, unidimensional: bool = False, n_tokens_per_event: int = 1) -> Dict[str, float]:
+    """
+    Calculate total loss and loss per field.
+    """
 
     # apply mask
-    if losses.shape[0] > 1: # when the batch size isn't 1
-        losses = losses[mask, :] # just perform a normal masking operation
-    else: # to avoid IndexError: index 1 is out of bounds for dimension 0 with size 1
-        losses = torch.unsqueeze(input = losses.squeeze(dim = 0)[mask.squeeze(dim = 0), :], dim = 0) # do some squeezing and unsqueezing
+    if unidimensional:
+        losses = losses.reshape(losses.shape[0], int(losses.shape[1] / n_tokens_per_event), n_tokens_per_event)
+        mask = mask.reshape(mask.shape[0], int(mask.shape[1] / n_tokens_per_event), n_tokens_per_event)
+    else:
+        mask = torch.repeat_interleave(input = mask.unsqueeze(dim = -1), repeats = losses.shape[-1], dim = -1)
+    mask = mask.byte()
+    losses *= mask # just perform a normal masking operation
 
     # loss by field
-    losses_field = torch.mean(input = losses, dim = list(range(len(losses.shape) - 1))).nan_to_num(nan = 0.0).tolist() # replace nan with 0 to ease future calculations
+    losses_field = torch.sum(input = losses, dim = list(range(len(losses.shape) - 1))).nan_to_num(nan = 0.0) # get sum of losses
+    losses_field /= torch.sum(input = mask.byte(), dim = list(range(len(mask.shape) - 1))) # average losses
+    losses_field = losses_field.tolist() # convert to python list
 
     # loss
     loss = sum(losses_field)
 
     # return dictionary with total loss, then the loss by field
-    return dict({ALL_STRING: loss}, **dict(zip(encoding["dimensions"], losses_field)))
+    return dict({ALL_STRING: loss}, **dict(zip(encoding["unidimensional_encoding_order" if unidimensional else "dimensions"], losses_field)))
 
-def calculate_accuracy_statistics(accuracies: torch.tensor, mask: torch.tensor = None) -> Dict[str, float]:
-    """Calculate total accuracy and accuracy per field."""
+def calculate_accuracy_statistics(accuracies: torch.tensor, mask: torch.tensor = None, unidimensional: bool = False, n_tokens_per_event: int = 1) -> Dict[str, float]:
+    """
+    Calculate total accuracy and accuracy per field.
+    Well, this doesn't actually calculate that. This actually tallies up the number of tokens correct, which will be divided later-on to get actual accuracy.
+    """
 
     # apply mask
-    if accuracies.shape[0] > 1: # when the batch size isn't 1
-        accuracies = accuracies[mask, :] # just perform a normal masking operation
-    else: # to avoid IndexError: index 1 is out of bounds for dimension 0 with size 1
-        accuracies = torch.unsqueeze(input = accuracies.squeeze(dim = 0)[mask.squeeze(dim = 0), :], dim = 0) # do some squeezing and unsqueezing
-
+    if unidimensional:
+        accuracies = accuracies.reshape(accuracies.shape[0], int(accuracies.shape[1] / n_tokens_per_event), n_tokens_per_event)
+        mask = mask.reshape(mask.shape[0], int(mask.shape[1] / n_tokens_per_event), n_tokens_per_event)
+    else:
+        mask = torch.repeat_interleave(input = mask.unsqueeze(dim = -1), repeats = accuracies.shape[-1], dim = -1)
+    mask = mask.byte()
+    accuracies = (accuracies.byte() * mask).bool() # just perform a normal masking operation
+    
     # accuracy by field
     accuracies_field = torch.sum(input = accuracies, dim = list(range(len(accuracies.shape) - 1))).nan_to_num(nan = 0.0).tolist() # replace nan with 0 to ease future calculations
 
@@ -184,7 +205,7 @@ def calculate_accuracy_statistics(accuracies: torch.tensor, mask: torch.tensor =
     accuracy = torch.sum(input = torch.all(input = accuracies, dim = -1), dim = None).item()
 
     # return dictionary with total accuracy, then the accuracy by field
-    return dict({ALL_STRING: accuracy}, **dict(zip(encoding["dimensions"], accuracies_field)))
+    return dict({ALL_STRING: accuracy}, **dict(zip(encoding["unidimensional_encoding_order" if unidimensional else "dimensions"], accuracies_field)))
 
 ##################################################
 
@@ -218,8 +239,8 @@ if __name__ == "__main__":
     # create the dataset and data loader
     print(f"Creating the data loader...")
     dataset = {
-        RELEVANT_PARTITIONS[0]: MusicDataset(paths = args.paths_train, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, is_baseline = args.baseline, max_seq_len = args.max_seq_len, use_augmentation = args.aug),
-        RELEVANT_PARTITIONS[1]: MusicDataset(paths = args.paths_valid, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, is_baseline = args.baseline, max_seq_len = args.max_seq_len, use_augmentation = args.aug)
+        RELEVANT_PARTITIONS[0]: MusicDataset(paths = args.paths_train, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, is_baseline = args.baseline, max_seq_len = args.max_seq_len, use_augmentation = args.aug, unidimensional = args.unidimensional),
+        RELEVANT_PARTITIONS[1]: MusicDataset(paths = args.paths_valid, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, is_baseline = args.baseline, max_seq_len = args.max_seq_len, use_augmentation = args.aug, unidimensional = args.unidimensional)
         }
     data_loader = {
         RELEVANT_PARTITIONS[0]: torch.utils.data.DataLoader(dataset = dataset[RELEVANT_PARTITIONS[0]], batch_size = args.batch_size, shuffle = True, num_workers = args.jobs, collate_fn = MusicDataset.collate),
@@ -228,7 +249,7 @@ if __name__ == "__main__":
 
     # create the model
     print(f"Creating model...")
-    use_absolute_time = not (("beat" in encoding["dimensions"]) and ("position" in encoding["dimensions"]))
+    use_absolute_time = encoding["use_absolute_time"]
     model = music_x_transformers.MusicXTransformer(
         dim = args.dim,
         encoding = encoding,
@@ -241,7 +262,9 @@ if __name__ == "__main__":
         embedding_dropout = args.dropout,
         attention_dropout = args.dropout,
         ff_dropout = args.dropout,
+        unidimensional = args.unidimensional
     ).to(device)
+    # kwargs = {"depth": args.layers, "heads": args.heads, "max_seq_len": args.max_seq_len, "max_temporal": encoding["max_beat"], "rotary_pos_emb": args.rel_pos_emb, "use_abs_pos_emb": args.abs_pos_emb, "emb_dropout": args.dropout, "attn_dropout": args.dropout, "ff_dropout": args.dropout} # for debugging
     n_parameters = sum(p.numel() for p in model.parameters()) # statistics
     n_parameters_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad) # statistics (model size)
 
@@ -252,7 +275,7 @@ if __name__ == "__main__":
         positional_embedding = "rpe"
     else:
         positional_embedding = "npe"
-    args.output_dir = args.output_dir + "/" + (args.conditioning if not args.baseline else "baseline") + ("_conditional" if args.conditional else "") + ("_aug" if args.aug else "") + f"_{positional_embedding}_{int(n_parameters_trainable / 1e+6)}M" # custom output directory based on arguments
+    args.output_dir = args.output_dir + "/" + (args.conditioning if not args.baseline else "baseline") + ("_conditional" if args.conditional else "") + ("_unidimensional" if args.unidimensional else "") + f"_{positional_embedding}_{int(n_parameters_trainable / 1e+6)}M" # custom output directory based on arguments
     if not exists(args.output_dir):
         makedirs(args.output_dir)
     CHECKPOINTS_DIR = f"{args.output_dir}/checkpoints" # models will be stored in the output directory
@@ -280,7 +303,8 @@ if __name__ == "__main__":
     if run_name == "":
         current_datetime = datetime.datetime.now().strftime("%m%d%y%H%M")
         run_name = f"{basename(args.output_dir)}-{current_datetime}"
-    run = wandb.init(config = dict(vars(args), **{"n_parameters": n_parameters, "n_parameters_trainable": n_parameters_trainable}), resume = not log_hyperparameters, project = "ExpressionNet-Train", group = dirname(args.output_dir), name = run_name, id = run_name) # set project title, configure with hyperparameters
+    group_name = ("absolute" if encoding["use_absolute_time"] else "metrical") + ("-unidimensional" if args.unidimensional else "") # basename(dirname(args.output_dir))
+    run = wandb.init(config = dict(vars(args), **{"n_parameters": n_parameters, "n_parameters_trainable": n_parameters_trainable}), resume = not log_hyperparameters, project = "ExpressionNet-Train", group = group_name, name = run_name, id = run_name) # set project title, configure with hyperparameters
 
     # load previous model and summarize if needed
     best_model_filepath = {partition: f"{CHECKPOINTS_DIR}/best_model.{partition}.pth" for partition in RELEVANT_PARTITIONS}
@@ -346,8 +370,10 @@ if __name__ == "__main__":
 
         model.train()
         count, count_token = 0, {mask_type: 0 for mask_type in MASKS}
-        recent_metrics = {PERFORMANCE_METRICS[0]: np.empty(shape = (0,)),
-                          PERFORMANCE_METRICS[1]: np.empty(shape = (0, 2))}
+        recent_metrics = {
+            PERFORMANCE_METRICS[0]: np.empty(shape = (0,)),
+            PERFORMANCE_METRICS[1]: np.empty(shape = (0, 2))
+        }
         for batch in (progress_bar := tqdm(iterable = range(args.valid_steps), desc = "Training")):
 
             # get next batch
@@ -363,13 +389,16 @@ if __name__ == "__main__":
 
             # calculate loss for the batch
             optimizer.zero_grad()
-            loss_batch, losses_batch, output_batch = model(seq = seq, mask = mask, return_list = True, reduce = False, return_output = True) # reduce = False so that we have loss at each token
-            accuracies_batch = get_accuracies(model_output = output_batch, expected = seq[:, 1:, :]) # calculate accuracy
-            masks = generate_note_expressive_mask(seq = seq, encoding = encoding) # determine mask for notes vs expressive features
-            if args.conditional: # loss is only based on notes
-                loss_batch = losses_batch[masks[MASKS[1]], :] # mask to notes only
-                loss_batch = torch.mean(input = loss_batch, dim = list(range(len(loss_batch.shape) - 1)))
-                loss_batch = torch.sum(input = loss_batch, dim = None)
+            masks = generate_note_expressive_mask(seq = seq, encoding = encoding, unidimensional = args.unidimensional, n_tokens_per_event = model.decoder.net.n_tokens_per_event) # determine mask for notes vs expressive features
+            loss_batch, losses_batch, output_batch = model(
+                seq = seq,
+                mask = mask,
+                return_list = True,
+                reduce = False, # reduce = False so that we have loss at each token
+                return_output = True,
+                conditional_mask = masks[MASKS[1 if args.conditional else 0]] # mask to notes only if a conditional model
+            )
+            accuracies_batch = get_accuracies(model_output = output_batch, seq = seq, unidimensional = args.unidimensional, n_tokens_per_event = model.decoder.net.n_tokens_per_event) # calculate accuracy
 
             # update parameters according to loss
             loss_batch.backward() # calculate gradients
@@ -404,9 +433,9 @@ if __name__ == "__main__":
 
             # calculate losses and accuracy for different facets
             performance_batch = {
-                PERFORMANCE_METRICS[0]: {mask_type: calculate_loss_statistics(losses = losses_batch, mask = mask_) for mask_type, mask_ in masks.items()},
-                PERFORMANCE_METRICS[1]: {mask_type: calculate_accuracy_statistics(accuracies = accuracies_batch, mask = mask_) for mask_type, mask_ in masks.items()}
-                }
+                PERFORMANCE_METRICS[0]: {mask_type: calculate_loss_statistics(losses = losses_batch, mask = mask_, unidimensional = args.unidimensional, n_tokens_per_event = model.decoder.net.n_tokens_per_event) for mask_type, mask_ in masks.items()},
+                PERFORMANCE_METRICS[1]: {mask_type: calculate_accuracy_statistics(accuracies = accuracies_batch, mask = mask_, unidimensional = args.unidimensional, n_tokens_per_event = model.decoder.net.n_tokens_per_event) for mask_type, mask_ in masks.items()}
+            }
             for metric in PERFORMANCE_METRICS:
                 for mask_type in MASKS:
                     for field in full_fields:
@@ -448,9 +477,17 @@ if __name__ == "__main__":
                 mask = batch["mask"].to(device)
 
                 # pass through the model
-                loss_batch, losses_batch, output_batch = model(seq = seq, mask = mask, return_list = True, reduce = False, return_output = True) # reduce = False so that we have loss at each token
-                accuracies_batch = get_accuracies(model_output = output_batch, expected = seq[:, 1:, :]) # calculate accuracies
-                masks = generate_note_expressive_mask(seq = seq, encoding = encoding) # determine mask for notes vs expressive features
+                masks = generate_note_expressive_mask(seq = seq, encoding = encoding, unidimensional = args.unidimensional, n_tokens_per_event = model.decoder.net.n_tokens_per_event) # determine mask for notes vs expressive features
+                loss_batch, losses_batch, output_batch = model(
+                    seq = seq,
+                    mask = mask,
+                    return_list = True,
+                    reduce = False, # reduce = False so that we have loss at each token
+                    return_output = True,
+                    conditional_mask = masks[MASKS[1 if args.conditional else 0]] # mask to notes only if a conditional model
+                )
+                accuracies_batch = get_accuracies(model_output = output_batch, seq = seq, unidimensional = args.unidimensional, n_tokens_per_event = model.decoder.net.n_tokens_per_event) # calculate accuracies
+                
                 # no need for the conditional loss_batch because it is calculated later and not needed for backprop
                 
                 # update counts
@@ -460,9 +497,9 @@ if __name__ == "__main__":
                 
                 # calculate losses and accuracy for different facets
                 performance_batch = {
-                    PERFORMANCE_METRICS[0]: {mask_type: calculate_loss_statistics(losses = losses_batch, mask = mask_) for mask_type, mask_ in masks.items()},
-                    PERFORMANCE_METRICS[1]: {mask_type: calculate_accuracy_statistics(accuracies = accuracies_batch, mask = mask_) for mask_type, mask_ in masks.items()}
-                    }
+                    PERFORMANCE_METRICS[0]: {mask_type: calculate_loss_statistics(losses = losses_batch, mask = mask_, unidimensional = args.unidimensional, n_tokens_per_event = model.decoder.net.n_tokens_per_event) for mask_type, mask_ in masks.items()},
+                    PERFORMANCE_METRICS[1]: {mask_type: calculate_accuracy_statistics(accuracies = accuracies_batch, mask = mask_, unidimensional = args.unidimensional, n_tokens_per_event = model.decoder.net.n_tokens_per_event) for mask_type, mask_ in masks.items()}
+                }
                 for metric in PERFORMANCE_METRICS:
                     for mask_type in MASKS:
                         for field in full_fields:
