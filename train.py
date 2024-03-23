@@ -413,7 +413,8 @@ if __name__ == "__main__":
             loss_batch = np.mean(a = recent_metrics[PERFORMANCE_METRICS[0]], axis = 0)
             
             # compute the moving average of the accuracy
-            accuracy_batch = np.array(object = (torch.sum(input = torch.all(input = accuracies_batch, dim = -1), dim = None).item(), utils.product(l = accuracies_batch.shape[:-1])), dtype = np.float64) # accuracy_batch is a tuple with the number of correct and the number total
+            accuracy_batch = accuracies_batch.reshape(accuracies_batch.shape[0], int(accuracies_batch.shape[1] / model.decoder.net.n_tokens_per_event), model.decoder.net.n_tokens_per_event) if args.unidimensional else accuracies_batch # reshape if necessary
+            accuracy_batch = np.array(object = (torch.sum(input = torch.all(input = accuracy_batch, dim = -1), dim = None).item(), utils.product(l = accuracy_batch.shape[:-1])), dtype = np.float64) # accuracy_batch is a tuple with the number of correct and the number total
             recent_metrics[PERFORMANCE_METRICS[1]] = np.append(arr = recent_metrics[PERFORMANCE_METRICS[1]], values = accuracy_batch.reshape((1, -1)), axis = 0)
             if len(recent_metrics[PERFORMANCE_METRICS[1]]) > 10:
                 recent_metrics[PERFORMANCE_METRICS[1]] = np.delete(arr = recent_metrics[PERFORMANCE_METRICS[1]], obj = 0, axis = 0)
