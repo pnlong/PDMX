@@ -15,10 +15,15 @@
 software_dir="/home/pnlong/model_musescore"
 software="${software_dir}/train.py"
 
-# data filepaths
+# defaults
 data_dir="/home/pnlong/musescore/datav"
-gpu=3 # gpu number
+gpu=-1 # gpu number
 unidimensional=""
+
+# small model architecture, the default
+dim=512 # dimension
+layers=6 # layers
+heads=8 # attention heads
 
 ##################################################
 
@@ -27,16 +32,31 @@ unidimensional=""
 ##################################################
 
 # parse command line arguments
-usage="Usage: $(basename ${0}) [-d] (data directory) [-u] (unidimensional?) [-g] (gpu to use)"
-while getopts ':d:u:g:h' opt; do
+usage="Usage: $(basename ${0}) [-d] (data directory) [-u] (unidimensional?) [-sml] (small/medium/large) [-g] (gpu to use)"
+while getopts ':d:u:s:m:l:g:h' opt; do
   case "${opt}" in
-    d)
+    d) # also implies metrical/absolute time
       data_dir="${OPTARG}"
       ;;
-    u)
+    u) # unidimensional flag
       unidimensional="--unidimensional"
       ;;
-    g)
+    s) # small
+      dim=512 # dimension
+      layers=6 # layers
+      heads=8 # attention heads
+      ;;
+    m) # medium
+      dim=768 # dimension
+      layers=10 # layers
+      heads=8 # attention heads
+      ;;
+    l) # large
+      dim=960 # dimension
+      layers=12 # layers
+      heads=12 # attention heads
+      ;;
+    g) # gpu to use
       gpu="${OPTARG}"
       ;;
     h)
@@ -67,54 +87,25 @@ sigma=8 # for anticipation, in seconds or beats depending on which time scale we
 ##################################################
 
 
-# MODEL SIZE
-##################################################
-# to adjust the size of the model (number of parameters, adjust these)
-
-# small
-dim=512 # dimension
-layers=6 # layers
-heads=8 # attention heads
-
-# medium
-# dim=768 # dimension
-# layers=10 # layers
-# heads=8 # attention heads
-
-# large
-# dim=960 # dimension
-# layers=12 # layers
-# heads=12 # attention heads
-
+# TRAIN MODELS
 ##################################################
 
-
-# NOT CONDITIONAL ON NOTES
-##################################################
-
-set -e
+set -e # stop if there's an error
 
 # baseline
 python ${software} --baseline --aug --paths_train ${paths_train} --paths_valid ${paths_valid} --encoding ${encoding} --output_dir ${output_dir} --batch_size ${batch_size} --steps ${steps} --dim ${dim} --layers ${layers} --heads ${heads} --gpu ${gpu} ${unidimensional}
 
-# prefix
+# prefix, conditional
+python ${software} --conditioning "prefix" --conditional --aug --paths_train ${paths_train} --paths_valid ${paths_valid} --encoding ${encoding} --output_dir ${output_dir} --batch_size ${batch_size} --steps ${steps} --dim ${dim} --layers ${layers} --heads ${heads} --gpu ${gpu} ${unidimensional}
+
+# anticipation, conditional
+python ${software} --conditioning "anticipation" --sigma ${sigma} --conditional --aug --paths_train ${paths_train} --paths_valid ${paths_valid} --encoding ${encoding} --output_dir ${output_dir} --batch_size ${batch_size} --steps ${steps} --dim ${dim} --layers ${layers} --heads ${heads} --gpu ${gpu} ${unidimensional}
+
+# prefix, not conditional
 python ${software} --conditioning "prefix" --aug --paths_train ${paths_train} --paths_valid ${paths_valid} --encoding ${encoding} --output_dir ${output_dir} --batch_size ${batch_size} --steps ${steps} --dim ${dim} --layers ${layers} --heads ${heads} --gpu ${gpu} ${unidimensional}
 
-# anticipation
+# anticipation, not conditional
 python ${software} --conditioning "anticipation" --sigma ${sigma} --aug --paths_train ${paths_train} --paths_valid ${paths_valid} --encoding ${encoding} --output_dir ${output_dir} --batch_size ${batch_size} --steps ${steps} --dim ${dim} --layers ${layers} --heads ${heads} --gpu ${gpu} ${unidimensional}
 
 ##################################################
 
-
-# CONDITIONAL ON NOTES
-##################################################
-
-# baseline is not possible to be conditional, because it is just notes
-
-# prefix
-python ${software} --conditioning "prefix" --conditional --aug --paths_train ${paths_train} --paths_valid ${paths_valid} --encoding ${encoding} --output_dir ${output_dir} --batch_size ${batch_size} --steps ${steps} --dim ${dim} --layers ${layers} --heads ${heads} --gpu ${gpu} ${unidimensional}
-
-# anticipation
-python ${software} --conditioning "anticipation" --sigma ${sigma} --conditional --aug --paths_train ${paths_train} --paths_valid ${paths_valid} --encoding ${encoding} --output_dir ${output_dir} --batch_size ${batch_size} --steps ${steps} --dim ${dim} --layers ${layers} --heads ${heads} --gpu ${gpu} ${unidimensional}
-
-##################################################
