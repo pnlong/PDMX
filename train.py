@@ -302,11 +302,9 @@ if __name__ == "__main__":
     # start a new wandb run to track the script
     project_name = "ExpressionNet-Train"
     group_name = ("absolute" if use_absolute_time else "metrical") + ("-unidimensional" if args.unidimensional else "") # basename(dirname(args.output_dir))
-    if (args.resume) and (run_name == ""):
-        run_names = [run.name for run in wandb.Api().runs(f"philly/{project_name}", filters = {"group": group_name}) if run.name.startswith(basename(args.output_dir))] # try to infer the run name
-        args.resume = (len(run_name) > 0) # redefine args.resume in the event that no run name was supplied, but we can't infer one either
-        run_name = run_names[0] if args.resume else None
-        del run_names
+    if (run_name == ""):
+        run_name = next(filter(lambda run: run.name.startswith(basename(args.output_dir)), wandb.Api().runs(f"philly/{project_name}", filters = {"group": group_name})), None) # try to infer the run name
+        args.resume = (run_name != None) # redefine args.resume in the event that no run name was supplied, but we can't infer one either
     if (run_name is None): # in the event we need to create a new run name
         current_datetime = datetime.datetime.now().strftime("%m%d%y%H%M")
         run_name = f"{basename(args.output_dir)}-{current_datetime}"
