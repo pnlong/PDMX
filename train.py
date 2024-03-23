@@ -110,7 +110,7 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("--lr_decay_multiplier", default = 0.1, type = float, help = "Learning rate multiplier at the end")
     parser.add_argument("--grad_norm_clip", default = 1.0, type = float, help = "Gradient norm clipping")
     # others
-    parser.add_argument("-r", "--resume", default = "", type = str, help = "Provide the wandb run name/id to resume a run")
+    parser.add_argument("-r", "--resume", default = None, type = str, help = "Provide the wandb run name/id to resume a run")
     parser.add_argument("-g", "--gpu", default = -1, type = int, help = "GPU number")
     parser.add_argument("-j", "--jobs", default = 4, type = int, help = "Number of workers for data loading")
     return parser.parse_args(args = args, namespace = namespace)
@@ -227,7 +227,7 @@ if __name__ == "__main__":
     if not exists(args.paths_valid):
         raise ValueError("Invalid --paths_valid argument. File does not exist.")
     run_name = args.resume # get runname
-    args.resume = bool(args.resume) # convert to boolean value
+    args.resume = (run_name != None) # convert to boolean value
     
     # get the specified device
     device = torch.device(f"cuda:{abs(args.gpu)}" if (torch.cuda.is_available() and args.gpu != -1) else "cpu")
@@ -300,11 +300,17 @@ if __name__ == "__main__":
             print(logging_output.read())
 
     # start a new wandb run to track the script
-    if run_name == "":
+    project_name = "ExpressionNet-Train"
+    group_name = ("absolute" if use_absolute_time else "metrical") + ("-unidimensional" if args.unidimensional else "") # basename(dirname(args.output_dir))
+    if (args.resume) and (run_name == ""):
+        run_names = [run.name for run in wandb.Api().runs(f"philly/{project_name}", filters = {"group": group_name}) if run.name.startswith(basename(args.output_dir))] # try to infer the run name
+        args.resume = (len(run_name) > 0) # redefine args.resume in the event that no run name was supplied, but we can't infer one either
+        run_name = run_names[0] if args.resume else None
+        del run_names
+    if (run_name is None): # in the event we need to create a new run name
         current_datetime = datetime.datetime.now().strftime("%m%d%y%H%M")
         run_name = f"{basename(args.output_dir)}-{current_datetime}"
-    group_name = ("absolute" if encoding["use_absolute_time"] else "metrical") + ("-unidimensional" if args.unidimensional else "") # basename(dirname(args.output_dir))
-    run = wandb.init(config = dict(vars(args), **{"n_parameters": n_parameters, "n_parameters_trainable": n_parameters_trainable}), resume = not log_hyperparameters, project = "ExpressionNet-Train", group = group_name, name = run_name, id = run_name) # set project title, configure with hyperparameters
+    run = wandb.init(config = dict(vars(args), **{"n_parameters": n_parameters, "n_parameters_trainable": n_parameters_trainable}), resume = not log_hyperparameters, project = project_name, group = group_name, name = run_name, id = run_name) # set project title, configure with hyperparameters
 
     # load previous model and summarize if needed
     best_model_filepath = {partition: f"{CHECKPOINTS_DIR}/best_model.{partition}.pth" for partition in RELEVANT_PARTITIONS}

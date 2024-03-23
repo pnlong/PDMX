@@ -19,6 +19,7 @@ software="${software_dir}/train.py"
 data_dir="/home/pnlong/musescore/datav"
 gpu=-1 # gpu number
 unidimensional=""
+resume=""
 
 # small model architecture, the default
 dim=512 # dimension
@@ -32,14 +33,17 @@ heads=8 # attention heads
 ##################################################
 
 # parse command line arguments
-usage="Usage: $(basename ${0}) [-d] (data directory) [-u] (unidimensional?) [-sml] (small/medium/large) [-g] (gpu to use)"
-while getopts ':d:u:s:m:l:g:h' opt; do
+usage="Usage: $(basename ${0}) [-d] (data directory) [-u] (unidimensional?) [-r] (resume?) [-sml] (small/medium/large) [-g] (gpu to use)"
+while getopts ':d:u:r:s:m:l:g:h' opt; do
   case "${opt}" in
     d) # also implies metrical/absolute time
       data_dir="${OPTARG}"
       ;;
     u) # unidimensional flag
       unidimensional="--unidimensional"
+      ;;
+    r) # whether to resume runs
+      resume="--resume"
       ;;
     s) # small
       dim=512 # dimension
@@ -93,19 +97,19 @@ sigma=8 # for anticipation, in seconds or beats depending on which time scale we
 set -e # stop if there's an error
 
 # baseline
-python ${software} --baseline --aug --paths_train ${paths_train} --paths_valid ${paths_valid} --encoding ${encoding} --output_dir ${output_dir} --batch_size ${batch_size} --steps ${steps} --dim ${dim} --layers ${layers} --heads ${heads} --gpu ${gpu} ${unidimensional}
+python ${software} --baseline --aug --paths_train ${paths_train} --paths_valid ${paths_valid} --encoding ${encoding} --output_dir ${output_dir} --batch_size ${batch_size} --steps ${steps} --dim ${dim} --layers ${layers} --heads ${heads} --gpu ${gpu} ${unidimensional} ${resume}
 
 # prefix, conditional
-python ${software} --conditioning "prefix" --conditional --aug --paths_train ${paths_train} --paths_valid ${paths_valid} --encoding ${encoding} --output_dir ${output_dir} --batch_size ${batch_size} --steps ${steps} --dim ${dim} --layers ${layers} --heads ${heads} --gpu ${gpu} ${unidimensional}
+python ${software} --conditioning "prefix" --conditional --aug --paths_train ${paths_train} --paths_valid ${paths_valid} --encoding ${encoding} --output_dir ${output_dir} --batch_size ${batch_size} --steps ${steps} --dim ${dim} --layers ${layers} --heads ${heads} --gpu ${gpu} ${unidimensional} ${resume}
 
 # anticipation, conditional
-python ${software} --conditioning "anticipation" --sigma ${sigma} --conditional --aug --paths_train ${paths_train} --paths_valid ${paths_valid} --encoding ${encoding} --output_dir ${output_dir} --batch_size ${batch_size} --steps ${steps} --dim ${dim} --layers ${layers} --heads ${heads} --gpu ${gpu} ${unidimensional}
+python ${software} --conditioning "anticipation" --sigma ${sigma} --conditional --aug --paths_train ${paths_train} --paths_valid ${paths_valid} --encoding ${encoding} --output_dir ${output_dir} --batch_size ${batch_size} --steps ${steps} --dim ${dim} --layers ${layers} --heads ${heads} --gpu ${gpu} ${unidimensional} ${resume}
 
 # prefix, not conditional
-python ${software} --conditioning "prefix" --aug --paths_train ${paths_train} --paths_valid ${paths_valid} --encoding ${encoding} --output_dir ${output_dir} --batch_size ${batch_size} --steps ${steps} --dim ${dim} --layers ${layers} --heads ${heads} --gpu ${gpu} ${unidimensional}
+python ${software} --conditioning "prefix" --aug --paths_train ${paths_train} --paths_valid ${paths_valid} --encoding ${encoding} --output_dir ${output_dir} --batch_size ${batch_size} --steps ${steps} --dim ${dim} --layers ${layers} --heads ${heads} --gpu ${gpu} ${unidimensional} ${resume}
 
 # anticipation, not conditional
-python ${software} --conditioning "anticipation" --sigma ${sigma} --aug --paths_train ${paths_train} --paths_valid ${paths_valid} --encoding ${encoding} --output_dir ${output_dir} --batch_size ${batch_size} --steps ${steps} --dim ${dim} --layers ${layers} --heads ${heads} --gpu ${gpu} ${unidimensional}
+python ${software} --conditioning "anticipation" --sigma ${sigma} --aug --paths_train ${paths_train} --paths_valid ${paths_valid} --encoding ${encoding} --output_dir ${output_dir} --batch_size ${batch_size} --steps ${steps} --dim ${dim} --layers ${layers} --heads ${heads} --gpu ${gpu} ${unidimensional} ${resume}
 
 ##################################################
 
