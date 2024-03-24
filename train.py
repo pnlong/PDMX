@@ -310,7 +310,7 @@ if __name__ == "__main__":
     if (run_name is None): # in the event we need to create a new run name
         current_datetime = datetime.datetime.now().strftime("%m%d%y%H%M")
         run_name = f"{basename(args.output_dir)}-{current_datetime}"
-    run = wandb.init(config = dict(vars(args), **{"n_parameters": n_parameters, "n_parameters_trainable": n_parameters_trainable}), resume = not log_hyperparameters, project = PROJECT_NAME, group = group_name, name = run_name, id = run_name) # set project title, configure with hyperparameters
+    run = wandb.init(config = dict(vars(args), **{"n_parameters": n_parameters, "n_parameters_trainable": n_parameters_trainable}), resume = "allow", project = PROJECT_NAME, group = group_name, name = run_name, id = run_name) # set project title, configure with hyperparameters
 
     # load previous model and summarize if needed
     best_model_filepath = {partition: f"{CHECKPOINTS_DIR}/best_model.{partition}.pth" for partition in RELEVANT_PARTITIONS}
