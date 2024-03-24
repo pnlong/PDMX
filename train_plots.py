@@ -29,9 +29,9 @@ import evaluate_baseline
 # CONSTANTS
 ##################################################
 
-DATA_DIR = "/data2/pnlong/musescore/data"
+DATA_DIR = "/home/pnlong/musescore/datav"
 MODELS_FILEPATH = f"{DATA_DIR}/models.txt"
-OUTPUT_DIR = "/data2/pnlong/musescore/data"
+OUTPUT_DIR = "/home/pnlong/musescore/datav"
 
 ##################################################
 
@@ -55,7 +55,7 @@ def make_model_name_fancy(model: str) -> str:
     if model == evaluate_baseline.TRUTH_DIR_STEM:
         return "Truth"
     model_name = model.split("_")
-    model_name = model_name[0].title() + (" (C)" if "conditional" in model else "") + ": " + model_name[-1]
+    model_name = ("uni" if "unidimensional" in model else "") + model_name[0].title() + (" (C)" if "conditional" in model else "") + ": " + model_name[-1] # model_name[-1] is model size
     return model_name
 
 def make_plot(partition: str, metric: str, mask: str, output_dir: str):
@@ -93,7 +93,7 @@ def make_plot(partition: str, metric: str, mask: str, output_dir: str):
     # get legend
     handles, labels = axes[fields[0]].get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
-    axes["legend"].legend(handles = by_label.values(), labels = list(map(make_model_name_fancy, by_label.keys())), loc = "center", fontsize = "small", title_fontsize = "medium", alignment = "center", ncol = 1, title = "Model", mode = "expand")
+    axes["legend"].legend(handles = by_label.values(), labels = list(map(make_model_name_fancy, by_label.keys())), loc = "center", fontsize = "xsmall", title_fontsize = "small", alignment = "center", ncol = 1, title = "Model", mode = "expand")
     axes["legend"].axis("off")
     
     # save image
@@ -129,6 +129,8 @@ if __name__ == "__main__":
             model_performance = model_performance[PERFORMANCE_COLUMNS] # reorder columns
             performance = pd.concat(objs = (performance, model_performance), axis = 0)
         del model, model_performance # free up memory
+        performance["unidimensional"] = performance["model"].apply(lambda model: "unidimensional" in model) # boolean value for unidimensionality
+        performance["model_size"] = performance["model"].apply(lambda model: model.split("_")[-1])
         performance.to_csv(path_or_buf = performance_output_filepath, sep = ",", na_rep = train.NA_VALUE, header = True, index = False, mode = "w")
 
     # get list of fields

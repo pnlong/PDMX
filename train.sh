@@ -34,7 +34,7 @@ heads=8 # attention heads
 
 # parse command line arguments
 usage="Usage: $(basename ${0}) [-d] (data directory) [-u] (unidimensional?) [-r] (resume?) [-sml] (small/medium/large) [-g] (gpu to use)"
-while getopts ':d:u:r:s:m:l:g:h' opt; do
+while getopts ':d:g:ursmlh' opt; do
   case "${opt}" in
     d) # also implies metrical/absolute time
       data_dir="${OPTARG}"

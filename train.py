@@ -277,7 +277,8 @@ if __name__ == "__main__":
         positional_embedding = "rpe"
     else:
         positional_embedding = "npe"
-    args.output_dir = args.output_dir + "/" + (args.conditioning if not args.baseline else "baseline") + ("_conditional" if args.conditional else "") + ("_unidimensional" if args.unidimensional else "") + f"_{positional_embedding}_{int(n_parameters_trainable / 1e+6)}M" # custom output directory based on arguments
+    model_size = int(n_parameters_trainable / 1e+6)
+    args.output_dir = args.output_dir + "/" + (args.conditioning if not args.baseline else "baseline") + ("_conditional" if args.conditional else "") + ("_unidimensional" if args.unidimensional else "") + f"_{positional_embedding}_{model_size}M" # custom output directory based on arguments
     if not exists(args.output_dir):
         makedirs(args.output_dir)
     CHECKPOINTS_DIR = f"{args.output_dir}/checkpoints" # models will be stored in the output directory
@@ -304,7 +305,7 @@ if __name__ == "__main__":
     # start a new wandb run to track the script
     group_name = ("absolute" if use_absolute_time else "metrical") + ("-unidimensional" if args.unidimensional else "") # basename(dirname(args.output_dir))
     if (run_name == INFER_RUN_NAME_STRING):
-        run_name = next(filter(lambda run: run.name.startswith(basename(args.output_dir)), wandb.Api().runs(f"philly/{PROJECT_NAME}", filters = {"group": group_name})), None) # try to infer the run name
+        run_name = next(filter(lambda name: name.startswith(basename(args.output_dir)), (run.name for run in wandb.Api().runs(f"philly/{PROJECT_NAME}", filters = {"group": group_name}))), None) # try to infer the run name
         args.resume = (run_name != None) # redefine args.resume in the event that no run name was supplied, but we can't infer one either
     if (run_name is None): # in the event we need to create a new run name
         current_datetime = datetime.datetime.now().strftime("%m%d%y%H%M")
