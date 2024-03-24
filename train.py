@@ -104,7 +104,7 @@ def parse_args(args = None, namespace = None):
     # training
     parser.add_argument("--steps", default = 100000, type = int, help = "Number of steps")
     parser.add_argument("--valid_steps", default = 1000, type = int, help = "Validation frequency")
-    parser.add_argument("--early_stopping", action = argparse.BooleanOptionalAction, default = True, help = "Whether to use early stopping")
+    parser.add_argument("--early_stopping", action = argparse.BooleanOptionalAction, default = False, help = "Whether to use early stopping")
     parser.add_argument("--early_stopping_tolerance", default = 20, type = int, help = "Number of extra validation rounds before early stopping")
     parser.add_argument("-lr", "--learning_rate", default = 0.0005, type = float, help = "Learning rate")
     parser.add_argument("--lr_warmup_steps", default = 5000, type = int, help = "Learning rate warmup steps")
