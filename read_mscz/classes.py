@@ -78,7 +78,7 @@ class Tempo(muspy.classes.Tempo):
     def __init__(self, time: int, qpm: float = DEFAULT_QPM, text: str = "", measure: int = None):
         super().__init__(time = time, qpm = qpm)
         self.measure = measure
-        self.text = text
+        self.text = "" if text is None else text
 
 # KEY SIG
 class KeySignature(muspy.classes.KeySignature):
@@ -363,7 +363,7 @@ class Text(muspy.base.Base):
     _optional_attributes = ["is_system", "style"]
 
     def __init__(self, text: str, is_system: bool = False, style: str = None):
-        self.text = text
+        self.text = "" if text is None else text
         self.is_system = bool(is_system)
         self.style = style
 

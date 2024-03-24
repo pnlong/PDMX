@@ -31,6 +31,7 @@ from utils import rep
 INPUT_DIR = "/data2/pnlong/musescore/expressive_features"
 OUTPUT_DIR = "/data2/pnlong/musescore/expressive_features/plots"
 OUTPUT_RESOLUTION_DPI = 200
+BAR_SHIFT_CONSTANT = 13/25
 
 COLORS = ("#9BC1BC", "#F4F1BB", "#ED6A5A") # color palette copied from https://coolors.co/palettes/popular/3%20colors
 LINE_COLORS = ("tab:blue", "tab:red", "tab:green", "tab:orange")
@@ -151,65 +152,6 @@ def make_error_plot(input_filepath: str, output_filepath: str):
 ##################################################
 
 
-# DESCRIBE PUBLIC DOMAIN
-##################################################
-
-public_domain_labels_mapping = ["path", "track"]
-
-# helper function to group by version
-def _group_by_copyright(df: pd.DataFrame, label: str) -> pd.DataFrame:
-    df = df.groupby(by = "is_public_domain").size() # sum over each version
-    df = df.reset_index().rename(columns = {0: "count"}) # make error type into column
-    df["percent"] = 100 * (df["count"] / df["count"].sum()) # calculate percentage
-    df["type"] = rep(x = public_domain_labels_mapping.index(label), times = len(df))
-    return df[["is_public_domain", "count", "percent", "type"]] # select only subset of columns
-
-def _make_pd_bar_chart(axes: plt.Axes, df: pd.DataFrame, col: str):
-    width = 0.4
-    pd_true, pd_false = df[df["is_public_domain"]], df[~df["is_public_domain"]]
-    bars = [
-        axes[col].bar(x = pd_true["type"] - (52 * width / 100),  height = pd_true[col],  width = width, color = COLORS[0], edgecolor = "0"), # public domain
-        axes[col].bar(x = pd_false["type"] + (52 * width / 100), height = pd_false[col], width = width, color = COLORS[1], edgecolor = "0") # not public domain
-        ]
-    def annotate_bar_chart(bars_to_annotate):
-        for bar in bars_to_annotate: # loop through the bars and add annotations
-            height = bar.get_height()
-            axes[col].annotate(text = f"{height:.2f}%" if col == "percent" else f"{height:,}", xy = (bar.get_x() + bar.get_width() / 2, height), xytext = (0, 3), textcoords = "offset points", ha = "center", va = "bottom")
-    annotate_bar_chart(bars_to_annotate = bars[0])
-    annotate_bar_chart(bars_to_annotate = bars[1])
-    axes[col].set_xlabel("Type")
-    axes[col].xaxis.set_ticks(ticks = tuple(range(len(public_domain_labels_mapping))), labels = (pdlm.title() for pdlm in public_domain_labels_mapping))
-    axes[col].set_ylabel(f"{col.title()} (%)" if col == "percent" else col.title())
-    axes[col].set_title(col.title())
-    axes[col].legend(["Public Domain", "Copyrighted"]) 
-
-# function to make the public domain plot
-def make_public_domain_plot(output_filepath: str):
-
-    public_domain_columns = ["is_public_domain", "is_valid"]
-
-    # create figure
-    fig, axes = plt.subplot_mosaic(mosaic = [["count", "percent"]], constrained_layout = True, figsize = (12, 8))
-    fig.suptitle("Copyrights for MuseScore Data", fontweight = "bold")
-    public_domain = pd.concat(objs = (
-        _group_by_copyright(df = data_by[public_domain_labels_mapping[0]][public_domain_columns].copy(), label = public_domain_labels_mapping[0]),
-        _group_by_copyright(df = data_by[public_domain_labels_mapping[1]][public_domain_columns].copy(), label = public_domain_labels_mapping[1])
-        ), axis = 0)
-
-    # make count plot
-    _make_pd_bar_chart(axes = axes, df = public_domain, col = "count")
-    axes["count"].ticklabel_format(axis = "y", style = "scientific", scilimits = (0, 0))
-
-    # make percent plot
-    _make_pd_bar_chart(axes = axes, df = public_domain, col = "percent")
-
-    # save image
-    fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI) # save image
-    logging.info(f"Public Domain plot saved to {output_filepath}.")
-
-##################################################
-
-
 # PERCENTILE PLOT FOR NUMBER OF EXPRESSIVE FEATURES
 ##################################################
 
@@ -316,6 +258,119 @@ def make_tracks_plot(output_filepath: str):
 ##################################################
 
 
+# MAKE ANY BOOLEAN PLOT
+##################################################
+
+labels_mapping = ["path", "track"]
+
+# helper function to group by the boolean column
+def _group_by_boolean(df: pd.DataFrame, label: str, boolean_column_name: str) -> pd.DataFrame:
+    df = df.groupby(by = boolean_column_name).size() # sum over each version
+    df = df.reset_index().rename(columns = {0: "count"}) # make error type into column
+    df["percent"] = 100 * (df["count"] / df["count"].sum()) # calculate percentage
+    df["type"] = rep(x = labels_mapping.index(label), times = len(df))
+    return df[[boolean_column_name, "count", "percent", "type"]] # select only subset of columns
+
+def _make_boolean_bar_chart(axes: plt.Axes, df: pd.DataFrame, type_column: str, boolean_column_name: str, fancy_boolean_column_name: str):
+    width = 0.4
+    pro_user_true, pro_user_false = df[df[boolean_column_name]], df[~df[boolean_column_name]]
+    bars = [
+        axes[type_column].bar(x = pro_user_true["type"] - (BAR_SHIFT_CONSTANT * width),  height = pro_user_true[type_column],  width = width, color = COLORS[0], edgecolor = "0"), # pro user
+        axes[type_column].bar(x = pro_user_false["type"] + (BAR_SHIFT_CONSTANT * width), height = pro_user_false[type_column], width = width, color = COLORS[1], edgecolor = "0") # not pro user
+        ]
+    def annotate_bar_chart(bars_to_annotate):
+        for bar in bars_to_annotate: # loop through the bars and add annotations
+            height = bar.get_height()
+            axes[type_column].annotate(text = f"{height:.2f}%" if (type_column == "percent") else f"{height:,}", xy = (bar.get_x() + bar.get_width() / 2, height), xytext = (0, 3), textcoords = "offset points", ha = "center", va = "bottom")
+    annotate_bar_chart(bars_to_annotate = bars[0])
+    annotate_bar_chart(bars_to_annotate = bars[1])
+    axes[type_column].set_xlabel("Type")
+    axes[type_column].xaxis.set_ticks(ticks = tuple(range(len(labels_mapping))), labels = (label_mapping.title() for label_mapping in labels_mapping))
+    axes[type_column].set_ylabel(f"{type_column.title()} (%)" if (type_column == "percent") else type_column.title())
+    axes[type_column].set_title(type_column.title())
+    axes[type_column].legend([fancy_boolean_column_name, f"Not {fancy_boolean_column_name}"]) 
+
+# function to make any boolean plot
+def make_boolean_plot(boolean_column_name: str, output_filepath: str):
+
+    # some helper variables
+    fancy_boolean_column_name = " ".join(map(lambda word: word.title(), boolean_column_name.split("_")[1:]))
+    relevant_columns = [boolean_column_name, "is_valid"]
+
+    # create figure
+    fig, axes = plt.subplot_mosaic(mosaic = [["count", "percent"]], constrained_layout = True, figsize = (12, 8))
+    fig.suptitle(f"{fancy_boolean_column_name} in MuseScore Data", fontweight = "bold")
+    data = pd.concat(objs = (
+        _group_by_boolean(df = data_by[labels_mapping[0]][relevant_columns].copy(), label = labels_mapping[0], boolean_column_name = boolean_column_name),
+        _group_by_boolean(df = data_by[labels_mapping[1]][relevant_columns].copy(), label = labels_mapping[1], boolean_column_name = boolean_column_name)
+        ), axis = 0)
+
+    # make count plot
+    _make_boolean_bar_chart(axes = axes, df = data, type_column = "count", boolean_column_name = boolean_column_name, fancy_boolean_column_name = fancy_boolean_column_name)
+    axes["count"].ticklabel_format(axis = "y", style = "scientific", scilimits = (0, 0))
+
+    # make percent plot
+    _make_boolean_bar_chart(axes = axes, df = data, type_column = "percent", boolean_column_name = boolean_column_name, fancy_boolean_column_name = fancy_boolean_column_name)
+
+    # save image
+    fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI) # save image
+    logging.info(f"{fancy_boolean_column_name} plot saved to {output_filepath}.")
+
+##################################################
+
+
+# MAKE COMPLEXITY PLOT
+##################################################
+
+def make_complexity_plot(output_filepath: str):
+
+    # create figure
+    fig, axes = plt.subplot_mosaic(mosaic = [["box"]], constrained_layout = True, figsize = (12, 8))
+    fig.suptitle("Complexity of MuseScore Data", fontweight = "bold")
+
+    # extract data
+    data = [
+        data_by["path"][data_by["path"]["is_valid"] & ~pd.isna(data_by["path"]["complexity"])]["complexity"].tolist(),
+        data_by["track"][data_by["track"]["is_valid"] & ~pd.isna(data_by["track"]["complexity"])]["complexity"].tolist()
+    ]
+
+    axes["box"].boxplot(x = data, vert = True, showfliers = False, labels = ["path", "track"])
+    axes["box"].set_xlabel("")
+    axes["box"].xaxis.set_ticks(ticks = [], labels = [])
+    axes["box"].set_ylabel("Complexity")
+
+    # save image
+    fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI) # save image
+    logging.info(f"Complexity plot saved to {output_filepath}.")
+
+##################################################
+
+
+# MAKE DESCRIPTOR (GENRE OR TAG) PLOT
+##################################################
+
+def make_descriptor_plot(descriptor: str, output_filepath: str, top_n: int = 10):
+
+    # create figure
+    column_name = f"{descriptor}s"
+    fig, axes = plt.subplot_mosaic(mosaic = [["path", "track"]], constrained_layout = True, figsize = (12, 8))
+    fig.suptitle(f"Top {column_name.title()} Present in MuseScore Data", fontweight = "bold")
+
+    # path
+    for plot_type in ["path", "track"]:
+        data = pd.Series(data = sum(data_by[plot_type][column_name].apply(lambda sequence: sequence.split("-")).tolist(), []))
+        data = data.value_counts(sort = True, ascending = False, dropna = True).head(n = top_n)
+        axes[plot_type].barh(y = data.index, width = data)
+        axes[plot_type].set_ylabel("Count")
+        axes[plot_type].set_title(plot_type.title())
+
+    # save image
+    fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI) # save image
+    logging.info(f"{column_name.title()} plot saved to {output_filepath}.")
+
+##################################################
+    
+
 # MAKE PLOTS
 ##################################################
 
@@ -358,13 +413,17 @@ if __name__ == "__main__":
     # MAKE PLOTS
     ##################################################
 
-    plot_output_filepaths = [f"{args.output_dir}/{plot_type}.png" for plot_type in ("versions", "errors", "public_domain", "n_expressive_features_percentiles", "timings", "tracks")]
+    plot_output_filepaths = [f"{args.output_dir}/{plot_type}.png" for plot_type in ("versions", "errors", "public_domain", "n_expressive_features_percentiles", "timings", "tracks", "pro_user", "complexity", "genres", "tags")]
     make_versions_plot(output_filepath = plot_output_filepaths[0])
     make_error_plot(input_filepath = ERROR_FILEPATH, output_filepath = plot_output_filepaths[1])
-    make_public_domain_plot(output_filepath = plot_output_filepaths[2])
+    make_boolean_plot(boolean_column_name = "is_public_domain", output_filepath = plot_output_filepaths[2])
     make_percentile_plot(output_filepath = plot_output_filepaths[3])
     make_timing_plot(input_filepath = TIMING_FILEPATH, output_filepath = plot_output_filepaths[4])
     make_tracks_plot(output_filepath = plot_output_filepaths[5])
+    make_boolean_plot(boolean_column_name = "is_pro_user", output_filepath = plot_output_filepaths[6])
+    make_complexity_plot(output_filepath = plot_output_filepaths[7])
+    make_descriptor_plot(descriptor = "genre", output_filepath = plot_output_filepaths[8])
+    make_descriptor_plot(descriptor = "tag", output_filepath = plot_output_filepaths[9])
 
     plot_output_filepaths = " ".join([f"deepz:{plot_output_filepath}" for plot_output_filepath in plot_output_filepaths])
     print("".join(("=" for _ in range(100))))
