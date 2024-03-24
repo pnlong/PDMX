@@ -14,6 +14,7 @@ import argparse
 import pandas as pd
 import numpy as np
 from os.path import exists, basename, dirname
+from os import remove
 from tqdm import tqdm
 import logging
 from time import perf_counter, strftime, gmtime
@@ -125,6 +126,14 @@ def extract(path: str, path_output_prefix: str, use_implied_duration: bool = Tru
 
         # save encoded data
         np.save(file = path_output, arr = data)
+
+        # make sure file is valid and can be opened
+        try:
+            validate = np.load(file = path_output, allow_pickle = True)
+            del validate
+        except:
+            remove(path = path_output)
+            continue
 
         # create current output dictionary; OUTPUT_COLUMNS = ("path", "musescore", "track", "metadata", "version", "n")
         current_output = {

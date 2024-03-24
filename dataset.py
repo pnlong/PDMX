@@ -71,7 +71,7 @@ class MusicDataset(Dataset):
 
     def __init__(self, paths: str, encoding: dict, conditioning: str = encode.DEFAULT_CONDITIONING, sigma: float = encode.SIGMA, is_baseline: bool = False, max_seq_len: int = None, use_augmentation: bool = False, unidimensional: bool = False):
         super().__init__()
-        with open(paths) as file:
+        with open(paths, "r") as file:
             self.paths = [line.strip() for line in file if line]
         self.encoding = encoding
         self.conditioning = conditioning
