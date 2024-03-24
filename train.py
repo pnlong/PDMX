@@ -285,6 +285,16 @@ if __name__ == "__main__":
     if not exists(CHECKPOINTS_DIR):
         mkdir(CHECKPOINTS_DIR)
 
+    # start a new wandb run to track the script
+    group_name = ("absolute" if use_absolute_time else "metrical") + ("-unidimensional" if args.unidimensional else "") # basename(dirname(args.output_dir))
+    if (run_name == INFER_RUN_NAME_STRING):
+        run_name = next(filter(lambda name: name.startswith(basename(args.output_dir)), (run.name for run in wandb.Api().runs(f"philly/{PROJECT_NAME}", filters = {"group": group_name}))), None) # try to infer the run name
+        args.resume = (run_name != None) # redefine args.resume in the event that no run name was supplied, but we can't infer one either
+    if (run_name is None): # in the event we need to create a new run name
+        current_datetime = datetime.datetime.now().strftime("%m%d%y%H%M")
+        run_name = f"{basename(args.output_dir)}-{current_datetime}"
+    run = wandb.init(config = dict(vars(args), **{"n_parameters": n_parameters, "n_parameters_trainable": n_parameters_trainable}), resume = "allow", project = PROJECT_NAME, group = group_name, name = run_name, id = run_name) # set project title, configure with hyperparameters
+
     # set up the logger
     logging_output_filepath = f"{args.output_dir}/train.log"
     log_hyperparameters = not (args.resume and exists(logging_output_filepath))
@@ -301,16 +311,6 @@ if __name__ == "__main__":
     else: # print previous loggings to stdout
         with open(logging_output_filepath, "r") as logging_output:
             print(logging_output.read())
-
-    # start a new wandb run to track the script
-    group_name = ("absolute" if use_absolute_time else "metrical") + ("-unidimensional" if args.unidimensional else "") # basename(dirname(args.output_dir))
-    if (run_name == INFER_RUN_NAME_STRING):
-        run_name = next(filter(lambda name: name.startswith(basename(args.output_dir)), (run.name for run in wandb.Api().runs(f"philly/{PROJECT_NAME}", filters = {"group": group_name}))), None) # try to infer the run name
-        args.resume = (run_name != None) # redefine args.resume in the event that no run name was supplied, but we can't infer one either
-    if (run_name is None): # in the event we need to create a new run name
-        current_datetime = datetime.datetime.now().strftime("%m%d%y%H%M")
-        run_name = f"{basename(args.output_dir)}-{current_datetime}"
-    run = wandb.init(config = dict(vars(args), **{"n_parameters": n_parameters, "n_parameters_trainable": n_parameters_trainable}), resume = "allow", project = PROJECT_NAME, group = group_name, name = run_name, id = run_name) # set project title, configure with hyperparameters
 
     # load previous model and summarize if needed
     best_model_filepath = {partition: f"{CHECKPOINTS_DIR}/best_model.{partition}.pth" for partition in RELEVANT_PARTITIONS}
