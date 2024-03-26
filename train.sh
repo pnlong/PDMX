@@ -84,7 +84,7 @@ encoding="${data_dir}/encoding.json"
 output_dir="${data_dir}"
 
 # constants
-batch_size=4 # decrease if gpu memory consumption is too high
+batch_size=12 # decrease if gpu memory consumption is too high
 steps=100000 # in my experience >70000 is sufficient to train
 sigma=8 # for anticipation, in seconds or beats depending on which time scale we are using
 
