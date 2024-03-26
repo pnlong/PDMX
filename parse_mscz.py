@@ -46,6 +46,7 @@ OUTPUT_COLUMNS = ["path", "track", "expressive_features", "metadata", "version",
 OUTPUT_COLUMNS_BY_PATH = ["path", "metadata", "version", "is_public_domain", "is_valid", "is_user_pro", "complexity", "genres", "tags", "n_tracks", "n_expressive_features", "n_expressive_features_with_lyrics"]
 ERROR_COLUMNS = ["path", "error_type", "error_message"]
 N_EXPRESSIVE_FEATURES_TO_STORE_THRESHOLD = 2
+LIST_FEATURE_JOIN_STRING = "-"
 ##################################################
 
 
@@ -132,8 +133,8 @@ def extract_expressive_features(path: str, path_output_prefix: str):
                         is_user_pro = bool(metadata_for_path["data"]["score"]["user"]["is_pro"]) if "user" in metadata_for_path["data"]["score"]["user"].keys() else False
         except (OSError):
             metadata_path = None
-    genres_string = "-".join(map(lambda genre: sub(pattern = "[^a-z]", repl = "", string = genre.lower()), genres)) # store genres as a single string
-    tags_string = "-".join(map(lambda tag: sub(pattern = "[^a-z]", repl = "", string = tag.lower()), tags)) # store tags as a single string
+    genres_string = LIST_FEATURE_JOIN_STRING.join(map(lambda genre: sub(pattern = "[^a-z]", repl = "", string = genre.lower()), genres)) # store genres as a single string
+    tags_string = LIST_FEATURE_JOIN_STRING.join(map(lambda tag: sub(pattern = "[^a-z]", repl = "", string = tag.lower()), tags)) # store tags as a single string
     try:
         version = get_musescore_version(path = path)
     except:

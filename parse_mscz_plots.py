@@ -21,6 +21,7 @@ import logging
 from time import strftime, gmtime
 from read_mscz.music import DIVIDE_BY_ZERO_CONSTANT
 from utils import rep
+from parse_mscz import LIST_FEATURE_JOIN_STRING
 
 ##################################################
 
@@ -358,7 +359,7 @@ def make_descriptor_plot(descriptor: str, output_filepath: str, top_n: int = 10)
 
     # path
     for plot_type in ["path", "track"]:
-        data = pd.Series(data = sum(data_by[plot_type][column_name].apply(lambda sequence: sequence.split("-")).tolist(), []))
+        data = pd.Series(data = sum(data_by[plot_type][column_name].apply(lambda sequence: sequence.split(LIST_FEATURE_JOIN_STRING)).tolist(), []))
         data = data.value_counts(sort = True, ascending = False, dropna = True).head(n = top_n)
         axes[plot_type].barh(y = data.index, width = data)
         axes[plot_type].set_ylabel("Count")
