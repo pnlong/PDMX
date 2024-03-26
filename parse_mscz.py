@@ -42,8 +42,8 @@ METADATA_MAPPING = f"{INPUT_DIR}/metadata_to_data.csv"
 OUTPUT_DIR = f"{INPUT_DIR}/expressive_features"
 TIME_IN_SECONDS_COLUMN_NAME = "time.s"
 EXPRESSIVE_FEATURE_COLUMNS = ["time", TIME_IN_SECONDS_COLUMN_NAME, "type", "value"]
-OUTPUT_COLUMNS = ["path", "track", "expressive_features", "metadata", "version", "is_public_domain", "is_valid", "is_user_pro", "program", "complexity", "genres", "tags", "n_expressive_features", "n_expressive_features_with_lyrics"]
-OUTPUT_COLUMNS_BY_PATH = ["path", "metadata", "version", "is_public_domain", "is_valid", "is_user_pro", "complexity", "genres", "tags", "n_tracks", "n_expressive_features", "n_expressive_features_with_lyrics"]
+OUTPUT_COLUMNS = ["path", "track", "expressive_features", "metadata", "version", "is_public_domain", "is_valid", "is_user_pro", "program", "complexity", "genres", "tags", "n_expressive_features", "n_expressive_features_with_lyrics", "in_dataset"]
+OUTPUT_COLUMNS_BY_PATH = ["path", "metadata", "version", "is_public_domain", "is_valid", "is_user_pro", "complexity", "genres", "tags", "n_tracks", "n_expressive_features", "n_expressive_features_with_lyrics", "in_dataset"]
 ERROR_COLUMNS = ["path", "error_type", "error_message"]
 N_EXPRESSIVE_FEATURES_TO_STORE_THRESHOLD = 2
 LIST_FEATURE_JOIN_STRING = "-"
@@ -125,7 +125,7 @@ def extract_expressive_features(path: str, path_output_prefix: str):
             with open(metadata_path, "r") as metadata_file:
                 metadata_for_path = json.load(fp = metadata_file)
                 is_public_domain = bool(metadata_for_path["data"]["is_public_domain"]) if "is_public_domain" in metadata_for_path["data"].keys() else False
-                genres = list(map(str, metadata_for_path["data"]["genres"])) if "genres" in metadata_for_path["data"].keys() else []
+                genres = list(map(lambda genre: str(genre["name"]), metadata_for_path["data"]["genres"])) if "genres" in metadata_for_path["data"].keys() else []
                 complexity = int(metadata_for_path["data"]["complexity"]) if "complexity" in metadata_for_path["data"].keys() else None
                 if "score" in metadata_for_path["data"].keys():
                     tags = list(map(str, metadata_for_path["data"]["score"]["tags"])) if "tags" in metadata_for_path["data"]["score"].keys() else []
@@ -133,8 +133,12 @@ def extract_expressive_features(path: str, path_output_prefix: str):
                         is_user_pro = bool(metadata_for_path["data"]["score"]["user"]["is_pro"]) if "user" in metadata_for_path["data"]["score"]["user"].keys() else False
         except (OSError):
             metadata_path = None
-    genres_string = LIST_FEATURE_JOIN_STRING.join(map(lambda genre: sub(pattern = "[^a-z]", repl = "", string = genre.lower()), genres)) # store genres as a single string
-    tags_string = LIST_FEATURE_JOIN_STRING.join(map(lambda tag: sub(pattern = "[^a-z]", repl = "", string = tag.lower()), tags)) # store tags as a single string
+    genres_string = LIST_FEATURE_JOIN_STRING.join(filter(lambda genre: len(genre) > 0, map(lambda genre: sub(pattern = "[^a-z]", repl = "", string = genre.lower()), genres))).strip() # store genres as a single string
+    if len(genres_string) == 0:
+        genres_string = None
+    tags_string = LIST_FEATURE_JOIN_STRING.join(filter(lambda tag: len(tag) > 0, map(lambda tag: sub(pattern = "[^a-z]", repl = "", string = tag.lower()), tags))).strip() # store tags as a single string
+    if (len(tags_string) == 0):
+        tags_string = None
     try:
         version = get_musescore_version(path = path)
     except:
@@ -164,9 +168,9 @@ def extract_expressive_features(path: str, path_output_prefix: str):
         # output error message to file
         write_to_file(info = dict(zip(ERROR_COLUMNS, (path, error_type, error_message.replace(",", "")))), columns = ERROR_COLUMNS, output_filepath = ERROR_MESSAGE_OUTPUT_FILEPATH)
         # write mapping by track
-        write_to_file(info = dict(zip(OUTPUT_COLUMNS, (path, None, None, metadata_path, version, is_public_domain, False, is_user_pro, None, complexity, genres_string, tags_string, None, None))), columns = OUTPUT_COLUMNS, output_filepath = OUTPUT_FILEPATH)
+        write_to_file(info = dict(zip(OUTPUT_COLUMNS, (path, None, None, metadata_path, version, is_public_domain, False, is_user_pro, None, complexity, genres_string, tags_string, None, None, False))), columns = OUTPUT_COLUMNS, output_filepath = OUTPUT_FILEPATH)
         # write mapping by path
-        write_to_file(info = dict(zip(OUTPUT_COLUMNS_BY_PATH, (path, metadata_path, version, is_public_domain, False, is_user_pro, complexity, genres_string, tags_string, None, None, None))), columns = OUTPUT_COLUMNS_BY_PATH, output_filepath = OUTPUT_FILEPATH_BY_PATH)
+        write_to_file(info = dict(zip(OUTPUT_COLUMNS_BY_PATH, (path, metadata_path, version, is_public_domain, False, is_user_pro, complexity, genres_string, tags_string, None, None, None, False))), columns = OUTPUT_COLUMNS_BY_PATH, output_filepath = OUTPUT_FILEPATH_BY_PATH)
         return None # exit here
 
     # start timer
@@ -205,6 +209,8 @@ def extract_expressive_features(path: str, path_output_prefix: str):
         n_expressive_features_by_path_with_lyrics += (len(expressive_features) - n_system_expressive_features_with_lyrics) # update n_expressive_features_by_path_with_lyrics
         expressive_features[TIME_IN_SECONDS_COLUMN_NAME] = expressive_features["time"].apply(lambda time: music.metrical_time_to_absolute_time(time_steps = time)) # add time in seconds column
         expressive_features = expressive_features[EXPRESSIVE_FEATURE_COLUMNS] # reorder columns
+        n_expressive_features = len(data)
+        n_expressive_features_with_lyrics = len(expressive_features)
 
         # create current output (to be pickled)
         current_output = {
@@ -235,7 +241,7 @@ def extract_expressive_features(path: str, path_output_prefix: str):
         ##################################################
 
         # output if it is worthwhile (at least some expressive features)
-        if len(expressive_features) >= N_EXPRESSIVE_FEATURES_TO_STORE_THRESHOLD:
+        if n_expressive_features_with_lyrics >= N_EXPRESSIVE_FEATURES_TO_STORE_THRESHOLD:
 
             # create output path from path_output_prefix
             path_output = f"{path_output_prefix}.{i}.pickle"
@@ -252,7 +258,7 @@ def extract_expressive_features(path: str, path_output_prefix: str):
             path_output = None # because we didn't write this file
 
         # write mapping
-        write_to_file(info = dict(zip(OUTPUT_COLUMNS, (path, i, path_output, metadata_path, version, is_public_domain, True, is_user_pro, track.program, complexity, genres_string, tags_string, len(data), len(expressive_features)))), columns = OUTPUT_COLUMNS, output_filepath = OUTPUT_FILEPATH)
+        write_to_file(info = dict(zip(OUTPUT_COLUMNS, (path, i, path_output, metadata_path, version, is_public_domain, True, is_user_pro, track.program, complexity, genres_string, tags_string, n_expressive_features, n_expressive_features_with_lyrics, is_public_domain and (n_expressive_features > 0)))), columns = OUTPUT_COLUMNS, output_filepath = OUTPUT_FILEPATH)
 
         ##################################################
 
@@ -261,7 +267,7 @@ def extract_expressive_features(path: str, path_output_prefix: str):
     ##################################################
 
     # write to number expressive features per path
-    write_to_file(info = dict(zip(OUTPUT_COLUMNS_BY_PATH, (path, metadata_path, version, is_public_domain, True, is_user_pro, complexity, genres_string, tags_string, n_tracks, n_expressive_features_by_path, n_expressive_features_by_path_with_lyrics))), columns = OUTPUT_COLUMNS_BY_PATH, output_filepath = OUTPUT_FILEPATH_BY_PATH)
+    write_to_file(info = dict(zip(OUTPUT_COLUMNS_BY_PATH, (path, metadata_path, version, is_public_domain, True, is_user_pro, complexity, genres_string, tags_string, n_tracks, n_expressive_features_by_path, n_expressive_features_by_path_with_lyrics, is_public_domain and (n_expressive_features_by_path > 0)))), columns = OUTPUT_COLUMNS_BY_PATH, output_filepath = OUTPUT_FILEPATH_BY_PATH)
 
     # write to timing output
     end_time = perf_counter()

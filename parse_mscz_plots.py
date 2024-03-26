@@ -317,6 +317,14 @@ def make_boolean_plot(boolean_column_name: str, output_filepath: str):
     fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI) # save image
     logging.info(f"{fancy_boolean_column_name} plot saved to {output_filepath}.")
 
+# helper to make public domain plot
+def make_public_domain_plot(output_filepath: str):
+    make_boolean_plot(boolean_column_name = "is_public_domain", output_filepath = output_filepath)
+
+# helper to make pro user plot
+def make_pro_user_plot(output_filepath: str):
+    make_boolean_plot(boolean_column_name = "is_user_pro", output_filepath = output_filepath)
+
 ##################################################
 
 
@@ -335,9 +343,8 @@ def make_complexity_plot(output_filepath: str):
         data_by["track"][data_by["track"]["is_valid"] & ~pd.isna(data_by["track"]["complexity"])]["complexity"].tolist()
     ]
 
-    axes["box"].boxplot(x = data, vert = True, showfliers = False, labels = ["path", "track"])
+    axes["box"].boxplot(x = data, vert = True, showfliers = False, labels = list(map(lambda string: string.title(), data_by.keys())))
     axes["box"].set_xlabel("")
-    axes["box"].xaxis.set_ticks(ticks = [], labels = [])
     axes["box"].set_ylabel("Complexity")
 
     # save image
@@ -359,15 +366,28 @@ def make_descriptor_plot(descriptor: str, output_filepath: str, top_n: int = 10)
 
     # path
     for plot_type in ["path", "track"]:
-        data = pd.Series(data = sum(data_by[plot_type][column_name].apply(lambda sequence: sequence.split(LIST_FEATURE_JOIN_STRING)).tolist(), []))
-        data = data.value_counts(sort = True, ascending = False, dropna = True).head(n = top_n)
-        axes[plot_type].barh(y = data.index, width = data)
-        axes[plot_type].set_ylabel("Count")
-        axes[plot_type].set_title(plot_type.title())
+        no_descriptor = data_by[plot_type][column_name].apply(lambda sequence: pd.isna(sequence) or (str(sequence) == ""))
+        data = data_by[plot_type][~no_descriptor][column_name].apply(lambda sequence: str(sequence).split(LIST_FEATURE_JOIN_STRING)).explode(ignore_index = True)
+        data = data.value_counts(sort = True, ascending = False, dropna = True)
+        fraction_without_descriptor = sum(no_descriptor) / len(no_descriptor)
+        data = data.head(n = top_n)
+        axes[plot_type].barh(y = data.index, width = data, log = True)
+        axes[plot_type].set_xlabel("Count")
+        axes[plot_type].set_ylabel(descriptor.title())
+        plot_title = plot_type.title() + (f" ({int(100 * fraction_without_descriptor)}% of {plot_type}s lack a {descriptor.lower()})" if (fraction_without_descriptor > 0) else "")
+        axes[plot_type].set_title(plot_title)
 
     # save image
     fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI) # save image
     logging.info(f"{column_name.title()} plot saved to {output_filepath}.")
+
+# helper function to make genres plot
+def make_genres_plot(output_filepath: str):
+    make_descriptor_plot(descriptor = "genre", output_filepath = output_filepath)
+
+# helper function to make tags plot
+def make_tags_plot(output_filepath: str):
+    make_descriptor_plot(descriptor = "tag", output_filepath = output_filepath)
 
 ##################################################
     
@@ -414,18 +434,26 @@ if __name__ == "__main__":
     # MAKE PLOTS
     ##################################################
 
+    # get plot output filepaths
     plot_output_filepaths = [f"{args.output_dir}/{plot_type}.png" for plot_type in ("versions", "errors", "public_domain", "n_expressive_features_percentiles", "timings", "tracks", "pro_user", "complexity", "genres", "tags")]
+    
+    # more general plots
     make_versions_plot(output_filepath = plot_output_filepaths[0])
     make_error_plot(input_filepath = ERROR_FILEPATH, output_filepath = plot_output_filepaths[1])
-    make_boolean_plot(boolean_column_name = "is_public_domain", output_filepath = plot_output_filepaths[2])
+    make_public_domain_plot(output_filepath = plot_output_filepaths[2])
     make_percentile_plot(output_filepath = plot_output_filepaths[3])
     make_timing_plot(input_filepath = TIMING_FILEPATH, output_filepath = plot_output_filepaths[4])
-    make_tracks_plot(output_filepath = plot_output_filepaths[5])
-    make_boolean_plot(boolean_column_name = "is_pro_user", output_filepath = plot_output_filepaths[6])
-    make_complexity_plot(output_filepath = plot_output_filepaths[7])
-    make_descriptor_plot(descriptor = "genre", output_filepath = plot_output_filepaths[8])
-    make_descriptor_plot(descriptor = "tag", output_filepath = plot_output_filepaths[9])
 
+    # filter data to just relevant data points (the actual datasets)
+    for key in data_by.keys():
+        data_by[key] = data_by[key][data_by[key]["in_dataset"]]
+    make_tracks_plot(output_filepath = plot_output_filepaths[5])
+    make_pro_user_plot(output_filepath = plot_output_filepaths[6])
+    make_complexity_plot(output_filepath = plot_output_filepaths[7])
+    make_genres_plot(output_filepath = plot_output_filepaths[8])
+    make_tags_plot(output_filepath = plot_output_filepaths[9])
+
+    # get scp download command
     plot_output_filepaths = " ".join([f"deepz:{plot_output_filepath}" for plot_output_filepath in plot_output_filepaths])
     print("".join(("=" for _ in range(100))))
     logging.info("SCP COMMAND:")

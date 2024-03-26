@@ -205,7 +205,7 @@ if __name__ == "__main__":
     # create list of paths if does not exist
     if not exists(args.paths):
         data = pd.read_csv(filepath_or_buffer = f"{args.input_dir}/expressive_features/expressive_features.csv", sep = ",", header = 0, index_col = False) # load in data frame
-        data = data[data["is_valid"] & data["is_public_domain"] & (data["n_expressive_features"] > 0)] # filter
+        data = data[data["in_dataset"]] # filter
         paths = pd.unique(values = data["path"]).tolist()
         with open(args.paths, "w") as file:
             file.write("\n".join(paths))
