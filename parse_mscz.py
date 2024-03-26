@@ -203,14 +203,14 @@ def extract_expressive_features(path: str, path_output_prefix: str):
         data = extract_data(music = track_music, use_implied_duration = False, include_annotation_class_name = True) # duration doesn't matter for our purposes here
         data = data[data[:, 0] == representation.EXPRESSIVE_FEATURE_TYPE_STRING] # filter down to just expressive features
         data = pd.DataFrame(data = data[:, [representation.DIMENSIONS.index("time"), data.shape[1] - 1, representation.DIMENSIONS.index("value")]], columns = EXPRESSIVE_FEATURE_COLUMNS[:1] + EXPRESSIVE_FEATURE_COLUMNS[2:]) # create pandas data frame
-        n_expressive_features_by_path += (len(data) - n_system_expressive_features) # update n_expressive_features_by_path
+        n_expressive_features = len(data)
+        n_expressive_features_by_path += (n_expressive_features - n_system_expressive_features) # update n_expressive_features_by_path
         staff_lyrics = scrape_lyrics(lyrics = track.lyrics) # get staff-level lyrics
         expressive_features = pd.concat(objs = (data, staff_lyrics, system_lyrics), axis = 0) # combine data and lyrics
-        n_expressive_features_by_path_with_lyrics += (len(expressive_features) - n_system_expressive_features_with_lyrics) # update n_expressive_features_by_path_with_lyrics
+        n_expressive_features_with_lyrics = len(expressive_features)
+        n_expressive_features_by_path_with_lyrics += (n_expressive_features_with_lyrics - n_system_expressive_features_with_lyrics) # update n_expressive_features_by_path_with_lyrics
         expressive_features[TIME_IN_SECONDS_COLUMN_NAME] = expressive_features["time"].apply(lambda time: music.metrical_time_to_absolute_time(time_steps = time)) # add time in seconds column
         expressive_features = expressive_features[EXPRESSIVE_FEATURE_COLUMNS] # reorder columns
-        n_expressive_features = len(data)
-        n_expressive_features_with_lyrics = len(expressive_features)
 
         # create current output (to be pickled)
         current_output = {
