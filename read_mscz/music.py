@@ -28,8 +28,9 @@ import gzip
 import utils
 import numpy as np
 from warnings import warn
+from copy import deepcopy
 
-from .output import write_midi, write_audio, write_musicxml, get_expressive_features_per_note, VELOCITY_INCREASE_FACTOR, ACCENT_VELOCITY_INCREASE_FACTOR, PEDAL_DURATION_CHANGE_FACTOR, STACCATO_DURATION_CHANGE_FACTOR
+from .output import write_midi, write_audio, write_musicxml, get_expressive_features_per_note, VELOCITY_INCREASE_FACTOR, ACCENT_VELOCITY_INCREASE_FACTOR, PEDAL_DURATION_CHANGE_FACTOR, STACCATO_DURATION_CHANGE_FACTOR, FERMATA_TEMPO_SLOWDOWN
 ##################################################
 
 
@@ -62,66 +63,6 @@ def to_dict(obj) -> dict:
     # deal with objects
     else:
         return {key: to_dict(obj = value) for key, value in ([("name", obj.__class__.__name__)] + list(vars(obj).items()))}
-
-
-def load_annotation(annotation: dict):
-    """Return an expressive feature object given an annotation dictionary. For loading from .json."""
-
-    match annotation["name"]:
-        case "Text":
-            return Text(text = str(annotation["text"]), is_system = bool(annotation["is_system"]), style = str(annotation["style"]))
-        case "Subtype":
-            return Subtype(subtype = str(annotation["subtype"]))                                                                                                                                                   
-        case "RehearsalMark":
-            return RehearsalMark(text = str(annotation["text"]))
-        case "TechAnnotation":
-            return TechAnnotation(text = str(annotation["text"]), tech_type = str(annotation["tech_type"]), is_system = bool(annotation["is_system"]))
-        case "Dynamic":
-            return Dynamic(subtype = str(annotation["subtype"]), velocity = int(annotation["velocity"]))
-        case "Fermata":
-            return Fermata(is_fermata_above = bool(annotation["is_fermata_above"]))
-        case "Arpeggio":
-            return Arpeggio(subtype = Arpeggio.SUBTYPES.index(annotation["subtype"]))
-        case "Tremolo":
-            return Tremolo(subtype = str(annotation["subtype"]))
-        case "ChordLine":
-            return ChordLine(subtype = ChordLine.SUBTYPES.index(annotation["subtype"]), is_straight = bool(annotation["is_straight"]))
-        case "Ornament":
-            return Ornament(subtype = str(annotation["subtype"]))
-        case "Articulation":
-            return Articulation(subtype = str(annotation["subtype"]))
-        case "Notehead":
-            return Notehead(subtype = str(annotation["subtype"]))
-        case "Symbol":
-            return Symbol(subtype = str(annotation["subtype"]))
-        case "Bend":
-            return Bend(points = [Point(time = int(point["time"]), pitch = int(point["pitch"]), vibrato = int(point["vibrato"])) for point in annotation["points"]])
-        case "TremoloBar":
-            return TremoloBar(points = [Point(time = int(point["time"]), pitch = int(point["pitch"]), vibrato = int(point["vibrato"])) for point in annotation["points"]])
-        case "Spanner":
-            return Spanner(duration = int(annotation["duration"]))
-        case "SubtypeSpanner":
-            return SubtypeSpanner(duration = int(annotation["duration"]), subtype = annotation["subtype"])
-        case "TempoSpanner":
-            return TempoSpanner(duration = int(annotation["duration"]), subtype = str(annotation["subtype"]))
-        case "TextSpanner":
-            return TextSpanner(duration = int(annotation["duration"]), text = str(annotation["text"]), is_system = bool(annotation["is_system"]))
-        case "HairPinSpanner":
-            return HairPinSpanner(duration = int(annotation["duration"]), subtype = str(annotation["subtype"]), hairpin_type = int(annotation["hairpin_type"]))
-        case "SlurSpanner":
-            return SlurSpanner(duration = int(annotation["duration"]), is_slur = bool(annotation["is_slur"]))
-        case "PedalSpanner":
-            return PedalSpanner(duration = int(annotation["duration"]))
-        case "TrillSpanner":
-            return TrillSpanner(duration = int(annotation["duration"]), subtype = str(annotation["subtype"]), ornament = str(annotation["ornament"]))
-        case "VibratoSpanner":
-            return VibratoSpanner(duration = int(annotation["duration"]), subtype = str(annotation["subtype"]))
-        case "GlissandoSpanner":
-            return GlissandoSpanner(duration = int(annotation["duration"]), is_wavy = bool(annotation["is_wavy"]))
-        case "OttavaSpanner":
-            return OttavaSpanner(duration = int(annotation["duration"]), subtype = str(annotation["subtype"]))
-        case _:
-            raise KeyError("Unknown annotation type.")
 
 ##################################################
 
@@ -268,12 +209,16 @@ class BetterMusic(muspy.music.Music):
     ##################################################
     
     def metrical_time_to_absolute_time(self, time_steps: int) -> float:
-        """Convert from MusPy time (in time steps) to Absolute time (in seconds).
+        """Convert from MusPy metrical time (in time steps) to absolute time (in seconds).
         
         Parameters
         ---------
         time_steps : int
-            The time_steps value to convert
+            The time steps value to convert
+        
+        Returns
+        ---------
+        `time_steps` in seconds into the song
         """
 
         if self.absolute_time:
@@ -330,6 +275,180 @@ class BetterMusic(muspy.music.Music):
         #     period_length = time_steps - self.song_length
         #     time += (period_length / self.resolution) * (60 / temporal_features[tempo_idx].qpm) * (4 / temporal_features[time_signature_idx].denominator)
         #     return time
+
+    def convert_from_metrical_to_absolute_time(self):
+        """
+        Convert this object from metrical (time steps) to absolute (seconds) time.
+        """
+
+        # do we even need to convert
+        if self.absolute_time:
+            warn("Time values are already in absolute time (`absolute_time` = True).", RuntimeWarning)
+            return
+        
+        # convert
+        music = deepcopy(self)
+        for i in range(len(music.tempos)):
+            music.tempos[i].time = self.metrical_time_to_absolute_time(time_steps = music.tempos[i].time)
+        for i in range(len(music.key_signatures)):
+            music.key_signatures[i].time = self.metrical_time_to_absolute_time(time_steps = music.key_signatures[i].time)
+        for i in range(len(music.time_signatures)):
+            music.time_signatures[i].time = self.metrical_time_to_absolute_time(time_steps = music.time_signatures[i].time)
+        for i in range(len(music.beats)):
+            music.beats[i].time = self.metrical_time_to_absolute_time(time_steps = music.beats[i].time)
+        for i in range(len(music.barlines)):
+            music.barlines[i].time = self.metrical_time_to_absolute_time(time_steps = music.barlines[i].time)
+        for i in range(len(music.lyrics)):
+            music.lyrics[i].time = self.metrical_time_to_absolute_time(time_steps = music.lyrics[i].time)
+        for i in range(len(music.annotations)):
+            time_time_steps = music.annotations[i].time
+            music.annotations[i].time = self.metrical_time_to_absolute_time(time_steps = time_time_steps)
+            if hasattr(music.annotations[i].annotation, "duration"):
+                music.annotations[i].annotation.duration = self.metrical_time_to_absolute_time(time_steps = time_time_steps + music.annotations[i].annotation.duration) - music.annotations[i].time
+        for i in range(len(music.tracks)):
+            for j in range(len(music.tracks[i].notes)):
+                time_time_steps = music.tracks[i].notes[j].time
+                music.tracks[i].notes[j].time = self.metrical_time_to_absolute_time(time_steps = time_time_steps)
+                music.tracks[i].notes[j].duration = self.metrical_time_to_absolute_time(time_steps = time_time_steps + music.tracks[i].notes[j].duration) - music.tracks[i].notes[j].time
+            for j in range(len(music.tracks[i].chords)):
+                time_time_steps = music.tracks[i].chords[j].time
+                music.tracks[i].chords[j].time = self.metrical_time_to_absolute_time(time_steps = time_time_steps)
+                music.tracks[i].chords[j].duration = self.metrical_time_to_absolute_time(time_steps = time_time_steps + music.tracks[i].chords[j].duration) - music.tracks[i].chords[j].time
+            for j in range(len(music.tracks[i].annotations)):
+                time_time_steps = music.tracks[i].annotations[j].time
+                music.tracks[i].annotations[j].time = self.metrical_time_to_absolute_time(time_steps = time_time_steps)
+                if hasattr(music.tracks[i].annotations[j].annotation, "duration"):
+                    music.tracks[i].annotations[j].annotation.duration = self.metrical_time_to_absolute_time(time_steps = time_time_steps + music.tracks[i].annotations[j].annotation.duration) - music.tracks[i].annotations[j].time
+            for j in range(len(music.tracks[i].lyrics)):
+                music.tracks[i].lyrics[j].time = self.metrical_time_to_absolute_time(time_steps = music.tracks[i].lyrics[j].time)
+        music.absolute_time = True
+
+        # set self to the converted vaues
+        self = music
+
+
+    ##################################################
+
+
+    # CONVERT FROM ABSOLUTE TO METRICAL TIME
+    ##################################################
+
+    def absolute_time_to_metrical_time(self, seconds: float) -> int:
+        """Convert from absolute time (in seconds) to MusPy metrical time (in time steps).
+        
+        Parameters
+        ---------
+        seconds : float
+            The seconds value to convert
+        
+        Returns
+        ---------
+        `seconds` in time steps into the song
+        """
+
+        if (not self.absolute_time):
+            warn("Time values are already in metrical time (`absolute_time` = False). Returning unaltered time value.", RuntimeWarning)
+            return seconds
+
+        # get temporal features
+        temporal_features = sorted(self.tempos + list(filter(lambda annotation: isinstance(annotation.annotation, (Fermata, TempoSpanner)), self.annotations)), key = lambda obj: obj.time)
+        temporal_features = list(filter(lambda temporal_feature: temporal_feature.time <= seconds, temporal_features)) # filter such that the times are less than the given time
+
+        # helper function for converting absolute to metrical time
+        def get_absolute_to_metrical_time_func(start_time: int = 0, start_time_seconds: float = 0.0, qpm: float = DEFAULT_QPM) -> int:
+            """Helper function that returns a function object that converts absolute to metrical time.
+            Logic:
+                - add start time (in metrical time)
+                - convert time from seconds to minutes
+                - multiply by qpm value to convert to quarter beats since start time
+                - multiply by BetterMusic resolution
+            """
+            return lambda time: int(start_time + ((((time - start_time_seconds) / 60) * qpm) * self.resolution))
+
+        # prepare for adding the notes and expressive features
+        current_time = 0.0
+        tempo_obj = Tempo(time = 0, qpm = DEFAULT_QPM)
+        absolute_to_metrical_time_func = get_absolute_to_metrical_time_func(start_time = tempo_obj.time, start_time_seconds = current_time, qpm = tempo_obj.qpm) # self.tempos[tempo_idx] is the default tempo (time == 0 and qpm == DEFAULT_QPM)
+        fermata_on, fermata_time = False, -1
+        
+        # iterate through temporal features
+        for temporal_feature in temporal_features:
+            
+            # get the current time and duration in time steps
+            time, duration = temporal_feature.time, 0.0
+            if hasattr(temporal_feature, "annotation"):
+                if hasattr(temporal_feature.annotation, "duration"): # get duration if there
+                    duration = temporal_feature.annotation.duration
+            time_seconds, duration_seconds = time, duration # store the time and duration in seconds
+            time = int(absolute_to_metrical_time_func(time = time_seconds)) # get time in time steps
+            duration = int(absolute_to_metrical_time_func(time = duration_seconds)) # get duration in time steps
+            if fermata_on and (time_seconds != fermata_time): # update tempo function if necessary
+                absolute_to_metrical_time_func = get_absolute_to_metrical_time_func(start_time = time, start_time_seconds = time_seconds, qpm = tempo_obj.qpm)
+                fermata_on = False
+   
+            # update variables if necessary
+            if isinstance(temporal_feature, Tempo):
+                absolute_to_metrical_time_func = get_absolute_to_metrical_time_func(start_time = time, start_time_seconds = time_seconds, qpm = temporal_feature.qpm)
+                tempo_obj = temporal_feature
+            elif isinstance(temporal_feature.annotation, Fermata):
+                absolute_to_metrical_time_func = get_absolute_to_metrical_time_func(start_time = time, start_time_seconds = time_seconds, qpm = tempo_obj.qpm / FERMATA_TEMPO_SLOWDOWN)
+                fermata_on, fermata_time = True, time_seconds
+            elif isinstance(temporal_feature.annotation, TempoSpanner): # currently not implemented
+                pass     
+
+        # get time steps           
+        time_steps = absolute_to_metrical_time_func(time = seconds)
+        return time_steps
+    
+    def convert_from_absolute_to_metrical_time(self):
+        """
+        Convert this object from absolute (seconds) to metrical (time steps) time.
+        """
+
+        # do we even need to convert
+        if (not self.absolute_time):
+            warn("Time values are already in metrical time (`absolute_time` = False).", RuntimeWarning)
+            return
+        
+        # convert
+        music = deepcopy(self)
+        for i in range(len(music.tempos)):
+            music.tempos[i].time = self.absolute_time_to_metrical_time(seconds = music.tempos[i].time)
+        for i in range(len(music.key_signatures)):
+            music.key_signatures[i].time = self.absolute_time_to_metrical_time(seconds = music.key_signatures[i].time)
+        for i in range(len(music.time_signatures)):
+            music.time_signatures[i].time = self.absolute_time_to_metrical_time(seconds = music.time_signatures[i].time)
+        for i in range(len(music.beats)):
+            music.beats[i].time = self.absolute_time_to_metrical_time(seconds = music.beats[i].time)
+        for i in range(len(music.barlines)):
+            music.barlines[i].time = self.absolute_time_to_metrical_time(seconds = music.barlines[i].time)
+        for i in range(len(music.lyrics)):
+            music.lyrics[i].time = self.absolute_time_to_metrical_time(seconds = music.lyrics[i].time)
+        for i in range(len(music.annotations)):
+            time_seconds = music.annotations[i].time
+            music.annotations[i].time = self.absolute_time_to_metrical_time(seconds = time_seconds)
+            if hasattr(music.annotations[i].annotation, "duration"):
+                music.annotations[i].annotation.duration = self.absolute_time_to_metrical_time(seconds = time_seconds + music.annotations[i].annotation.duration) - music.annotations[i].time
+        for i in range(len(music.tracks)):
+            for j in range(len(music.tracks[i].notes)):
+                time_seconds = music.tracks[i].notes[j].time
+                music.tracks[i].notes[j].time = self.absolute_time_to_metrical_time(seconds = time_seconds)
+                music.tracks[i].notes[j].duration = self.absolute_time_to_metrical_time(seconds = time_seconds + music.tracks[i].notes[j].duration) - music.tracks[i].notes[j].time
+            for j in range(len(music.tracks[i].chords)):
+                time_seconds = music.tracks[i].chords[j].time
+                music.tracks[i].chords[j].time = self.absolute_time_to_metrical_time(seconds = time_seconds)
+                music.tracks[i].chords[j].duration = self.absolute_time_to_metrical_time(seconds = time_seconds + music.tracks[i].chords[j].duration) - music.tracks[i].chords[j].time
+            for j in range(len(music.tracks[i].annotations)):
+                time_seconds = music.tracks[i].annotations[j].time
+                music.tracks[i].annotations[j].time = self.absolute_time_to_metrical_time(seconds = time_seconds)
+                if hasattr(music.tracks[i].annotations[j].annotation, "duration"):
+                    music.tracks[i].annotations[j].annotation.duration = self.absolute_time_to_metrical_time(seconds = time_seconds + music.tracks[i].annotations[j].annotation.duration) - music.tracks[i].annotations[j].time
+            for j in range(len(music.tracks[i].lyrics)):
+                music.tracks[i].lyrics[j].time = self.absolute_time_to_metrical_time(seconds = music.tracks[i].lyrics[j].time)
+        music.absolute_time = False
+
+        # set self to the converted vaues
+        self = music
 
     ##################################################
 
@@ -530,22 +649,27 @@ class BetterMusic(muspy.music.Music):
 
         # infer kind if necessary
         if kind is None:
-            if path.lower().endswith((".mid", ".midi")):
+            if path.lower().endswith(("wav", "aiff", "flac", "oga")):
+                kind = "audio"
+            elif path.lower().endswith((".mid", ".midi")):
                 kind = "midi"
             elif path.lower().endswith((".mxl", ".xml", ".mxml", ".musicxml")):
                 kind = "musicxml"
-            elif path.lower().endswith(("wav", "aiff", "flac", "oga")):
-                kind = "audio"
             else:
                 raise ValueError("Cannot infer file format from the extension (expect MIDI, MusicXML, WAV, AIFF, FLAC or OGA).")
         
         # output
-        if kind.lower() == "midi": # write midi
+        if kind.lower() == "audio": # write audio
+            return write_audio(path = path, music = self, **kwargs)
+        elif kind.lower() == "midi": # write midi
             return write_midi(path = path, music = self, **kwargs)
         elif kind.lower() == "musicxml": # write musicxml
-            return write_musicxml(path = path, music = self, **kwargs)
-        elif kind.lower() == "audio": # write audio
-            return write_audio(path = path, music = self, **kwargs)
+            if self.absolute_time: # convert to metrical time if not already
+                music = deepcopy(self)
+                music.convert_from_absolute_to_metrical_time()
+            else:
+                music = self
+            return write_musicxml(path = path, music = music, **kwargs)
         else:
             raise ValueError(f"Expect `kind` to be 'midi', 'musicxml', or 'audio', but got : {kind}.")
 
@@ -627,6 +751,67 @@ class BetterMusic(muspy.music.Music):
 
 # LOAD A BETTERMUSIC OBJECT FROM JSON FILE
 ##################################################
+
+# helper function to load the correct annotation object
+def load_annotation(annotation: dict):
+    """Return an expressive feature object given an annotation dictionary. For loading from .json."""
+
+    match annotation["name"]:
+        case "Text":
+            return Text(text = str(annotation["text"]), is_system = bool(annotation["is_system"]), style = str(annotation["style"]))
+        case "Subtype":
+            return Subtype(subtype = str(annotation["subtype"]))                                                                                                                                                   
+        case "RehearsalMark":
+            return RehearsalMark(text = str(annotation["text"]))
+        case "TechAnnotation":
+            return TechAnnotation(text = str(annotation["text"]), tech_type = str(annotation["tech_type"]), is_system = bool(annotation["is_system"]))
+        case "Dynamic":
+            return Dynamic(subtype = str(annotation["subtype"]), velocity = int(annotation["velocity"]))
+        case "Fermata":
+            return Fermata(is_fermata_above = bool(annotation["is_fermata_above"]))
+        case "Arpeggio":
+            return Arpeggio(subtype = Arpeggio.SUBTYPES.index(annotation["subtype"]))
+        case "Tremolo":
+            return Tremolo(subtype = str(annotation["subtype"]))
+        case "ChordLine":
+            return ChordLine(subtype = ChordLine.SUBTYPES.index(annotation["subtype"]), is_straight = bool(annotation["is_straight"]))
+        case "Ornament":
+            return Ornament(subtype = str(annotation["subtype"]))
+        case "Articulation":
+            return Articulation(subtype = str(annotation["subtype"]))
+        case "Notehead":
+            return Notehead(subtype = str(annotation["subtype"]))
+        case "Symbol":
+            return Symbol(subtype = str(annotation["subtype"]))
+        case "Bend":
+            return Bend(points = [Point(time = int(point["time"]), pitch = int(point["pitch"]), vibrato = int(point["vibrato"])) for point in annotation["points"]])
+        case "TremoloBar":
+            return TremoloBar(points = [Point(time = int(point["time"]), pitch = int(point["pitch"]), vibrato = int(point["vibrato"])) for point in annotation["points"]])
+        case "Spanner":
+            return Spanner(duration = int(annotation["duration"]))
+        case "SubtypeSpanner":
+            return SubtypeSpanner(duration = int(annotation["duration"]), subtype = annotation["subtype"])
+        case "TempoSpanner":
+            return TempoSpanner(duration = int(annotation["duration"]), subtype = str(annotation["subtype"]))
+        case "TextSpanner":
+            return TextSpanner(duration = int(annotation["duration"]), text = str(annotation["text"]), is_system = bool(annotation["is_system"]))
+        case "HairPinSpanner":
+            return HairPinSpanner(duration = int(annotation["duration"]), subtype = str(annotation["subtype"]), hairpin_type = int(annotation["hairpin_type"]))
+        case "SlurSpanner":
+            return SlurSpanner(duration = int(annotation["duration"]), is_slur = bool(annotation["is_slur"]))
+        case "PedalSpanner":
+            return PedalSpanner(duration = int(annotation["duration"]))
+        case "TrillSpanner":
+            return TrillSpanner(duration = int(annotation["duration"]), subtype = str(annotation["subtype"]), ornament = str(annotation["ornament"]))
+        case "VibratoSpanner":
+            return VibratoSpanner(duration = int(annotation["duration"]), subtype = str(annotation["subtype"]))
+        case "GlissandoSpanner":
+            return GlissandoSpanner(duration = int(annotation["duration"]), is_wavy = bool(annotation["is_wavy"]))
+        case "OttavaSpanner":
+            return OttavaSpanner(duration = int(annotation["duration"]), subtype = str(annotation["subtype"]))
+        case _:
+            raise KeyError("Unknown annotation type.")
+
 
 def load_json(path: str) -> BetterMusic:
     """Load a Music object from a JSON file.

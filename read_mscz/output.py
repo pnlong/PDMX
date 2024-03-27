@@ -19,6 +19,7 @@ from numpy import linspace
 from copy import deepcopy
 from math import sin, pi
 from itertools import groupby
+from warnings import warn
 
 # general
 from read_mscz.classes import *
@@ -584,6 +585,8 @@ def write_musicxml(path: str, music: "BetterMusic", compressed: bool = None):
 
         # add time signatures
         for time_signature in music.time_signatures: # loop through time signatures
+            if (time_signature.numerator is None) or (time_signature.denominator is None):
+                continue
             m21_time_signature = M21TimeSignature(value = f"{time_signature.numerator}/{time_signature.denominator}") # instantiate time signature object
             m21_time_signature.offset = time_signature.time # define offset
             part.append(m21_time_signature)
@@ -613,6 +616,7 @@ def write_musicxml(path: str, music: "BetterMusic", compressed: bool = None):
         articulations: Dict[int, List[Annotation]] = {articulation_time: [clean_up_subtype(subtype = annotation.annotation.subtype) for annotation in articulations_at_time] for articulation_time, articulations_at_time in groupby(
             iterable = sorted(filter(lambda annotation: any(annotation.annotation.__class__.__name__ == keyword for keyword in ("Articulation", "Symbol")), track.annotations), key = lambda annotation: annotation.time), # need to sort because itertools creates a new group when a new key appears
             key = lambda annotation: annotation.time)}
+        
         # loop through notes
         for note in track.notes:
             m21_note = M21Note(pitch = note.pitch) # create note object
@@ -805,7 +809,7 @@ def write_musicxml(path: str, music: "BetterMusic", compressed: bool = None):
             try:
                 part.insert(offsetOrItemOrList = offset, itemOrNone = deepcopy(m21_annotation)) # as to avoid the StreamException object * is already found in this Stream
             except StreamException as stream_exception:
-                print(str(stream_exception))
+                warn(str(stream_exception), RuntimeWarning)
         # append the part to score
         score.append(part)
 

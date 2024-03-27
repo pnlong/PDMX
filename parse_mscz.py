@@ -124,13 +124,13 @@ def extract_expressive_features(path: str, path_output_prefix: str):
         try:
             with open(metadata_path, "r") as metadata_file:
                 metadata_for_path = json.load(fp = metadata_file)
-                is_public_domain = bool(metadata_for_path["data"]["is_public_domain"]) if "is_public_domain" in metadata_for_path["data"].keys() else False
-                genres = list(map(lambda genre: str(genre["name"]), metadata_for_path["data"]["genres"])) if "genres" in metadata_for_path["data"].keys() else []
-                complexity = int(metadata_for_path["data"]["complexity"]) if "complexity" in metadata_for_path["data"].keys() else None
+                is_public_domain = bool(metadata_for_path["data"].get("is_public_domain", False))
+                genres = list(map(lambda genre: str(genre["name"]), metadata_for_path["data"].get("genres", [])))
+                complexity = int(metadata_for_path["data"].get("complexity", None))
                 if "score" in metadata_for_path["data"].keys():
-                    tags = list(map(str, metadata_for_path["data"]["score"]["tags"])) if "tags" in metadata_for_path["data"]["score"].keys() else []
+                    tags = list(map(str, metadata_for_path["data"]["score"].get("tags", [])))
                     if "user" in metadata_for_path["data"]["score"].keys():
-                        is_user_pro = bool(metadata_for_path["data"]["score"]["user"]["is_pro"]) if "user" in metadata_for_path["data"]["score"]["user"].keys() else False
+                        is_user_pro = bool(metadata_for_path["data"]["score"]["user"].get("is_pro", False))
         except (OSError):
             metadata_path = None
     genres_string = LIST_FEATURE_JOIN_STRING.join(filter(lambda genre: len(genre) > 0, map(lambda genre: sub(pattern = "[^a-z]", repl = "", string = genre.lower()), genres))).strip() # store genres as a single string

@@ -118,7 +118,8 @@ def decode_data(
 def reconstruct(
         data: np.array,
         resolution: int,
-        encoding: dict = DEFAULT_ENCODING
+        encoding: dict = DEFAULT_ENCODING,
+        infer_metrical_time: bool = False,
     ) -> BetterMusic:
     """Reconstruct a data sequence as a BetterMusic object."""
 
@@ -133,20 +134,21 @@ def reconstruct(
         key_signatures = [KeySignature(time = 0)],
         time_signatures = [TimeSignature(time = 0)],
         infer_velocity = (not include_velocity),
-        absolute_time = use_absolute_time
+        absolute_time = use_absolute_time and (not infer_metrical_time),
     )
+    infer_metrical_time = (infer_metrical_time and use_absolute_time) # update infer_metrical_time; only true when we want to infer metrical time and we are using absolute time
 
     # helper function for converting absolute to metrical time
-    # if use_absolute_time:
-    #     def get_absolute_to_metrical_time_func(start_time: int = 0, start_time_seconds: float = 0.0, qpm: float = representation.DEFAULT_QPM) -> int:
-    #         """Helper function that returns a function object that converts absolute to metrical time.
-    #         Logic:
-    #             - add start time (in metrical time)
-    #             - convert time from seconds to minutes
-    #             - multiply by qpm value to convert to quarter beats since start time
-    #             - multiply by BetterMusic resolution
-    #         """
-    #         return lambda time: int(start_time + ((((time - start_time_seconds) / 60) * qpm) * resolution))
+    if infer_metrical_time:
+        def get_absolute_to_metrical_time_func(start_time: int = 0, start_time_seconds: float = 0.0, qpm: float = representation.DEFAULT_QPM) -> int:
+            """Helper function that returns a function object that converts absolute to metrical time.
+            Logic:
+                - add start time (in metrical time)
+                - convert time from seconds to minutes
+                - multiply by qpm value to convert to quarter beats since start time
+                - multiply by BetterMusic resolution
+            """
+            return lambda time: int(start_time + ((((time - start_time_seconds) / 60) * qpm) * resolution))
 
     # append the tracks
     programs = sorted(set(row[-2 if include_velocity else -1] for row in data)) # get programs
@@ -155,9 +157,9 @@ def reconstruct(
 
     # prepare for adding the notes and expressive features
     ongoing_articulation_chunks = {track_index: {} for track_index in range(len(programs))}
-    # if use_absolute_time:
-    #     absolute_to_metrical_time = get_absolute_to_metrical_time_func(start_time = music.tempos[0].time, start_time_seconds = 0.0, qpm = music.tempos[0].qpm)
-    #     fermata_on, fermata_time = False, -1
+    if infer_metrical_time:
+        absolute_to_metrical_time = get_absolute_to_metrical_time_func(start_time = music.tempos[0].time, start_time_seconds = 0.0, qpm = music.tempos[0].qpm)
+        fermata_on, fermata_time = False, -1
     
     # iterate through data
     for row in data:
@@ -179,16 +181,18 @@ def reconstruct(
         track_index = programs.index(program) # get track index
 
         # deal with timings
-        if not use_absolute_time:
+        if (not use_absolute_time):
             time = int((beat * resolution) + ((position / encoding["resolution"]) * resolution)) # get time in time steps
             duration = int((resolution / encoding["resolution"]) * duration) # get duration in time steps
-        # else:
-            # time_seconds, duration_seconds = time, duration # store the time and duration in seconds
-            # if fermata_on and (time_seconds != fermata_time): # update tempo function if necessary
-            #     absolute_to_metrical_time = get_absolute_to_metrical_time_func(start_time = time + duration, start_time_seconds = time_seconds + duration_seconds, qpm = music.tempos[-1].qpm)
-            #     fermata_on = False
-            # time = int(absolute_to_metrical_time(time = time)) # get time in time steps
-            # duration = int(absolute_to_metrical_time(time = duration)) # get duration in time steps    
+        elif infer_metrical_time:
+            time_seconds, duration_seconds = time, duration # store the time and duration in seconds
+            time = int(absolute_to_metrical_time(time = time_seconds)) # get time in time steps
+            duration = int(absolute_to_metrical_time(time = duration_seconds)) # get duration in time steps
+            if fermata_on and (time_seconds != fermata_time): # update tempo function if necessary
+                absolute_to_metrical_time = get_absolute_to_metrical_time_func(start_time = time, start_time_seconds = time_seconds, qpm = music.tempos[-1].qpm)
+                fermata_on = False
+        else: # use_absolute_time and (not infer_metrical_time)
+            pass
 
         # if the event is a note
         if event_type in ("note", "grace-note"):
@@ -246,17 +250,17 @@ def reconstruct(
                     music.tracks[track_index].annotations.append(Annotation(time = time, annotation = PedalSpanner(duration = duration)))
                 case "Fermata":
                     music.annotations.append(Annotation(time = time, annotation = Fermata()))
-                    # if use_absolute_time:
-                    #     absolute_to_metrical_time = get_absolute_to_metrical_time_func(start_time = time, start_time_seconds = time_seconds, qpm = music.tempos[-1].qpm / FERMATA_TEMPO_SLOWDOWN)
-                    #     fermata_on, fermata_time = True, time_seconds
+                    if infer_metrical_time:
+                        absolute_to_metrical_time = get_absolute_to_metrical_time_func(start_time = time, start_time_seconds = time_seconds, qpm = music.tempos[-1].qpm / FERMATA_TEMPO_SLOWDOWN)
+                        fermata_on, fermata_time = True, time_seconds
                 case "Tempo":
                     tempo_obj = Tempo(time = time, qpm = representation.TEMPO_QPM_MAP[value], text = value)
                     if time == 0:
                         music.tempos[0] = tempo_obj
                     else:
                         music.tempos.append(tempo_obj)
-                    # if use_absolute_time:
-                    #     absolute_to_metrical_time = get_absolute_to_metrical_time_func(start_time = tempo_obj.time, start_time_seconds = time_seconds, qpm = tempo_obj.qpm)
+                    if infer_metrical_time:
+                        absolute_to_metrical_time = get_absolute_to_metrical_time_func(start_time = tempo_obj.time, start_time_seconds = time_seconds, qpm = tempo_obj.qpm)
                 case "TempoSpanner":
                     if value == representation.DEFAULT_EXPRESSIVE_FEATURE_VALUES["TempoSpanner"]: # skip if unknown TempoSpanner
                         continue
