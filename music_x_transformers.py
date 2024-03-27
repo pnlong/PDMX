@@ -736,15 +736,16 @@ class MusicAutoregressiveWrapper(nn.Module):
         
         # create output
         output = self.net(x = xi, **kwargs)
+        n_masked_tokens = torch.sum(input = conditional_mask, dim = None)
         if self.net.unidimensional:
             losses = F.cross_entropy(input = output.transpose(1, 2), target = xo, ignore_index = self.ignore_index, reduction = "none") # calculate losses
             losses = conditional_mask * losses # mask conditionally if necessary, zeroing out controls
-            loss = torch.sum(input = losses, dim = None) / torch.sum(input = conditional_mask, dim = None) # singular loss value
+            loss = torch.sum(input = losses, dim = None) / n_masked_tokens # single loss value
         else:
             losses = [F.cross_entropy(input = output[i].transpose(1, 2), target = xo[..., i], ignore_index = self.ignore_index, reduction = "none") for i in range(len(output))] # calculate losses
             losses = torch.cat(tensors = [losses_dimension.unsqueeze(dim = -1) for losses_dimension in losses], dim = -1) # combine list of losses into a matrix
             losses = torch.repeat_interleave(input = conditional_mask.unsqueeze(dim = -1), repeats = losses.shape[-1], dim = -1) * losses # mask conditionally if necessary, zeroing out controls
-            loss_by_field = torch.sum(input = losses, dim = list(range(len(losses.shape) - 1))) / torch.sum(input = conditional_mask, dim = None) # calculate mean for each field, the field is the last dimension, so mean over all but the last dimension
+            loss_by_field = torch.sum(input = losses, dim = list(range(len(losses.shape) - 1))) / n_masked_tokens # calculate mean for each field, the field is the last dimension, so mean over all but the last dimension
             loss = torch.sum(input = loss_by_field, dim = None) # singular loss value (sum of the average losses for each field)
             if reduce:
                 losses = loss_by_field
