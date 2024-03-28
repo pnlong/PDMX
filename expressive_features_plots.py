@@ -28,6 +28,8 @@ from parse_mscz_plots import OUTPUT_DIR, OUTPUT_RESOLUTION_DPI
 from read_mscz.music import DIVIDE_BY_ZERO_CONSTANT
 from utils import rep, split_camel_case
 
+plt.style.use("bmh")
+
 ##################################################
 
 
@@ -190,7 +192,7 @@ def make_density_plot(input_filepath: str, output_filepath: str) -> None:
     for i in range(len(relevant_density_types) - 1, -1, -1): # traverse backwards
         relevant_density_type = relevant_density_types[i]
         n_points_excluded = len(density[~((density[relevant_density_type] >= relevant_ranges[relevant_density_type][0]) & (density[relevant_density_type] <= relevant_ranges[relevant_density_type][1]))])
-        axes[relevant_density_type].hist(x = density[relevant_density_type], bins = n_bins, range = relevant_ranges[relevant_density_type], orientation = "horizontal", log = False, color = COLORS[i], edgecolor = "0")
+        axes[relevant_density_type].hist(x = density[relevant_density_type], bins = n_bins, range = relevant_ranges[relevant_density_type], orientation = "horizontal", log = False) # , color = COLORS[i], edgecolor = "0"
         axes[relevant_density_type].set_ylabel(relevant_density_type.title())
         axes[relevant_density_type].set_title(f"{relevant_density_type.title()} per EF ({n_points_excluded:,} excluded tracks)")
         axes[relevant_density_type].get_xaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda count, _: f"{int(count):,}"))
@@ -240,8 +242,8 @@ def make_summary_plot(input_filepath: str, output_filepath: str) -> list:
 
     # create plot
     for i, plot_type in enumerate(plot_types):
-        axes[plot_type].xaxis.grid(True)
-        axes[plot_type].barh(y = summary[plot_type]["type"], width = summary[plot_type]["size"], color = COLORS[i], edgecolor = "0")
+        # axes[plot_type].xaxis.grid(True)
+        axes[plot_type].barh(y = summary[plot_type]["type"], width = summary[plot_type]["size"]) # , color = COLORS[i], edgecolor = "0"
         axes[plot_type].set_title(f"{plot_type.title()}")
         axes[plot_type].ticklabel_format(axis = "x", style = "scientific", scilimits = (-1, 3))
         if i == 0: # if the left most plot
@@ -343,9 +345,9 @@ def make_sparsity_plot(input_filepath: str, output_filepath_prefix: str, express
                 for column in relevant_time_units:
                     logging.debug(f"{expressive_feature_type}:{column}:{sum(percentiles_values_current[column] < 0)}-{100 * (sum(percentiles_values_current[column] < 0) / len(percentiles)):.2f}%")
                     percentiles_values_current[column] = np.log10(abs(percentiles_values_current[column]) + DIVIDE_BY_ZERO_CONSTANT)
-            axes[expressive_feature_type].plot(percentiles, percentiles_values_current[relevant_time_units[0]], label = plot_type.title(), color = LINE_COLORS[i], linestyle = LINESTYLES[i])
+            axes[expressive_feature_type].plot(percentiles, percentiles_values_current[relevant_time_units[0]], label = plot_type.title()) # , color = LINE_COLORS[i], linestyle = LINESTYLES[i]
             if use_twin_axis_percentiles:
-                percentile_right_axis.plot(percentiles, percentiles_values_current[relevant_time_units[1]], label = plot_type.title(), color = LINE_COLORS[i], linestyle = LINESTYLES[i])
+                percentile_right_axis.plot(percentiles, percentiles_values_current[relevant_time_units[1]], label = plot_type.title()) # , color = LINE_COLORS[i], linestyle = LINESTYLES[i]
         if is_left_plot(expressive_feature_type = expressive_feature_type) or use_twin_axis_percentiles:
             axes[expressive_feature_type].set_ylabel(f"log({relevant_time_units[0].title()})" if apply_log_percentiles_by_feature else f"{relevant_time_units[0].title()}")
             axes[expressive_feature_type].get_yaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda count, _: f"{int(count):,}")) # add commas
@@ -361,7 +363,7 @@ def make_sparsity_plot(input_filepath: str, output_filepath_prefix: str, express
             # axes[expressive_feature_type].set_xticks([]) # will keep xticks for now
             axes[expressive_feature_type].set_xticklabels([])
         axes[expressive_feature_type].set_title(f"{split_camel_case(string = expressive_feature_type, sep = ' ').title()} (n = {percentile_values[expressive_feature_type][1]:,})")
-        axes[expressive_feature_type].grid() # add gridlines
+        # axes[expressive_feature_type].grid() # add gridlines
     # add a legend
     handles, labels = axes[expressive_feature_types[0]].get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
@@ -392,9 +394,9 @@ def make_sparsity_plot(input_filepath: str, output_filepath_prefix: str, express
                 histogram_values_current_current = histogram_values.groupby(by = "path").median()
             for relevant_time_unit in relevant_time_units:
                 histogram_values_current[relevant_time_unit][plot_type] = list(filter(lambda value: value >= histogram_range[0] and value <= histogram_range[1], histogram_values_current_current[relevant_time_unit].tolist())) # extract list
-        axes[expressive_feature_type].hist(histogram_values_current[relevant_time_units[0]].values(), bins = n_bins, orientation = "horizontal", histtype = "bar", log = apply_log_histogram, label = [plot_type.title() for plot_type in plot_types], color = histogram_colors[:len(plot_types)], edgecolor = "0", linewidth = 0.5) # plot
+        axes[expressive_feature_type].hist(histogram_values_current[relevant_time_units[0]].values(), bins = n_bins, orientation = "horizontal", histtype = "bar", log = apply_log_histogram, label = [plot_type.title() for plot_type in plot_types], linewidth = 0.5) # plot , color = histogram_colors[:len(plot_types)], edgecolor = "0"
         if use_twin_axis_histogram:
-            histogram_right_axis.hist(histogram_values_current[relevant_time_units[1]].values(), bins = n_bins, orientation = "horizontal", histtype = "bar", log = apply_log_histogram, label = [plot_type.title() for plot_type in plot_types], color = histogram_colors[:len(plot_types)], edgecolor = "0", linewidth = 0.5) # plot
+            histogram_right_axis.hist(histogram_values_current[relevant_time_units[1]].values(), bins = n_bins, orientation = "horizontal", histtype = "bar", log = apply_log_histogram, label = [plot_type.title() for plot_type in plot_types], linewidth = 0.5) # plot , color = histogram_colors[:len(plot_types)], edgecolor = "0"
         axes[expressive_feature_type].set_ylabel(relevant_time_units[0].title())
         axes[expressive_feature_type].get_yaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda count, _: f"{int(count):,}")) # add commas
         if use_twin_axis_histogram:
@@ -406,7 +408,7 @@ def make_sparsity_plot(input_filepath: str, output_filepath_prefix: str, express
         # axes[expressive_feature_type].set_xticks(axes[expressive_feature_type].get_xticks())
         # axes[expressive_feature_type].set_xticklabels(axes[expressive_feature_type].get_xticklabels(), rotation = 0)
         axes[expressive_feature_type].set_title(f"{split_camel_case(string = expressive_feature_type, sep = ' ').title()} (n = {percentile_values[expressive_feature_type][1]:,})")
-        axes[expressive_feature_type].grid() # add gridlines
+        # axes[expressive_feature_type].grid() # add gridlines
     # add a legend
     handles, labels = axes[expressive_feature_types[0]].get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
@@ -440,9 +442,9 @@ def make_sparsity_plot(input_filepath: str, output_filepath_prefix: str, express
                 for column in relevant_time_units:
                     logging.debug(f"{expressive_feature_type}:{column}:{sum(percentiles_values_current[column] < 0)}-{100 * (sum(percentiles_values_current[column] < 0) / len(percentiles)):.2f}%")
                     percentiles_values_current[column] = np.log10(abs(percentiles_values_current[column]) + DIVIDE_BY_ZERO_CONSTANT)
-            axes[plot_type].plot(percentiles, percentiles_values_current[relevant_time_units[0]], label = expressive_feature_type, color = LINE_COMBINATIONS[i][0], linestyle = LINE_COMBINATIONS[i][1])
+            axes[plot_type].plot(percentiles, percentiles_values_current[relevant_time_units[0]], label = expressive_feature_type) # , color = LINE_COMBINATIONS[i][0], linestyle = LINE_COMBINATIONS[i][1]
             if use_twin_axis_percentiles:
-                percentile_right_axis.plot(percentiles, percentiles_values_current[relevant_time_units[1]], label = expressive_feature_type, color = LINE_COMBINATIONS[i][0], linestyle = LINE_COMBINATIONS[i][1])
+                percentile_right_axis.plot(percentiles, percentiles_values_current[relevant_time_units[1]], label = expressive_feature_type) # , color = LINE_COMBINATIONS[i][0], linestyle = LINE_COMBINATIONS[i][1]
         if is_left_plot(plot_type = plot_type) or use_twin_axis_percentiles:
             axes[plot_type].set_ylabel(f"log({relevant_time_units[0].title()})" if apply_log_percentiles_by_type else f"{relevant_time_units[0].title()}")
             axes[plot_type].get_yaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda count, _: f"{int(count):,}")) # add commas
@@ -458,7 +460,7 @@ def make_sparsity_plot(input_filepath: str, output_filepath_prefix: str, express
             # axes[plot_type].set_xticks([]) # will keep xticks for now
             axes[plot_type].set_xticklabels([])
         axes[plot_type].set_title(plot_type.title())
-        axes[plot_type].grid() # add gridlines
+        # axes[plot_type].grid() # add gridlines
     
     # add a legend
     handles, labels = axes[plot_types[0]].get_legend_handles_labels()
@@ -516,7 +518,7 @@ if __name__ == "__main__":
         data = pd.read_csv(filepath_or_buffer = args.input_filepath, sep = ",", header = 0, index_col = False)
 
         # filter data
-        data = data[data["is_valid"] & data["is_public_domain"] & (data["n_expressive_features"] > 0) & (data["expressive_features"].apply(lambda expressive_features_path: exists(str(expressive_features_path))))]
+        data = data[data["in_dataset"] & (data["expressive_features"].apply(lambda expressive_features_path: exists(str(expressive_features_path))))]
 
         # create column names
         pd.DataFrame(columns = DENSITY_COLUMNS).to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[0], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # density
