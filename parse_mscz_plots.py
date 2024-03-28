@@ -36,9 +36,6 @@ OUTPUT_DIR = "/data2/pnlong/musescore/expressive_features/plots"
 OUTPUT_RESOLUTION_DPI = 200
 BAR_SHIFT_CONSTANT = 13/25
 
-COLORS = ("#9BC1BC", "#F4F1BB", "#ED6A5A") # color palette copied from https://coolors.co/palettes/popular/3%20colors
-LINE_COLORS = ("tab:blue", "tab:red", "tab:green", "tab:orange")
-
 ##################################################
 
 

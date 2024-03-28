@@ -40,10 +40,6 @@ INPUT_FILEPATH = "/data2/pnlong/musescore/expressive_features/expressive_feature
 FILE_OUTPUT_DIR = "/data2/pnlong/musescore/expressive_features"
 NA_VALUE = "NA"
 
-COLORS = ("#186F65", "#B5CB99", "#FCE09B", "#B2533E")
-LINE_COLORS = ("tab:blue", "tab:red", "tab:green", "tab:orange", "tab:purple", "tab:brown", "tab:pink", "tab:olive", "tab:cyan")
-LINESTYLES = ("solid", "dotted", "dashed", "dashdot")
-LINE_COMBINATIONS = tuple((color, linestyle) for color in LINE_COLORS for linestyle in LINESTYLES)
 LARGE_PLOTS_DPI = int(1.5 * OUTPUT_RESOLUTION_DPI)
 
 # columns of data tables

@@ -22,7 +22,7 @@ from time import strftime, gmtime
 from read_mscz.music import DIVIDE_BY_ZERO_CONSTANT
 from utils import rep
 from parse_mscz import LIST_FEATURE_JOIN_STRING
-from parse_mscz_plots import INPUT_DIR, OUTPUT_DIR, OUTPUT_RESOLUTION_DPI, BAR_SHIFT_CONSTANT, COLORS, LINE_COLORS
+from parse_mscz_plots import INPUT_DIR, OUTPUT_DIR, OUTPUT_RESOLUTION_DPI, BAR_SHIFT_CONSTANT
 
 plt.style.use("bmh")
 
