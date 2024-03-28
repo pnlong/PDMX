@@ -750,6 +750,8 @@ class MusicAutoregressiveWrapper(nn.Module):
             if reduce:
                 losses = loss_by_field
             del loss_by_field
+        losses = torch.nan_to_num(input = losses, nan = 0.0, posinf = 0.0, neginf = 0.0) # make sure no nans
+        loss = torch.nan_to_num(input = loss, nan = 0.0, posinf = 0.0, neginf = 0.0) # make sure no nans
 
         # return the losses or just loss
         if return_output:
