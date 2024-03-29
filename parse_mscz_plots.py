@@ -362,6 +362,7 @@ def make_descriptor_plot(descriptor: str, output_filepath: str, top_n: int = 10)
     fig, axes = plt.subplot_mosaic(mosaic = [plot_types], constrained_layout = True, figsize = (12, 8))
     fig.suptitle(f"Top {column_name.title()} Present in MuseScore Data", fontweight = "bold")
     no_descriptor_determiner = lambda sequence: pd.isna(sequence) or (str(sequence) == "")
+    get_plot_title = lambda plot_type, fraction_without_descriptor: plot_type.title() + (f" ({int(100 * fraction_without_descriptor)}% missing)" if (fraction_without_descriptor > 0) else "")
 
     # path and track
     for plot_type in plot_types[:-1]:
@@ -375,16 +376,16 @@ def make_descriptor_plot(descriptor: str, output_filepath: str, top_n: int = 10)
         if plot_type == plot_types[0]:
             axes[plot_type].set_ylabel(descriptor.title())
         axes[plot_type].set_yticks(axes[plot_type].get_yticks())
-        axes[plot_type].set_yticklabels([descriptor_value.replace("music", "").title() for descriptor_value in data.index])
-        plot_title = plot_type.title() + (f" ({int(100 * fraction_without_descriptor)}% of {plot_type}s lack a {descriptor.lower()})" if (fraction_without_descriptor > 0) else "")
-        axes[plot_type].set_title(plot_title)
+        axes[plot_type].set_yticklabels([descriptor_value.replace("music", "").title() for descriptor_value in data.index], rotation = 30)
+        axes[plot_type].set_title(get_plot_title(plot_type = plot_type, fraction_without_descriptor = fraction_without_descriptor))
 
     # descriptor by token
     n_tokens_column_name = "n_tokens"
     data_by_token = data_by["path"][[column_name, n_tokens_column_name]]
     no_descriptor = data_by_token[column_name].apply(no_descriptor_determiner)
     fraction_without_descriptor = sum(data_by_token[no_descriptor][n_tokens_column_name]) / sum(data_by_token[n_tokens_column_name])
-    data_by_token[column_name] = data_by_token[~no_descriptor][column_name].apply(lambda sequence: str(sequence).split(LIST_FEATURE_JOIN_STRING))
+    data_by_token = data_by_token[~no_descriptor]
+    data_by_token[column_name] = data_by_token[column_name].apply(lambda sequence: str(sequence).split(LIST_FEATURE_JOIN_STRING))
     data_by_token = data_by_token.explode(column = column_name, ignore_index = True)
     data_by_token = data_by_token.groupby(by = column_name, sort = True).sum()
     data_by_token = data_by_token.sort_values(by = n_tokens_column_name, axis = 0, ascending = False)
@@ -393,9 +394,8 @@ def make_descriptor_plot(descriptor: str, output_filepath: str, top_n: int = 10)
     axes[plot_types[-1]].barh(y = data_by_token.index, width = data_by_token.values, log = True)
     axes[plot_types[-1]].set_xlabel("Count")
     axes[plot_types[-1]].set_yticks(axes[plot_types[-1]].get_yticks())
-    axes[plot_types[-1]].set_yticklabels([descriptor_value.replace("music", "").title() for descriptor_value in data.index])
-    plot_title = plot_types[-1].title() + (f" ({int(100 * fraction_without_descriptor)}% of {plot_types[-1]}s lack a {descriptor.lower()})" if (fraction_without_descriptor > 0) else "")
-    axes[plot_types[-1]].set_title(plot_title)
+    axes[plot_types[-1]].set_yticklabels([descriptor_value.replace("music", "").title() for descriptor_value in data.index], rotation = 30)
+    axes[plot_types[-1]].set_title(get_plot_title(plot_type = plot_types[-1], fraction_without_descriptor = fraction_without_descriptor))
     
     # save image
     fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI) # save image
