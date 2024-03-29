@@ -15,7 +15,6 @@ from os.path import isfile, exists, basename, dirname
 import random
 import subprocess
 import pandas as pd
-import numpy as np
 from typing import List
 from tqdm import tqdm
 from time import perf_counter, strftime, gmtime
@@ -195,7 +194,7 @@ def extract_expressive_features(path: str, path_output_prefix: str):
         else:
             n_tracks += 1
         
-        # create BetterMusic object with just one track (we are not doing multitrack)
+        # create MusicExpress object with just one track (we are not doing multitrack)
         track_music = deepcopy(x = music)
         track_music.tracks = [track,]
 

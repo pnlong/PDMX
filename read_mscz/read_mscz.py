@@ -25,7 +25,7 @@ import numpy as np
 
 # muspy imports
 from .classes import *
-from .music import BetterMusic
+from .music import MusicExpress
 from muspy.utils import CIRCLE_OF_FIFTHS, MODE_CENTERS, NOTE_TYPE_MAP, TONAL_PITCH_CLASSES
 
 # create type variable
@@ -1140,8 +1140,8 @@ def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], ti
 # MY BETTER READ MUSESCORE FUNCTION, EXTRACTS EXPRESSIVE FEATURES
 ##################################################
 
-def read_musescore(path: str, resolution: int = None, compressed: bool = None, timeout: int = None) -> BetterMusic:
-    """Read the a MuseScore file into a BetterMusic object, paying close attention to details such as articulation and expressive features.
+def read_musescore(path: str, resolution: int = None, compressed: bool = None, timeout: int = None) -> MusicExpress:
+    """Read the a MuseScore file into a MusicExpress object, paying close attention to details such as articulation and expressive features.
 
     Parameters
     ----------
@@ -1156,8 +1156,8 @@ def read_musescore(path: str, resolution: int = None, compressed: bool = None, t
 
     Returns
     -------
-    :class:`BetterMusic`
-        Converted BetterMusic object.
+    :class:`MusicExpress`
+        Converted MusicExpress object.
 
     """
 
@@ -1189,7 +1189,7 @@ def read_musescore(path: str, resolution: int = None, compressed: bool = None, t
     # get all the staff elements
     staffs = score.findall(path = "Staff")
     if len(staffs) == 0: # Return empty music object with metadata if no staff is found
-        return BetterMusic(metadata = metadata, resolution = resolution)
+        return MusicExpress(metadata = metadata, resolution = resolution)
 
     # parse measure ordering from the meta staff, expanding all repeats and jumps
     measure_indicies = get_measure_ordering(elem = staffs[0], timeout = timeout) # feed in the first staff, since measure ordering are constant across all staffs
@@ -1244,7 +1244,7 @@ def read_musescore(path: str, resolution: int = None, compressed: bool = None, t
         track.lyrics.sort(key = attrgetter("time"))
         track.annotations.sort(key = attrgetter("time"))
 
-    return BetterMusic(metadata = metadata, resolution = resolution, tempos = tempos, key_signatures = key_signatures, time_signatures = time_signatures, barlines = barlines, beats = beats, tracks = tracks, annotations = annotations)
+    return MusicExpress(metadata = metadata, resolution = resolution, tempos = tempos, key_signatures = key_signatures, time_signatures = time_signatures, barlines = barlines, beats = beats, tracks = tracks, annotations = annotations)
 
 ##################################################
 

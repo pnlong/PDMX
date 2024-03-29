@@ -27,7 +27,7 @@ import torch
 import torch.utils.data
 from tqdm import tqdm
 
-from read_mscz.music import BetterMusic
+from read_mscz.music import MusicExpress
 import dataset
 import music_x_transformers
 import representation
@@ -92,7 +92,7 @@ def parse_args(args = None, namespace = None):
 # EVALUATION METRICS
 ##################################################
 
-def baseline(music: BetterMusic, stem: str, output_filepath: str):
+def baseline(music: MusicExpress, stem: str, output_filepath: str):
     """Calculate baseline metrics just for consistency."""
     if len(music.tracks) == 0:
         result = {eval_metric: np.nan for eval_metric in evaluate_baseline.EVAL_METRICS}
@@ -108,7 +108,7 @@ def n_expressive_features(expressive_features: pd.DataFrame, stem: str, output_f
     """Given a dataframe with expressive features, output the number of expressive features to a csv file."""
     pd.DataFrame(data = [dict(zip(N_EXPRESSIVE_FEATURES_COLUMNS, (stem, len(expressive_features))))], columns = N_EXPRESSIVE_FEATURES_COLUMNS).to_csv(path_or_buf = output_filepath, sep = ",", na_rep = train.NA_VALUE, header = False, index = False, mode = "a") # output
 
-def density(expressive_features: pd.DataFrame, music: BetterMusic, stem: str, output_filepath: str):
+def density(expressive_features: pd.DataFrame, music: MusicExpress, stem: str, output_filepath: str):
     """Given a dataframe with expressive features, calculate the density of expressive features and output to a csv file."""
     density = {
         "time_steps": (music.song_length / len(expressive_features)) if len(expressive_features) != 0 else 0,
@@ -125,7 +125,7 @@ def summary(expressive_features: pd.DataFrame, stem: str, output_filepath: str):
     summary = summary[expressive_features_plots.FEATURE_TYPES_SUMMARY_COLUMNS] # ensure we have just the columns we need
     summary.to_csv(path_or_buf = output_filepath, sep = ",", na_rep = train.NA_VALUE, header = False, index = False, mode = "a") # output
 
-def sparsity(expressive_features: pd.DataFrame, music: BetterMusic, stem: str, output_filepath: str):
+def sparsity(expressive_features: pd.DataFrame, music: MusicExpress, stem: str, output_filepath: str):
     """Given a dataframe with expressive features, calculate the sparsity of expressive features and output to a csv file."""
     sparsity = expressive_features[["type", "value", "time", parse_mscz.TIME_IN_SECONDS_COLUMN_NAME]]
     sparsity = sparsity.rename(columns = {"time": "time_steps", parse_mscz.TIME_IN_SECONDS_COLUMN_NAME: "seconds"})
@@ -183,7 +183,7 @@ def evaluate(
     path = f"{eval_dir}/{stem}"
     np.save(file = f"{path}.npy", arr = data) # save as a numpy array
     # encode.save_csv_codes(filepath = f"{path}.csv", data = data) # save as a .csv file
-    music = decode.decode(codes = data, encoding = encoding, unidimensional_decoding_function = unidimensional_decoding_function) # convert to a BetterMusic object
+    music = decode.decode(codes = data, encoding = encoding, unidimensional_decoding_function = unidimensional_decoding_function) # convert to a MusicExpress object
     # music.trim(end = music.resolution * 64) # trim the music
 
     # extract data

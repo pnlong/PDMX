@@ -61,7 +61,7 @@ def extract(path: str, use_implied_duration: bool = True) -> np.array:
         if track.is_drum or track.program not in representation.KNOWN_PROGRAMS:
             continue
         
-        # create BetterMusic object with just one track (we are not doing multitrack)
+        # create MusicExpress object with just one track (we are not doing multitrack)
         track_music = copy(x = music)
         track_music.tracks = [track,]
         data = extract_data(music = track_music, use_implied_duration = use_implied_duration, include_velocity = False, use_absolute_time = True)

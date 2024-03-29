@@ -10,19 +10,22 @@
 ##################################################
 
 import pandas as pd
-from numpy import percentile, log10, arange
+import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
-import seaborn as sns
 from os.path import exists
 from os import makedirs
 import multiprocessing
 import argparse
 import logging
-from time import strftime, gmtime
+from time import perf_counter, strftime, gmtime
 from read_mscz.music import DIVIDE_BY_ZERO_CONSTANT
-from utils import rep
-from parse_mscz import LIST_FEATURE_JOIN_STRING
+from utils import rep, split_camel_case
+from parse_mscz import LIST_FEATURE_JOIN_STRING, TIME_IN_SECONDS_COLUMN_NAME
 from parse_mscz_plots import INPUT_DIR, OUTPUT_DIR, OUTPUT_RESOLUTION_DPI, BAR_SHIFT_CONSTANT
+import pickle
+from tqdm import tqdm
+from typing import Tuple
 
 plt.style.use("bmh")
 
@@ -96,9 +99,6 @@ if __name__ == "__main__":
     # create figure
     fig, axes = plt.subplot_mosaic(mosaic = [[]], constrained_layout = True, figsize = (12, 8))
     fig.suptitle(f"", fontweight = "bold")
-
-    # get a cmap
-    cmap = sns.color_palette(palette = "flare", as_cmap = True)
 
     ##################################################
 

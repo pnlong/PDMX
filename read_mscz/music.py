@@ -69,7 +69,7 @@ def to_dict(obj) -> dict:
 # BETTER MUSIC CLASS
 ##################################################
 
-class BetterMusic(muspy.music.Music):
+class MusicExpress(muspy.music.Music):
     """A universal container for symbolic music, better suited for storing expressive features than MusPy.
 
     Attributes
@@ -103,7 +103,7 @@ class BetterMusic(muspy.music.Music):
 
     Note
     ----
-    Indexing a BetterMusic object returns the track of a certain index. That is, ``music[idx]`` returns ``music.tracks[idx]``. Length of a Music object is the number of tracks. That is, ``len(music)`` returns ``len(music.tracks)``.
+    Indexing a MusicExpress object returns the track of a certain index. That is, ``music[idx]`` returns ``music.tracks[idx]``. Length of a Music object is the number of tracks. That is, ``len(music)`` returns ``len(music.tracks)``.
 
     """
 
@@ -155,7 +155,7 @@ class BetterMusic(muspy.music.Music):
     ##################################################
 
     def print(self, output_filepath: str = None, remove_empty_lines: bool = True):
-        """Print the BetterMusic object in a pretty way.
+        """Print the MusicExpress object in a pretty way.
         
         Parameters
         ---------
@@ -361,7 +361,7 @@ class BetterMusic(muspy.music.Music):
                 - add start time (in metrical time)
                 - convert time from seconds to minutes
                 - multiply by qpm value to convert to quarter beats since start time
-                - multiply by BetterMusic resolution
+                - multiply by MusicExpress resolution
             """
             return lambda time: int(start_time + ((((time - start_time_seconds) / 60) * qpm) * self.resolution))
 
@@ -573,7 +573,7 @@ class BetterMusic(muspy.music.Music):
     ##################################################
 
     def trim(self, start: int = 0, end: int = -1):
-        """Trim the BetterMusic object.
+        """Trim the MusicExpress object.
 
         Parameters
         ----------
@@ -637,7 +637,7 @@ class BetterMusic(muspy.music.Music):
     ##################################################
 
     def write(self, path: str, kind: str = None, **kwargs):
-        """Write a BetterMusic object in various file formats.
+        """Write a MusicExpress object in various file formats.
 
         Parameters
         ----------
@@ -813,7 +813,7 @@ def load_annotation(annotation: dict):
             raise KeyError("Unknown annotation type.")
 
 
-def load_json(path: str) -> BetterMusic:
+def load_json(path: str) -> MusicExpress:
     """Load a Music object from a JSON file.
 
     Parameters
@@ -916,8 +916,8 @@ def load_json(path: str) -> BetterMusic:
             ) for annotation in track["annotations"]]
     ) for track in data["tracks"]]
 
-    # return a BetterMusic object
-    return BetterMusic(
+    # return a MusicExpress object
+    return MusicExpress(
         metadata = metadata,
         resolution = int(data["resolution"]),
         tempos = tempos,

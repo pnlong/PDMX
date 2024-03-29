@@ -62,8 +62,7 @@ version_types_mapping = ["All Files", "All Tracks", "Invalid Files"]
 # helper function to group by version
 def _group_by_version(df: pd.DataFrame) -> pd.DataFrame:
     df["version"] = df["version"].apply(lambda version: str(version).strip()[0] if not pd.isna(version) else version_labels_mapping[-1]) # switch out to base version
-    df = df.groupby(by = "version").size() # sum over each version
-    df = df.reset_index().rename(columns = {0: "count"}) # make error type into column
+    df = df.groupby(by = "version", as_index = False).size().rename(columns = {"size": "count"}) # sum over each version
     df["percent"] = 100 * (df["count"] / df["count"].sum()) # calculate percentage
     return df[["version", "count", "percent"]] # select only subset of columns
 
@@ -135,11 +134,10 @@ def make_error_plot(input_filepath: str, output_filepath: str):
     fig.suptitle("Errors in MuseScore Data", fontweight = "bold")
 
     # make bar chart
-    errors = errors.groupby(by = "error_type").size() # sum over error type
-    errors = errors.reset_index().rename(columns = {0: "n"}) # make error type into column
-    errors = errors[["error_type", "n"]].sort_values("n")
+    errors = errors.groupby(by = "error_type", as_index = False).size() # sum over error type
+    errors = errors[["error_type", "size"]].sort_values(by = "size", axis = 0, ignore_index = True)
     errors["error_type"] = errors["error_type"].apply(lambda error_type: error_type.split("_")[0].title()) # make error type look nicer
-    axes["bar"].barh(width = errors["n"], y = errors["error_type"]) # make bar chart , color = COLORS[0], edgecolor = "0"
+    axes["bar"].barh(width = errors["size"], y = errors["error_type"]) # make bar chart , color = COLORS[0], edgecolor = "0"
     axes["bar"].set_title(f"Total Error Rate: {n_errors:,} / {n:,} ; {100 * error_rate:.2f}%")
     axes["bar"].set_xlabel("Count")
     axes["bar"].ticklabel_format(axis = "x", style = "scientific", scilimits = (0, 0))
@@ -266,8 +264,7 @@ labels_mapping = ["path", "track"]
 
 # helper function to group by the boolean column
 def _group_by_boolean(df: pd.DataFrame, label: str, boolean_column_name: str) -> pd.DataFrame:
-    df = df.groupby(by = boolean_column_name).size() # sum over each version
-    df = df.reset_index().rename(columns = {0: "count"}) # make error type into column
+    df = df.groupby(by = boolean_column_name, as_index = False).size().rename(columns = {"size": "count"}) # sum over each version
     df["percent"] = 100 * (df["count"] / df["count"].sum()) # calculate percentage
     df["type"] = rep(x = labels_mapping.index(label), times = len(df))
     return df[[boolean_column_name, "count", "percent", "type"]] # select only subset of columns
@@ -361,18 +358,19 @@ def make_descriptor_plot(descriptor: str, output_filepath: str, top_n: int = 10)
 
     # create figure
     column_name = f"{descriptor}s"
-    fig, axes = plt.subplot_mosaic(mosaic = [["path", "track"]], constrained_layout = True, figsize = (12, 8))
+    plot_types = ["path", "track", "token"]
+    fig, axes = plt.subplot_mosaic(mosaic = [plot_types], constrained_layout = True, figsize = (12, 8))
     fig.suptitle(f"Top {column_name.title()} Present in MuseScore Data", fontweight = "bold")
+    no_descriptor_determiner = lambda sequence: pd.isna(sequence) or (str(sequence) == "")
 
-    # path
-    plot_types = ["path", "track"]
-    for plot_type in plot_types:
-        no_descriptor = data_by[plot_type][column_name].apply(lambda sequence: pd.isna(sequence) or (str(sequence) == ""))
+    # path and track
+    for plot_type in plot_types[:-1]:
+        no_descriptor = data_by[plot_type][column_name].apply(no_descriptor_determiner)
         data = data_by[plot_type][~no_descriptor][column_name].apply(lambda sequence: str(sequence).split(LIST_FEATURE_JOIN_STRING)).explode(ignore_index = True)
         data = data.value_counts(sort = True, ascending = False, dropna = True)
         fraction_without_descriptor = sum(no_descriptor) / len(no_descriptor)
         data = data.head(n = top_n)
-        axes[plot_type].barh(y = data.index, width = data, log = True)
+        axes[plot_type].barh(y = data.index, width = data.values, log = True)
         axes[plot_type].set_xlabel("Count")
         if plot_type == plot_types[0]:
             axes[plot_type].set_ylabel(descriptor.title())
@@ -381,6 +379,24 @@ def make_descriptor_plot(descriptor: str, output_filepath: str, top_n: int = 10)
         plot_title = plot_type.title() + (f" ({int(100 * fraction_without_descriptor)}% of {plot_type}s lack a {descriptor.lower()})" if (fraction_without_descriptor > 0) else "")
         axes[plot_type].set_title(plot_title)
 
+    # descriptor by token
+    n_tokens_column_name = "n_tokens"
+    data_by_token = data_by["path"][[column_name, n_tokens_column_name]]
+    no_descriptor = data_by_token[column_name].apply(no_descriptor_determiner)
+    fraction_without_descriptor = sum(data_by_token[no_descriptor][n_tokens_column_name]) / sum(data_by_token[n_tokens_column_name])
+    data_by_token[column_name] = data_by_token[~no_descriptor][column_name].apply(lambda sequence: str(sequence).split(LIST_FEATURE_JOIN_STRING))
+    data_by_token = data_by_token.explode(column = column_name, ignore_index = True)
+    data_by_token = data_by_token.groupby(by = column_name, sort = True).sum()
+    data_by_token = data_by_token.sort_values(by = n_tokens_column_name, axis = 0, ascending = False)
+    data_by_token = data_by_token.head(n = top_n)
+    data_by_token = data_by_token[n_tokens_column_name]
+    axes[plot_types[-1]].barh(y = data_by_token.index, width = data_by_token.values, log = True)
+    axes[plot_types[-1]].set_xlabel("Count")
+    axes[plot_types[-1]].set_yticks(axes[plot_types[-1]].get_yticks())
+    axes[plot_types[-1]].set_yticklabels([descriptor_value.replace("music", "").title() for descriptor_value in data.index])
+    plot_title = plot_types[-1].title() + (f" ({int(100 * fraction_without_descriptor)}% of {plot_types[-1]}s lack a {descriptor.lower()})" if (fraction_without_descriptor > 0) else "")
+    axes[plot_types[-1]].set_title(plot_title)
+    
     # save image
     fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI) # save image
     logging.info(f"{column_name.title()} plot saved to {output_filepath}.")

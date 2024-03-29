@@ -2,7 +2,7 @@
 # Phillip Long
 # December 1, 2023
 
-# Functions for outputting a BetterMusic object to different file formats.
+# Functions for outputting a MusicExpress object to different file formats.
 
 # python ./output.py
 
@@ -151,12 +151,12 @@ def to_delta_time(midi_track: MidiTrack, ticks_per_beat: int, absolute_time: boo
         time = time_
 
 
-def to_mido_meta_track(music: "BetterMusic") -> MidiTrack:
+def to_mido_meta_track(music: "MusicExpress") -> MidiTrack:
     """Return a mido MidiTrack containing metadata of a Music object.
 
     Parameters
     ----------
-    music : :class:`read_mscz.BetterMusic` object
+    music : :class:`read_mscz.MusicExpress` object
         Music object to convert.
 
     Returns
@@ -326,14 +326,14 @@ def get_expressive_features_per_note(note_times: list, all_annotations: list) ->
     return expressive_features
 
 
-def to_mido_track(track: Track, music: "BetterMusic", channel: int = None, use_note_off_message: bool = False) -> MidiTrack:
+def to_mido_track(track: Track, music: "MusicExpress", channel: int = None, use_note_off_message: bool = False) -> MidiTrack:
     """Return a Track object as a mido MidiTrack object.
 
     Parameters
     ----------
     track : :class:`read_mscz.Track` object
         Track object to convert.
-    music : :class:`read_mscz.BetterMusic` object
+    music : :class:`read_mscz.MusicExpress` object
         Music object that `track` belongs to.
     channel : int, optional
         Channel number. Defaults to 10 for drums and 0 for other instruments.
@@ -434,14 +434,14 @@ def to_mido_track(track: Track, music: "BetterMusic", channel: int = None, use_n
     return midi_track
 
 
-def write_midi(path: str, music: "BetterMusic", use_note_off_message: bool = False):
+def write_midi(path: str, music: "MusicExpress", use_note_off_message: bool = False):
     """Write a Music object to a .mid file using mido as backend.
 
     Parameters
     ----------
     path : str
         Path to write the .mid file.
-    music : :class:`read_mscz.BetterMusic` object
+    music : :class:`read_mscz.MusicExpress` object
         Music object to write.
     use_note_off_message : bool, default: False
         Whether to use note-off messages. If False, note-on messages with zero velocity are used instead. The advantage to using note-on messages at zero velocity is that it can avoid sending additional status bytes when Running Status is employed.
@@ -479,7 +479,7 @@ def write_midi(path: str, music: "BetterMusic", use_note_off_message: bool = Fal
 # WRITE AUDIO
 ##################################################
 
-def write_audio(path: str, music: "BetterMusic", audio_format: str = "auto", soundfont_path: str = None, rate: int = 44100, gain: float = 1, options: str = None):
+def write_audio(path: str, music: "MusicExpress", audio_format: str = "auto", soundfont_path: str = None, rate: int = 44100, gain: float = 1, options: str = None):
     """Write a Music object to an audio file.
 
     Supported formats include WAV, AIFF, FLAC and OGA.
@@ -488,7 +488,7 @@ def write_audio(path: str, music: "BetterMusic", audio_format: str = "auto", sou
     ----------
     path : str
         Path to write the audio file.
-    music : :class:`read_mscz.BetterMusic`
+    music : :class:`read_mscz.MusicExpress`
         Music object to write.
     audio_format : str, default: 'auto'
         File format to write. Defaults to infer from the extension.
@@ -515,7 +515,7 @@ def write_audio(path: str, music: "BetterMusic", audio_format: str = "auto", sou
         # ensure we are operating on a copy of music
         music = deepcopy(music)
 
-        # write the BetterMusic object to a temporary .mid file
+        # write the MusicExpress object to a temporary .mid file
         midi_path = f"{temp_dir}/temp.mid"
         write_midi(path = midi_path, music = music)
 
@@ -534,14 +534,14 @@ PITCH_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 #     octave, pitch_class = divmod(note_number, 12)
 #     return PITCH_NAMES[pitch_class] + str(octave - 1)
 
-def write_musicxml(path: str, music: "BetterMusic", compressed: bool = None):
+def write_musicxml(path: str, music: "MusicExpress", compressed: bool = None):
     """Write a Music object to a MusicXML file.
 
     Parameters
     ----------
     path : str
         Path to write the MusicXML file.
-    music : :class:`read_mscz.BetterMusic`
+    music : :class:`read_mscz.MusicExpress`
         Music object to write.
     compressed : bool, optional
         Whether to write to a compressed MusicXML file. If None, infer
