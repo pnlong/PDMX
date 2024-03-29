@@ -27,6 +27,7 @@ from parse_mscz import TIME_IN_SECONDS_COLUMN_NAME
 from parse_mscz_plots import OUTPUT_DIR, OUTPUT_RESOLUTION_DPI
 from read_mscz.music import DIVIDE_BY_ZERO_CONSTANT
 from utils import rep, split_camel_case
+from train import NA_VALUE
 
 plt.style.use("bmh")
 
@@ -38,9 +39,9 @@ plt.style.use("bmh")
 
 INPUT_FILEPATH = "/data2/pnlong/musescore/expressive_features/expressive_features.csv"
 FILE_OUTPUT_DIR = "/data2/pnlong/musescore/expressive_features"
-NA_VALUE = "NA"
 
 LARGE_PLOTS_DPI = int(1.5 * OUTPUT_RESOLUTION_DPI)
+ALL_FEATURES_TYPE_NAME = "AllFeatures" # name of all features plot name
 
 # columns of data tables
 DENSITY_COLUMNS = ["path", "time_steps", "seconds", "bars", "beats"]
@@ -89,7 +90,7 @@ def calculate_difference_between_successive_entries(df: pd.DataFrame, columns: l
 # GIVEN PICKLE PATH, EXTRACT INFO
 ##################################################
 
-def extract_information(path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def extract_information(path: str):
     """Given a path to a pickled expressive-feature information file, extract some information on said file.
 
     what kinds of expressive text are present?
@@ -132,7 +133,7 @@ def extract_information(path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataF
     # SUMMARIZE TYPES OF TEXT/FEATURES PRESENT
     ##################################################
 
-    feature_types_summary = expressive_features[["type", "value"]].groupby(by = "type").size().reset_index(drop = False).rename(columns = {0: FEATURE_TYPES_SUMMARY_COLUMNS[-1]}) # group by type
+    feature_types_summary = expressive_features[["type", "value"]].groupby(by = "type", as_index = False).size() # group by type
     feature_types_summary["path"] = rep(x = path, times = len(feature_types_summary))
     feature_types_summary = feature_types_summary[FEATURE_TYPES_SUMMARY_COLUMNS] # ensure we have just the columns we need
     feature_types_summary.to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[1], sep = ",", na_rep = NA_VALUE, header = False, index = False, mode = "a")
@@ -165,8 +166,6 @@ def extract_information(path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataF
 
     ##################################################
     
-    return density, feature_types_summary, distance
-
 ##################################################
 
 
@@ -218,22 +217,25 @@ def make_density_plot(input_filepath: str, output_filepath: str) -> None:
 # SUMMARIZE FEATURE TYPES PRESENT
 ##################################################
 
-def make_summary_plot(input_filepath: str, output_filepath: str) -> list:
+def make_summary_plot(input_filepath: str, output_filepath_prefix: str) -> list:
 
-    plot_types = ("total", "mean", "median")
+    # SUMMARY BAR CHART
 
     # create figure
     fig, axes = plt.subplot_mosaic(mosaic = [list(plot_types)], constrained_layout = True, figsize = (12, 8))
-    fig.suptitle("Summary of Present Expressive Features", fontweight = "bold")
+    fig.suptitle("Summary of Expressive Features Present", fontweight = "bold")
 
     # load in table
-    summary = pd.read_csv(filepath_or_buffer = input_filepath, sep = ",", header = 0, index_col = False).drop(columns = "path")
+    data = pd.read_csv(filepath_or_buffer = input_filepath, sep = ",", header = 0, index_col = False)
+    summary = data.drop(columns = "path")
     # summary = summary[summary["type"] != "TimeSignature"] # exclude time signatures
+    plot_types = ("total", "mean", "median")
     summary = {
-        plot_types[0]: summary.groupby(by = "type").sum().reset_index().rename(columns = {"index": "type"}).sort_values(by = "size"),
-        plot_types[1]: summary.groupby(by = "type").mean().reset_index().rename(columns = {"index": "type"}).sort_values(by = "size"),
-        plot_types[2]: summary.groupby(by = "type").median().reset_index().rename(columns = {"index": "type"}).sort_values(by = "size")
+        plot_types[0]: summary.groupby(by = "type", as_index = False).sum().sort_values(by = "size"),
+        plot_types[1]: summary.groupby(by = "type", as_index = False).mean().sort_values(by = "size"),
+        plot_types[2]: summary.groupby(by = "type", as_index = False).median().sort_values(by = "size")
         }
+    expressive_features = summary[plot_types[0]]["type"]
     # summary[plot_types[0]]["size"] = summary[plot_types[0]]["size"].apply(lambda count: np.log10(count + DIVIDE_BY_ZERO_CONSTANT)) # apply log scale to total count
 
     # create plot
@@ -254,11 +256,56 @@ def make_summary_plot(input_filepath: str, output_filepath: str) -> list:
             axes[plot_type].set_yticklabels([])        
 
     # save image
+    output_filepath = f"{output_filepath_prefix}.bar.png"
     fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI) # save image
-    logging.info(f"Summary plot saved to {output_filepath}.")
+    logging.info(f"Summary Bar plot saved to {output_filepath}.")
+
+
+    # SUMMARY HISTOGRAM
+
+    # data wrangle
+    n_expressive_feature_types_to_include = 9
+    plot_types = [ALL_FEATURES_TYPE_NAME] + expressive_features[:n_expressive_feature_types_to_include]
+    n_col = 5
+    mosaic = [plot_types[i:(i + n_col)] for i in range(0, len(plot_types), n_col)]
+
+    # create figure
+    fig, axes = plt.subplot_mosaic(mosaic = mosaic, constrained_layout = True, figsize = (12, 8))
+    fig.suptitle("Summary of Expressive Features Present", fontweight = "bold")
+
+    # plot histograms
+    n_bins = 12
+    for i, plot_type in enumerate(plot_types):
+        if plot_type == ALL_FEATURES_TYPE_NAME:
+            counts = data.drop(columns = "type").groupby(by = "path", as_index = False).sum()["size"].tolist()
+        else:
+            counts = data[data["type"] == plot_types]["size"].tolist()
+        axes[plot_type].hist(x = counts, bins = n_bins)
+        column_index = i % n_col
+        index_of_first_plot_in_row = int(i / n_col) * n_col
+        if (column_index == 0): # if a left most plot
+            axes[plot_type].set_ylabel("Frequency") # only set a y label for the leftmost row
+        else:
+            axes[plot_type].sharey(other = axes[plot_types[index_of_first_plot_in_row]]) # share y with the first plot in that row to be plotted
+        if (i != index_of_first_plot_in_row):
+            # axes[plot_type].set_yticks([]) # will keep yticks for now
+            axes[plot_type].set_yticklabels([]) # remove tick labels from non-leftmost columns
+        if (i >= len(plot_types) - n_col):
+            axes[plot_type].set_xlabel("Amount per Track") # only set an x label for the bottom row
+        else:
+            # axes[plot_type].set_xticks([]) # will keep xticks for now
+            axes[plot_type].set_xticklabels([]) # remove tick labels from non-bottom rows
+        if (i >= n_col):
+            axes[plot_type].sharex(other = axes[plot_types[column_index]]) # share x with the first plot in that column to be plotted
+        axes[plot_type].set_title(split_camel_case(string = plot_type, sep = " ").title()) # set title
+
+    # save image
+    output_filepath = f"{output_filepath_prefix}.histogram.png"
+    fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI) # save image
+    logging.info(f"Summary Histogram plot saved to {output_filepath}.")
 
     # return the order from most common to least
-    return summary[plot_types[0]]["type"].tolist()
+    return expressive_features
 
 ##################################################
 
@@ -280,8 +327,7 @@ def make_sparsity_plot(input_filepath: str, output_filepath_prefix: str, express
     sparsity = sparsity.drop(columns = "value") # we don't need this column
 
     # calculate percentiles, save in pickle
-    all_features_type_name = "AllFeatures" # name of all features plot name
-    expressive_feature_types.insert(0, all_features_type_name) # add a plot for all expressive features
+    expressive_feature_types.insert(0, ALL_FEATURES_TYPE_NAME) # add a plot for all expressive features
     step = 0.001
     percentiles = np.arange(start = 0, stop = 100 + step, step = step)
     pickle_output = input_filepath.split(".")[0] + "_percentiles.pickle"
@@ -309,9 +355,9 @@ def make_sparsity_plot(input_filepath: str, output_filepath_prefix: str, express
                 df = sparsity[sparsity["type"] == expressive_feature_type],
                 columns = relevant_time_units_suffix
                 ) 
-                for expressive_feature_type in tqdm(iterable = [eft for eft in expressive_feature_types if eft != all_features_type_name], desc = "Calculating Sparsity Percentiles")
+                for expressive_feature_type in tqdm(iterable = [eft for eft in expressive_feature_types if eft != ALL_FEATURES_TYPE_NAME], desc = "Calculating Sparsity Percentiles")
             }
-        percentile_values[all_features_type_name] = calculate_percentiles(df = sparsity, columns = relevant_time_units)
+        percentile_values[ALL_FEATURES_TYPE_NAME] = calculate_percentiles(df = sparsity, columns = relevant_time_units)
     
         # save to pickle file
         with open(pickle_output, "wb") as pickle_file:
@@ -380,7 +426,7 @@ def make_sparsity_plot(input_filepath: str, output_filepath_prefix: str, express
     for expressive_feature_type in expressive_feature_types:
         if use_twin_axis_histogram:
             histogram_right_axis = axes[expressive_feature_type].twinx() # create twin x
-        histogram_values = sparsity[["path"] + relevant_time_units] if expressive_feature_type == all_features_type_name else sparsity[sparsity["type"] == expressive_feature_type][["path"] + relevant_time_units_suffix].rename(columns = dict(zip(relevant_time_units_suffix, relevant_time_units))) # get subset of sparsity
+        histogram_values = sparsity[["path"] + relevant_time_units] if expressive_feature_type == ALL_FEATURES_TYPE_NAME else sparsity[sparsity["type"] == expressive_feature_type][["path"] + relevant_time_units_suffix].rename(columns = dict(zip(relevant_time_units_suffix, relevant_time_units))) # get subset of sparsity
         histogram_values_current = dict(zip(relevant_time_units, rep(x = dict(zip(plot_types, rep(x = [], times = len(plot_types)))), times = len(relevant_time_units))))
         for i, plot_type in enumerate(plot_types): # plot lines
             histogram_values_current_current = histogram_values
@@ -540,7 +586,7 @@ if __name__ == "__main__":
 
     plot_output_filepaths = [f"{args.output_dir}/{plot_type}.png" for plot_type in PLOT_DATA_OUTPUT_FILEPATHS.keys()]
     _ = make_density_plot(input_filepath = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[0], output_filepath = plot_output_filepaths[0])
-    expressive_feature_types = make_summary_plot(input_filepath = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[1], output_filepath = plot_output_filepaths[1])
+    expressive_feature_types = make_summary_plot(input_filepath = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[1], output_filepath_prefix = plot_output_filepaths[1].split(".")[0])
     _ = make_sparsity_plot(input_filepath = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[2], output_filepath_prefix = plot_output_filepaths[2].split(".")[0], expressive_feature_types = expressive_feature_types[::-1])
 
     ##################################################

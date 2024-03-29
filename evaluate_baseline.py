@@ -29,7 +29,7 @@ import torch
 import torch.utils.data
 from tqdm import tqdm
 
-from read_mscz.music import BetterMusic
+from read_mscz.music import MusicExpress
 import dataset
 import music_x_transformers
 import representation
@@ -95,7 +95,7 @@ def pad(data: List[torch.tensor]) -> torch.tensor:
 # EVALUATION METRICS
 ##################################################
 
-def pitch_class_entropy(music: BetterMusic) -> float:
+def pitch_class_entropy(music: MusicExpress) -> float:
     """Return the entropy of the normalized note pitch class histogram.
     Copied from https://salu133445.github.io/muspy/_modules/muspy/metrics/metrics.html#pitch_class_entropy
 
@@ -109,7 +109,7 @@ def pitch_class_entropy(music: BetterMusic) -> float:
 
     Parameters
     ----------
-    music : :class:`read_mscz.BetterMusic`
+    music : :class:`read_mscz.MusicExpress`
         Music object to evaluate.
 
     Returns
@@ -143,7 +143,7 @@ def pitch_class_entropy(music: BetterMusic) -> float:
     return muspy.metrics.metrics._entropy(prob = prob)
 
 
-def scale_consistency(music: BetterMusic) -> float:
+def scale_consistency(music: MusicExpress) -> float:
     """Return the largest pitch-in-scale rate.
     Copied from https://salu133445.github.io/muspy/_modules/muspy/metrics/metrics.html#scale_consistency
 
@@ -157,7 +157,7 @@ def scale_consistency(music: BetterMusic) -> float:
 
     Parameters
     ----------
-    music : :class:`read_mscz.BetterMusic`
+    music : :class:`read_mscz.MusicExpress`
         Music object to evaluate.
 
     Returns
@@ -188,7 +188,7 @@ def scale_consistency(music: BetterMusic) -> float:
     return max_in_scale_rate
 
 
-def groove_consistency(music: BetterMusic, measure_resolution: int) -> float:
+def groove_consistency(music: MusicExpress, measure_resolution: int) -> float:
     """Return the groove consistency.
     Copied from https://salu133445.github.io/muspy/_modules/muspy/metrics/metrics.html#groove_consistency
 
@@ -209,7 +209,7 @@ def groove_consistency(music: BetterMusic, measure_resolution: int) -> float:
 
     Parameters
     ----------
-    music : :class:`read_mscz.BetterMusic`
+    music : :class:`read_mscz.MusicExpress`
         Music object to evaluate.
     measure_resolution : int
         Time steps per measure.
@@ -261,7 +261,7 @@ def evaluate(data: Union[np.array, torch.tensor], encoding: dict, stem: str, eva
     path = f"{eval_dir}/{stem}"
     np.save(file = f"{path}.npy", arr = data) # save as a numpy array
     # encode.save_csv_codes(filepath = f"{path}.csv", data = data) # save as a .csv file
-    music = decode.decode(codes = data, encoding = encoding, unidimensional_decoding_function = unidimensional_decoding_function) # convert to a BetterMusic object
+    music = decode.decode(codes = data, encoding = encoding, unidimensional_decoding_function = unidimensional_decoding_function) # convert to a MusicExpress object
     # music.trim(end = music.resolution * 64) # trim the music
 
     # return a dictionary

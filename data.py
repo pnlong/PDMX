@@ -116,7 +116,7 @@ def extract(path: str, path_output_prefix: str, use_implied_duration: bool = Tru
         if track.is_drum or track.program not in representation.KNOWN_PROGRAMS:
             continue
         
-        # create BetterMusic object with just one track (we are not doing multitrack)
+        # create MusicExpress object with just one track (we are not doing multitrack)
         track_music = copy(x = music)
         track_music.tracks = [track,]
         data = extract_data(music = track_music, use_implied_duration = use_implied_duration, include_velocity = include_velocity, use_absolute_time = use_absolute_time)

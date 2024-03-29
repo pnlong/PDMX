@@ -13,7 +13,7 @@ import argparse
 from typing import List, Callable
 import representation
 from encode import encode, ENCODING_ARRAY_TYPE
-from read_mscz.music import BetterMusic
+from read_mscz.music import MusicExpress
 from read_mscz.classes import *
 from read_mscz.read_mscz import read_musescore
 from read_mscz.output import FERMATA_TEMPO_SLOWDOWN
@@ -120,15 +120,15 @@ def reconstruct(
         resolution: int,
         encoding: dict = DEFAULT_ENCODING,
         infer_metrical_time: bool = False,
-    ) -> BetterMusic:
-    """Reconstruct a data sequence as a BetterMusic object."""
+    ) -> MusicExpress:
+    """Reconstruct a data sequence as a MusicExpress object."""
 
     # determine include_velocity and use_absolute_time
     include_velocity = encoding["include_velocity"]
     use_absolute_time = encoding["use_absolute_time"]
 
-    # construct the BetterMusic object with defaults
-    music = BetterMusic(
+    # construct the MusicExpress object with defaults
+    music = MusicExpress(
         resolution = resolution,
         tempos = [Tempo(time = 0, qpm = representation.DEFAULT_QPM)],
         key_signatures = [KeySignature(time = 0)],
@@ -146,7 +146,7 @@ def reconstruct(
                 - add start time (in metrical time)
                 - convert time from seconds to minutes
                 - multiply by qpm value to convert to quarter beats since start time
-                - multiply by BetterMusic resolution
+                - multiply by MusicExpress resolution
             """
             return lambda time: int(start_time + ((((time - start_time_seconds) / 60) * qpm) * resolution))
 
@@ -296,7 +296,7 @@ def reconstruct(
         else:
             raise ValueError("Unknown event type.")
 
-    # return the filled BetterMusic
+    # return the filled MusicExpress
     return music
 
 
@@ -304,7 +304,7 @@ def decode(
         codes: np.array,
         encoding: dict = DEFAULT_ENCODING,
         unidimensional_decoding_function: Callable = representation.get_unidimensional_coding_functions(encoding = DEFAULT_ENCODING)[-1]
-    ) -> BetterMusic:
+    ) -> MusicExpress:
     """Decode codes into a MusPy Music object.
     Each row of the input is encoded as follows.
         (event_type, beat, position, value, duration, instrument)

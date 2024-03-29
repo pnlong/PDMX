@@ -18,7 +18,7 @@ import utils
 import representation
 import math
 from copy import copy
-from read_mscz.music import BetterMusic
+from read_mscz.music import MusicExpress
 from read_mscz.classes import *
 from read_mscz.read_mscz import read_musescore
 ##################################################
@@ -309,7 +309,7 @@ def scrape_articulations(annotations: List[Annotation], maximum_gap: int, articu
     return pd.DataFrame(data = articulations_encoded, columns = output_columns) # create dataframe from scraped values
 
 
-def scrape_slurs(annotations: List[Annotation], minimum_duration: float, music: BetterMusic, include_velocity: bool = False, include_annotation_class_name: bool = False) -> pd.DataFrame:
+def scrape_slurs(annotations: List[Annotation], minimum_duration: float, music: MusicExpress, include_velocity: bool = False, include_annotation_class_name: bool = False) -> pd.DataFrame:
     """Scrape slurs. minimum_duration is the minimum duration (in seconds) a slur needs to be to make it worthwhile recording."""
     output_columns = representation.DIMENSIONS + ([ANNOTATION_CLASS_NAME_STRING,] if include_annotation_class_name else []) # output columns
     if not include_velocity: output_columns.remove("velocity") # remove velocity column if not wanted
@@ -335,7 +335,7 @@ def scrape_slurs(annotations: List[Annotation], minimum_duration: float, music: 
     return pd.DataFrame(data = slurs_encoded, columns = output_columns) # create dataframe from scraped values
 
 
-def scrape_pedals(annotations: List[Annotation], minimum_duration: float, music: BetterMusic, include_velocity: bool = False, include_annotation_class_name: bool = False) -> pd.DataFrame:
+def scrape_pedals(annotations: List[Annotation], minimum_duration: float, music: MusicExpress, include_velocity: bool = False, include_annotation_class_name: bool = False) -> pd.DataFrame:
     """Scrape pedals. minimum_duration is the minimum duration (in seconds) a pedal needs to be to make it worthwhile recording."""
     output_columns = representation.DIMENSIONS + ([ANNOTATION_CLASS_NAME_STRING,] if include_annotation_class_name else []) # output columns
     if not include_velocity: output_columns.remove("velocity") # remove velocity column if not wanted
@@ -363,7 +363,7 @@ def scrape_pedals(annotations: List[Annotation], minimum_duration: float, music:
 # WRAPPER FUNCTIONS MAKE CODE EASIER TO READ
 ##################################################
 
-def get_system_level_expressive_features(music: BetterMusic, use_implied_duration: bool = True, include_velocity: bool = False, include_annotation_class_name: bool = False) -> pd.DataFrame:
+def get_system_level_expressive_features(music: MusicExpress, use_implied_duration: bool = True, include_velocity: bool = False, include_annotation_class_name: bool = False) -> pd.DataFrame:
     """Wrapper function to make code more readable. Extracts system-level expressive features."""
     system_annotations = scrape_annotations(annotations = music.annotations, song_length = music.song_length, use_implied_duration = use_implied_duration, include_velocity = include_velocity, include_annotation_class_name = include_annotation_class_name)
     system_barlines = scrape_barlines(barlines = music.barlines, song_length = music.song_length, use_implied_duration = use_implied_duration, include_velocity = include_velocity, include_annotation_class_name = include_annotation_class_name)
@@ -373,7 +373,7 @@ def get_system_level_expressive_features(music: BetterMusic, use_implied_duratio
     system_level_expressive_features = pd.concat(objs = (system_annotations, system_barlines, system_time_signatures, system_key_signatures, system_tempos), axis = 0, ignore_index = True)
     return system_level_expressive_features
 
-def get_staff_level_expressive_features(track: Track, music: BetterMusic, use_implied_duration: bool = True, include_velocity: bool = False, include_annotation_class_name: bool = False) -> pd.DataFrame:
+def get_staff_level_expressive_features(track: Track, music: MusicExpress, use_implied_duration: bool = True, include_velocity: bool = False, include_annotation_class_name: bool = False) -> pd.DataFrame:
     """Wrapper function to make code more readable. Extracts staff-level expressive features."""
     staff_notes = scrape_notes(notes = track.notes, include_velocity = include_velocity, include_annotation_class_name = include_annotation_class_name)
     staff_annotations = scrape_annotations(annotations = track.annotations, song_length = music.song_length, use_implied_duration = use_implied_duration, include_velocity = include_velocity, include_annotation_class_name = include_annotation_class_name)
@@ -389,13 +389,13 @@ def get_staff_level_expressive_features(track: Track, music: BetterMusic, use_im
 ##################################################
 
 def extract_data(
-        music: BetterMusic,
+        music: MusicExpress,
         use_implied_duration: bool = True,
         include_velocity: bool = False,
         use_absolute_time: bool = False,
         include_annotation_class_name: bool = False
     ) -> np.array:
-    """Return a BetterMusic object as a data sequence.
+    """Return a MusicExpress object as a data sequence.
     Each row of the output is a note specified as follows.
         (event_type, beat, position, value, duration (in seconds or beats depending on `use_absolute_time`), program, velocity (if `include_velocity`), time, time (in seconds), annotation_class_name (if `include_annotation_class_name`))
     """
@@ -683,7 +683,7 @@ def encode_data(
 
 
 def encode(
-        music: BetterMusic,
+        music: MusicExpress,
         use_implied_duration: bool = True,
         encoding: dict = DEFAULT_ENCODING,
         conditioning: str = DEFAULT_CONDITIONING,
@@ -691,7 +691,7 @@ def encode(
         unidimensional: bool = False,
         unidimensional_encoding_function: Callable = representation.get_unidimensional_coding_functions(encoding = DEFAULT_ENCODING)[0]
     ) -> np.array:
-    """Given a BetterMusic object, encode it."""
+    """Given a MusicExpress object, encode it."""
 
     # determine include_velocity and use_absolute_time
     include_velocity = encoding["include_velocity"]
