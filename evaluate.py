@@ -322,7 +322,7 @@ if __name__ == "__main__":
         max_seq_len = train_args["max_seq_len"]
         conditioning = train_args["conditioning"]
         unidimensional = train_args.get("unidimensional", False)
-        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, conditioning = conditioning, max_seq_len = max_seq_len, use_augmentation = False, is_baseline = ("baseline" in args.output_dir), unidimensional = unidimensional)
+        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, conditioning = conditioning, max_seq_len = max_seq_len, use_augmentation = False, is_baseline = ("baseline" in args.output_dir), unidimensional = unidimensional, include_eos_token = False)
 
         # create the model
         logging.info(f"Creating the model...")

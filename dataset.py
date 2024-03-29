@@ -69,7 +69,18 @@ class MusicDataset(Dataset):
     # CONSTRUCTOR
     ##################################################
 
-    def __init__(self, paths: str, encoding: dict, conditioning: str = encode.DEFAULT_CONDITIONING, sigma: float = encode.SIGMA, is_baseline: bool = False, max_seq_len: int = None, use_augmentation: bool = False, unidimensional: bool = False):
+    def __init__(
+            self,
+            paths: str,
+            encoding: dict = representation.get_encoding(),
+            conditioning: str = encode.DEFAULT_CONDITIONING,
+            sigma: float = encode.SIGMA,
+            is_baseline: bool = False,
+            max_seq_len: int = None,
+            use_augmentation: bool = False,
+            unidimensional: bool = False,
+            include_eos_token: bool = True,
+        ):
         super().__init__()
         with open(paths, "r") as file:
             self.paths = [line.strip() for line in file if line]
@@ -85,6 +96,7 @@ class MusicDataset(Dataset):
         self.temporal_dim = self.encoding["dimensions"].index(temporal)
         self.value_dim = self.encoding["dimensions"].index("value")
         self.unidimensional = unidimensional
+        self.include_eos_token = include_eos_token
         self.n_tokens_per_event = len(self.encoding["dimensions"]) if unidimensional else 1
         self.unidimensional_encoding_function, _ = representation.get_unidimensional_coding_functions(encoding = self.encoding)
         if self.unidimensional:
@@ -157,6 +169,10 @@ class MusicDataset(Dataset):
                 obj = range(self.max_seq_len - (self.max_seq_len % self.n_tokens_per_event) - self.n_tokens_per_event, seq.shape[0] - self.n_tokens_per_event),
                 axis = 0
             )
+
+        # remove eos token if necessary
+        if (not self.include_eos_token):
+            seq = seq[:-self.n_tokens_per_event]
 
         return {"path": path, "seq": seq}
 
