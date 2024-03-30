@@ -12,6 +12,7 @@
 
 import pandas as pd
 from numpy import percentile, log10, arange
+from math import floor, ceil
 import matplotlib.pyplot as plt
 from os.path import exists
 from os import makedirs
@@ -23,7 +24,8 @@ from read_mscz.music import DIVIDE_BY_ZERO_CONSTANT
 from utils import rep
 from parse_mscz import LIST_FEATURE_JOIN_STRING
 
-plt.style.use("bmh")
+plt.style.use("default")
+plt.rcParams["font.family"] = "serif"
 
 ##################################################
 
@@ -35,6 +37,8 @@ INPUT_DIR = "/data2/pnlong/musescore/expressive_features"
 OUTPUT_DIR = "/data2/pnlong/musescore/expressive_features/plots"
 OUTPUT_RESOLUTION_DPI = 200
 BAR_SHIFT_CONSTANT = 13/25
+GREY = "#7b7d7b"
+LIGHT_GREY = "#bfbfbf"
 
 ##################################################
 
@@ -56,7 +60,7 @@ def parse_args(args = None, namespace = None):
 # DESCRIBE VERSIONS
 ##################################################
 
-version_labels_mapping = ["1", "2", "3", chr(10006)]
+version_labels_mapping = ["1", "2", "3", "NA"]
 version_types_mapping = ["All Files", "All Tracks", "Invalid Files"]
 
 # helper function to group by version
@@ -67,7 +71,7 @@ def _group_by_version(df: pd.DataFrame) -> pd.DataFrame:
     return df[["version", "count", "percent"]] # select only subset of columns
 
 def _make_versions_bar_chart(axes: plt.Axes, df: pd.DataFrame, col: str):
-    axes[col].barh(width = df["count"], y = df["version"]) # make bar chart color = COLORS[version_types_mapping.index(col)], edgecolor = "0"
+    axes[col].barh(width = df["count"], y = df["version"], color = GREY) # make bar chart color = COLORS[version_types_mapping.index(col)], edgecolor = "0"
     axes[col].set_title(col)
     axes[col].set_xlabel("Count")
     axes[col].ticklabel_format(axis = "x", style = "scientific", scilimits = (0, 0))
@@ -137,7 +141,7 @@ def make_error_plot(input_filepath: str, output_filepath: str):
     errors = errors.groupby(by = "error_type", as_index = False).size() # sum over error type
     errors = errors[["error_type", "size"]].sort_values(by = "size", axis = 0, ignore_index = True)
     errors["error_type"] = errors["error_type"].apply(lambda error_type: error_type.split("_")[0].title()) # make error type look nicer
-    axes["bar"].barh(width = errors["size"], y = errors["error_type"]) # make bar chart , color = COLORS[0], edgecolor = "0"
+    axes["bar"].barh(width = errors["size"], y = errors["error_type"], color = GREY) # make bar chart , color = COLORS[0], edgecolor = "0"
     axes["bar"].set_title(f"Total Error Rate: {n_errors:,} / {n:,} ; {100 * error_rate:.2f}%")
     axes["bar"].set_xlabel("Count")
     axes["bar"].ticklabel_format(axis = "x", style = "scientific", scilimits = (0, 0))
@@ -173,6 +177,7 @@ def make_percentile_plot(output_filepath: str):
     fig.suptitle("Number of Expressive Features in MuseScore Data", fontweight = "bold")
 
     # make plots
+    axes["log"].grid(True)
     for i, legend_value in enumerate(legend_values):
         df_sub = df[df["type"] == legend_value]
         axes["log"].plot(df_sub["percentile"], df_sub["log"], label = legend_value) # color = LINE_COLORS[i % 2], linestyle = "solid" if i < 2 else "dashed"
@@ -180,10 +185,9 @@ def make_percentile_plot(output_filepath: str):
     axes["log"].set_ylabel("Number of Expressive Features")
     logticks = list(range(int(min(df["log"])), int(max(df["log"])) + 1, 1))
     axes["log"].set_yticks(logticks)
-    axes["log"].set_yticklabels([f"{10**logtick:,}" if logtick != 0 else "1" for logtick in logticks]) # "$10^{" + str(logtick) + "}$"
+    axes["log"].set_yticklabels([f"{10**logtick:,}" for logtick in logticks]) # "$10^{" + str(logtick) + "}$" if logtick != 0 else "1"
     axes["log"].set_ylim(bottom = 0, top = None)
     axes["log"].legend(ncol = 2)
-    # axes["log"].grid()
 
     # save image
     fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI) # save image
@@ -210,7 +214,7 @@ def make_timing_plot(input_filepath: str, output_filepath: str):
     # create plot
     bin_width = 0.005
     bin_range = (0, 0.2)
-    axes["time"].hist(x = timings, bins = arange(start = bin_range[0], stop = bin_range[1] + bin_width, step = bin_width)) # , color = COLORS[0], edgecolor = "0"
+    axes["time"].hist(x = timings, bins = arange(start = bin_range[0], stop = bin_range[1] + bin_width, step = bin_width), color = GREY) # , color = COLORS[0], edgecolor = "0"
     axes["time"].set_xlabel("Time (seconds)")
     axes["time"].set_ylabel("Count")
     axes["time"].ticklabel_format(axis = "y", style = "scientific", scilimits = (0, 0))
@@ -245,7 +249,7 @@ def make_tracks_plot(output_filepath: str):
 
     # histogram
     binwidth = 5
-    axes["hist"].hist(x = tracks_data, bins = range(0, int(max(tracks_data)) + binwidth, binwidth)) # , color = COLORS[0], edgecolor = "0"
+    axes["hist"].hist(x = tracks_data, bins = range(0, int(max(tracks_data)) + binwidth, binwidth), color = GREY) # , color = COLORS[0], edgecolor = "0"
     axes["hist"].set_xlim(left = 0, right = upper_limit_of_interest)
     axes["hist"].set_xlabel("Number of Tracks")
     axes["hist"].set_ylabel("Count")
@@ -269,12 +273,12 @@ def _group_by_boolean(df: pd.DataFrame, label: str, boolean_column_name: str) ->
     df["type"] = rep(x = labels_mapping.index(label), times = len(df))
     return df[[boolean_column_name, "count", "percent", "type"]] # select only subset of columns
 
-def _make_boolean_bar_chart(axes: plt.Axes, df: pd.DataFrame, type_column: str, boolean_column_name: str, fancy_boolean_column_name: str):
+def _make_boolean_bar_chart(axes: plt.Axes, df: pd.DataFrame, type_column: str, boolean_column_name: str, fancy_boolean_column_name: str, show_legend: bool = True):
     width = 0.4
     pro_user_true, pro_user_false = df[df[boolean_column_name]], df[~df[boolean_column_name]]
     bars = [
-        axes[type_column].bar(x = pro_user_true["type"] - (BAR_SHIFT_CONSTANT * width),  height = pro_user_true[type_column],  width = width), # pro user , color = COLORS[0], edgecolor = "0"
-        axes[type_column].bar(x = pro_user_false["type"] + (BAR_SHIFT_CONSTANT * width), height = pro_user_false[type_column], width = width) # not pro user , color = COLORS[1], edgecolor = "0"
+        axes[type_column].bar(x = pro_user_true["type"] - (BAR_SHIFT_CONSTANT * width),  height = pro_user_true[type_column],  width = width, color = LIGHT_GREY), # pro user , color = COLORS[0], edgecolor = "0"
+        axes[type_column].bar(x = pro_user_false["type"] + (BAR_SHIFT_CONSTANT * width), height = pro_user_false[type_column], width = width, color = GREY) # not pro user , color = COLORS[1], edgecolor = "0"
         ]
     def annotate_bar_chart(bars_to_annotate):
         for bar in bars_to_annotate: # loop through the bars and add annotations
@@ -286,7 +290,8 @@ def _make_boolean_bar_chart(axes: plt.Axes, df: pd.DataFrame, type_column: str, 
     axes[type_column].xaxis.set_ticks(ticks = tuple(range(len(labels_mapping))), labels = (label_mapping.title() for label_mapping in labels_mapping))
     axes[type_column].set_ylabel(f"{type_column.title()} (%)" if (type_column == "percent") else type_column.title())
     axes[type_column].set_title(type_column.title())
-    axes[type_column].legend([fancy_boolean_column_name, f"Not {fancy_boolean_column_name}"]) 
+    if show_legend:
+        axes[type_column].legend([fancy_boolean_column_name, f"Not {fancy_boolean_column_name}"]) 
 
 # function to make any boolean plot
 def make_boolean_plot(boolean_column_name: str, output_filepath: str):
@@ -304,11 +309,11 @@ def make_boolean_plot(boolean_column_name: str, output_filepath: str):
         ), axis = 0)
 
     # make count plot
-    _make_boolean_bar_chart(axes = axes, df = data, type_column = "count", boolean_column_name = boolean_column_name, fancy_boolean_column_name = fancy_boolean_column_name)
+    _make_boolean_bar_chart(axes = axes, df = data, type_column = "count", boolean_column_name = boolean_column_name, fancy_boolean_column_name = fancy_boolean_column_name, show_legend = True)
     axes["count"].ticklabel_format(axis = "y", style = "scientific", scilimits = (0, 0))
 
     # make percent plot
-    _make_boolean_bar_chart(axes = axes, df = data, type_column = "percent", boolean_column_name = boolean_column_name, fancy_boolean_column_name = fancy_boolean_column_name)
+    _make_boolean_bar_chart(axes = axes, df = data, type_column = "percent", boolean_column_name = boolean_column_name, fancy_boolean_column_name = fancy_boolean_column_name, show_legend = False)
 
     # save image
     fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI) # save image
@@ -358,6 +363,7 @@ def make_descriptor_plot(descriptor: str, output_filepath: str, top_n: int = 10)
 
     # create figure
     column_name = f"{descriptor}s"
+    genre_is_first_genre = False
     plot_types = ["path", "track", "token"]
     fig, axes = plt.subplot_mosaic(mosaic = [plot_types], constrained_layout = True, figsize = (12, 8))
     fig.suptitle(f"Top {column_name.title()} Present in MuseScore Data", fontweight = "bold")
@@ -367,11 +373,14 @@ def make_descriptor_plot(descriptor: str, output_filepath: str, top_n: int = 10)
     # path and track
     for plot_type in plot_types[:-1]:
         no_descriptor = data_by[plot_type][column_name].apply(no_descriptor_determiner)
-        data = data_by[plot_type][~no_descriptor][column_name].apply(lambda sequence: str(sequence).split(LIST_FEATURE_JOIN_STRING)).explode(ignore_index = True)
+        if genre_is_first_genre:
+            data = data_by[plot_type][~no_descriptor][column_name].apply(lambda sequence: str(sequence).split(LIST_FEATURE_JOIN_STRING)[0])
+        else:
+            data = data_by[plot_type][~no_descriptor][column_name].apply(lambda sequence: str(sequence).split(LIST_FEATURE_JOIN_STRING)).explode(ignore_index = True)
         data = data.value_counts(sort = True, ascending = False, dropna = True)
         fraction_without_descriptor = sum(no_descriptor) / len(no_descriptor)
         data = data.head(n = top_n)
-        axes[plot_type].barh(y = data.index, width = data.values, log = True)
+        axes[plot_type].barh(y = data.index, width = data.values, log = True, color = GREY)
         axes[plot_type].set_xlabel("Count")
         if plot_type == plot_types[0]:
             axes[plot_type].set_ylabel(descriptor.title())
@@ -385,13 +394,16 @@ def make_descriptor_plot(descriptor: str, output_filepath: str, top_n: int = 10)
     no_descriptor = data_by_token[column_name].apply(no_descriptor_determiner)
     fraction_without_descriptor = sum(data_by_token[no_descriptor][n_tokens_column_name]) / sum(data_by_token[n_tokens_column_name])
     data_by_token = data_by_token[~no_descriptor]
-    data_by_token[column_name] = data_by_token[column_name].apply(lambda sequence: str(sequence).split(LIST_FEATURE_JOIN_STRING))
-    data_by_token = data_by_token.explode(column = column_name, ignore_index = True)
+    if genre_is_first_genre:
+        data_by_token[column_name] = data_by_token[column_name].apply(lambda sequence: str(sequence).split(LIST_FEATURE_JOIN_STRING)[0])
+    else:
+        data_by_token[column_name] = data_by_token[column_name].apply(lambda sequence: str(sequence).split(LIST_FEATURE_JOIN_STRING))
+        data_by_token = data_by_token.explode(column = column_name, ignore_index = True)
     data_by_token = data_by_token.groupby(by = column_name, sort = True).sum()
     data_by_token = data_by_token.sort_values(by = n_tokens_column_name, axis = 0, ascending = False)
     data_by_token = data_by_token.head(n = top_n)
     data_by_token = data_by_token[n_tokens_column_name]
-    axes[plot_types[-1]].barh(y = data_by_token.index, width = data_by_token.values, log = True)
+    axes[plot_types[-1]].barh(y = data_by_token.index, width = data_by_token.values, log = True, color = GREY)
     axes[plot_types[-1]].set_xlabel("Count")
     axes[plot_types[-1]].set_yticks(axes[plot_types[-1]].get_yticks())
     axes[plot_types[-1]].set_yticklabels([descriptor_value.replace("music", "").title() for descriptor_value in data.index], rotation = 30)
@@ -400,6 +412,42 @@ def make_descriptor_plot(descriptor: str, output_filepath: str, top_n: int = 10)
     # save image
     fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI) # save image
     logging.info(f"{column_name.title()} plot saved to {output_filepath}.")
+
+
+    # PLOT FOR PAPER
+    
+    # create figure
+    plot_type = plot_types[0] # path
+    fig, axes = plt.subplot_mosaic(mosaic = [[plot_type]], constrained_layout = True, figsize = (4, 8))
+
+    # plot information
+    no_descriptor = data_by[plot_type][column_name].apply(no_descriptor_determiner)
+    border_margin_fraction = 0.15
+    x_label_rotation = 75
+    if genre_is_first_genre:
+        data = data_by[plot_type][~no_descriptor][column_name].apply(lambda sequence: str(sequence).split(LIST_FEATURE_JOIN_STRING)[0])
+    else:
+        data = data_by[plot_type][~no_descriptor][column_name].apply(lambda sequence: str(sequence).split(LIST_FEATURE_JOIN_STRING)).explode(ignore_index = True)
+    data = data.value_counts(sort = True, ascending = False, dropna = True)
+    data = data.head(n = top_n) # get top n results
+    data = data.apply(log10) # log scale
+    axes[plot_type].yaxis.grid(True)
+    axes[plot_type].bar(x = data.index, height = data.values, color = GREY) # plot bar graph
+    axes[plot_type].set_xlabel(descriptor.title())
+    axes[plot_type].set_xticks(axes[plot_type].get_xticks())
+    axes[plot_type].set_xticklabels([descriptor_value.replace("music", "").title() for descriptor_value in data.index], rotation = x_label_rotation)
+    min_data, max_data = min(data.values), max(data.values)
+    logticks = list(range(floor(min_data), ceil(max_data) + 1, 1))
+    axes[plot_type].set_yticks(logticks)
+    axes[plot_type].set_yticklabels([f"{10**logtick:,}" for logtick in logticks])
+    axes[plot_type].set_ylim(bottom = min_data - border_margin_fraction, top = max_data + border_margin_fraction)
+    axes[plot_type].set_ylabel("Count")
+    axes[plot_type].set_title(label = f"{column_name.title()}", fontdict = {"fontweight": "bold"})
+
+    # save image
+    output_filepath = output_filepath.split(".")[0] + ".paper.png"
+    fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI) # save image
+    logging.info(f"{column_name.title()} Figure plot saved to {output_filepath}.")
 
 # helper function to make genres plot
 def make_genres_plot(output_filepath: str):
@@ -469,7 +517,7 @@ if __name__ == "__main__":
 
     # filter data to just relevant data points (the actual datasets)
     for key in data_by.keys():
-        data_by[key] = data_by[key][data_by[key]["in_dataset"]]
+        data_by[key] = data_by[key][data_by[key]["in_dataset"]].reset_index(drop = True)
     make_tracks_plot(output_filepath = plot_output_filepaths[5])
     make_pro_user_plot(output_filepath = plot_output_filepaths[6])
     make_complexity_plot(output_filepath = plot_output_filepaths[7])
