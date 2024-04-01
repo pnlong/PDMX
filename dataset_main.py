@@ -47,7 +47,7 @@ def parse_args(args = None, namespace = None):
     parser = argparse.ArgumentParser(prog = "Parse MuseScore", description = "Extract expressive features from MuseScore files.")
     parser.add_argument("-i", "--input_dir", type = str, default = INPUT_DIR, help = "Output directory provided to `parse_mscz.py`")
     parser.add_argument("-o", "--output_dir", type = str, default = OUTPUT_DIR, help = "Output directory where the CSV mappings file and the directory with the actual dataset will be stored")
-    parser.add_argument("-n", "--nested", action = "store_true", help = "Whether to employ Herman's nested directory structure")
+    parser.add_argument("-n", "--nested", action = "store_true", help = "Whether to replicate Herman's nested directory structure")
     parser.add_argument("-j", "--jobs", type = int, default = int(multiprocessing.cpu_count() / 4), help = "Number of Jobs")
     return parser.parse_args(args = args, namespace = namespace)
 
