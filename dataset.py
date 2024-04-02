@@ -48,10 +48,12 @@ def pad(data: List[np.array], max_length: int = None, front: bool = False) -> np
             assert len(seq) <= max_length
 
     # pad the data
+    unidimensional = (len(data[0].shape) == 1)
     padded = [np.pad(array = seq,
                      pad_width = (
-                         ((max_length - (seq), 0) if front else (0, max_length - len(seq))) if (len(data[0].shape) == 1) else
-                         (((max_length - len(seq), 0) if front else (0, max_length - len(seq))), (0, 0))),
+                         ((max_length - len(seq), 0) if front else (0, max_length - len(seq))) if unidimensional else
+                         (((max_length - len(seq), 0) if front else (0, max_length - len(seq))), (0, 0))
+                         ),
                      mode = "constant",
                      constant_values = PAD_VALUE) for seq in data]
 
