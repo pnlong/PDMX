@@ -11,8 +11,9 @@
 ##################################################
 
 from os.path import exists, basename, dirname
-from os import makedirs
+from os import makedirs, mkdir
 import subprocess
+from shutil import copy
 import pandas as pd
 from tqdm import tqdm
 from time import perf_counter, strftime, gmtime
@@ -33,8 +34,7 @@ OUTPUT_DIR = "/data2/pnlong/musescore"
 
 DATASET_NAME = "ExpressionNet"
 
-# OUTPUT_COLUMNS_BY_PATH = ["path", "metadata", "version", "is_public_domain", "is_valid", "is_user_pro", "complexity", "genres", "tags", "n_tracks", "n_expressive_features", "n_expressive_features_with_lyrics", "n_tokens", "n_tokens_with_lyrics", "in_dataset"] # for reference
-OUTPUT_COLUMNS = ["path", "genres", "tags", "n_tracks", "n_expressive_features", "n_tokens"]
+OUTPUT_COLUMNS = ["path", "metadata", "genres", "tags", "n_tracks", "n_expressive_features", "n_tokens"]
 
 ##################################################
 
@@ -48,6 +48,7 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("-i", "--input_dir", type = str, default = INPUT_DIR, help = "Output directory provided to `parse_mscz.py`")
     parser.add_argument("-o", "--output_dir", type = str, default = OUTPUT_DIR, help = "Output directory where the CSV mappings file and the directory with the actual dataset will be stored")
     parser.add_argument("-n", "--nested", action = "store_true", help = "Whether to replicate Herman's nested directory structure")
+    parser.add_argument("-m", "--metadata", action = "store_true", help = "Whether to store metadata paths in the resulting CSV file")
     parser.add_argument("-j", "--jobs", type = int, default = int(multiprocessing.cpu_count() / 4), help = "Number of Jobs")
     return parser.parse_args(args = args, namespace = namespace)
 
@@ -103,10 +104,18 @@ if __name__ == "__main__":
         makedirs(args.output_dir)
 
     # output filepaths and directory
-    OUTPUT_PATH = f"{args.output_dir}/{DATASET_NAME}"
-    OUTPUT_DIR = f"{args.output_dir}/{DATASET_NAME}"
-    if args.nested and (not exists(OUTPUT_DIR)):
-        subprocess.run(args = ["bash", f"{dirname(__file__)}/create_data_dir.sh", "-d", OUTPUT_DIR], check = True)
+    OUTPUT_DIR_MAIN = f"{args.output_dir}/{DATASET_NAME}"
+    if not exists(OUTPUT_DIR_MAIN): # make output_dir if it doesn't yet exist
+        mkdir(OUTPUT_DIR_MAIN)
+    OUTPUT_PATH = f"{OUTPUT_DIR_MAIN}/{DATASET_NAME}.csv"
+    DATA_DIR = f"{OUTPUT_DIR_MAIN}/data"
+    if not exists(DATA_DIR):
+        mkdir(DATA_DIR)
+        if args.nested:
+            subprocess.run(args = ["bash", f"{dirname(__file__)}/create_data_dir.sh", "-d", DATA_DIR], check = True)
+    METADATA_DIR = f"{OUTPUT_DIR_MAIN}/metadata"
+    if args.metadata:
+        mkdir(METADATA_DIR)
 
     # load in data frame
     dataset = pd.read_csv(filepath_or_buffer = f"{args.input_dir}/{basename(args.input_dir)}.path.csv", sep = ",", header = 0, index_col = False)
@@ -127,9 +136,9 @@ if __name__ == "__main__":
 
     # get output filepaths
     if args.nested:
-        get_output_path_prefix = lambda path: f"{OUTPUT_DIR}/{('/'.join(path.split('/')[-3:])).split('.')[0]}"
+        get_output_path_prefix = lambda path: f"{DATA_DIR}/{('/'.join(path.split('/')[-3:])).split('.')[0]}"
     else:
-        get_output_path_prefix = lambda path: f"{OUTPUT_DIR}/{basename(path).split('.')[0]}"
+        get_output_path_prefix = lambda path: f"{DATA_DIR}/{basename(path).split('.')[0]}"
     output_path_prefixes = tuple(map(get_output_path_prefix, input_paths))
 
     ##################################################
@@ -151,10 +160,21 @@ if __name__ == "__main__":
 
     # update path column
     dataset["path"] = output_paths
-
-    # do some wrangling on dataset
     dataset = dataset[~pd.isna(dataset["path"])]
-    dataset["path"] = dataset["path"].apply(lambda path: path.replace(args.output_dir, ".")) # transform output paths into relative paths
+    make_path_relative = lambda path: path.replace(OUTPUT_DIR_MAIN, ".")
+    dataset["path"] = dataset["path"].apply(make_path_relative) # transform output paths into relative paths
+
+    # drop metadata column if necessary, elsewise, copy files over and wrangle them
+    if args.metadata:
+        valid_metadata_paths = ~pd.isna(dataset["metadata"])
+        input_paths = dataset["metadata"][valid_metadata_paths]
+        output_paths = input_paths.apply(lambda path: f"{METADATA_DIR}/{basename(path)}")
+        get_metadata = lambda input_path, output_path: copy(src = input_path, dst = output_path)
+        with multiprocessing.Pool(processes = args.jobs) as pool:
+            metadata_paths = pool.starmap(func = get_metadata, iterable = tqdm(iterable = zip(input_paths, output_paths), desc = "Copying over metadata", total = len(input_paths)), chunksize = chunk_size)
+        dataset["metadata"][valid_metadata_paths] = list(map(make_path_relative, metadata_paths))
+    else:
+        dataset = dataset.drop(columns = "metadata")    
 
     # save dataset mapping
     dataset.to_csv(path_or_buf = OUTPUT_PATH, sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w")
