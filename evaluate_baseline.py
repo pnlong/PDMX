@@ -89,6 +89,27 @@ def pad(data: List[torch.tensor]) -> torch.tensor:
     padded = torch.stack(tensors = padded, dim = 0) # combine into a single tensor
     return padded
 
+def unpad_prefix(prefix: np.array, sos_token: int, pad_value: float = dataset.PAD_VALUE, n_tokens_per_event: int = 1) -> np.array:
+    """Unpad the prefix"""
+    
+    # if unidimensional, reshape to multidimensional
+    unidimensional = (len(prefix.shape) == 1)
+    if unidimensional:
+        prefix = prefix.reshape(int(len(prefix) / n_tokens_per_event), n_tokens_per_event)
+
+    # mask out pad values
+    prefix_mask = ~np.all(a = (prefix == pad_value), axis = -1)
+    if (not unidimensional) and (sos_token == pad_value):
+        prefix_mask[np.argmax(a = prefix_mask, axis = 0) - 1] = True
+    prefix = prefix[prefix_mask, :]
+
+    # reflatten if unidimensional
+    if unidimensional:
+        prefix = prefix.flatten()
+    
+    # return the unpadded tensor
+    return prefix
+
 ##################################################
 
 
@@ -344,7 +365,7 @@ if __name__ == "__main__":
         max_seq_len = train_args["max_seq_len"]
         conditioning = train_args["conditioning"]
         unidimensional = train_args.get("unidimensional", False)
-        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, conditioning = conditioning, max_seq_len = max_seq_len, use_augmentation = False, is_baseline = ("baseline" in args.output_dir), unidimensional = unidimensional, include_eos_token = False)
+        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, conditioning = conditioning, max_seq_len = max_seq_len, use_augmentation = False, is_baseline = ("baseline" in args.output_dir), unidimensional = unidimensional, for_generation = True)
 
         # create the model
         logging.info(f"Creating the model...")
@@ -401,7 +422,7 @@ if __name__ == "__main__":
     ##################################################
 
     # create data loader and instantiate iterable
-    test_data_loader = torch.utils.data.DataLoader(dataset = test_dataset, num_workers = args.jobs, collate_fn = dataset.MusicDataset.collate, batch_size = args.batch_size, shuffle = False)
+    test_data_loader = torch.utils.data.DataLoader(dataset = test_dataset, num_workers = args.jobs, collate_fn = test_dataset.collate, batch_size = args.batch_size, shuffle = False)
     test_iter = iter(test_data_loader)
     chunk_size = int(args.batch_size / 2)
 
@@ -449,11 +470,11 @@ if __name__ == "__main__":
                 if not all((exists(generated_output_filepath) for generated_output_filepath in generated_output_filepaths)):
 
                     # get output start tokens
-                    prefix = torch.repeat_interleave(input = torch.tensor(data = [sos] + ([0] * (len(encoding["dimensions"]) - 1)), dtype = torch.long, device = device).reshape(1, 1, len(encoding["dimensions"])), repeats = args.batch_size, dim = 0)
+                    prefix = torch.repeat_interleave(input = torch.tensor(data = [sos] + ([0] * (len(encoding["dimensions"]) - 1)), dtype = torch.long, device = device).reshape(1, 1, len(encoding["dimensions"])), repeats = len(batch["seq"]), dim = 0)
                     if unidimensional:
                         for dimension_index in range(prefix.shape[-1]):
                             prefix[..., dimension_index] = unidimensional_encoding_function(code = prefix[..., dimension_index], dimension_index = dimension_index)
-                        prefix = prefix[..., unidimensional_encoding_order].reshape(prefix.shape[0], -1)
+                        prefix = prefix[..., unidimensional_encoding_order].flatten(start_dim = 1)
 
                     # generate new samples
                     generated = model.generate(
@@ -478,7 +499,7 @@ if __name__ == "__main__":
 
                 # add to results
                 def evaluate_helper(j: int) -> dict:
-                    return evaluate(data = generated[j], encoding = encoding, stem = f"{stem}_{j}", eval_dir = eval_dir, unidimensional_decoding_function = unidimensional_decoding_function)
+                    return evaluate(data = unpad_prefix(prefix = generated[j], sos_token = sos, pad_value = model.decoder.pad_value, n_tokens_per_event = model.decoder.net.n_tokens_per_event), encoding = encoding, stem = f"{stem}_{j}", eval_dir = eval_dir, unidimensional_decoding_function = unidimensional_decoding_function)
                 with multiprocessing.Pool(processes = args.jobs) as pool:
                     results = pool.map(func = evaluate_helper, iterable = range(len(generated)), chunksize = chunk_size)
 

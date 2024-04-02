@@ -33,6 +33,7 @@ MAX_VELOCITY = 127
 DEFAULT_VALUE_CODE = -1
 N_NOTES = 128
 NA_VALUES = ("null", "None", None) # for loading encodings
+DEFAULT_INSTRUMENT = "piano"
 
 ENCODING_DIR = "/home/pnlong/musescore/datav"
 ENCODING_BASENAME = "encoding.json"
@@ -688,7 +689,8 @@ def get_unidimensional_coding_functions(encoding: dict) -> Tuple[Callable, Calla
 
     # create a function that given the field and code, returns the unidimensional code
     code_maps = [sorted(list(encoding[f"code_{dimension}_map"].keys())) for dimension in encoding["dimensions"]]
-    encoding_map = {(dimension_index, code): (dimension_code_range_starts[dimension_index] + code) for dimension_index in range(len(encoding["dimensions"])) for code in code_maps[dimension_index]}
+    min_code_per_dimension = [min(code_maps[dimension_index]) for dimension_index in range(len(encoding["dimensions"]))]
+    encoding_map = {(dimension_index, code): (dimension_code_range_starts[dimension_index] + code - min_code_per_dimension[dimension_index]) for dimension_index in range(len(encoding["dimensions"])) for code in code_maps[dimension_index]}
     def encoding_function(code: int, dimension_index: int) -> int:
         """
         `dimension_index` refers to the dimension index in `encoding["dimensions"]`, not `unidimensional_encoding_order`.
@@ -709,6 +711,17 @@ def get_unidimensional_coding_functions(encoding: dict) -> Tuple[Callable, Calla
 
     # return the dimension indicies list and the two functions
     return encoding_function, decoding_function
+
+
+def get_unidimensional_dimension_code_range_starts(encoding: dict) -> List[int]:
+    """
+    What is the first code value in each dimension? Ordered by unidimensional encoding order.
+    """
+
+    # get cumulative sum
+    dimension_code_range_starts = [0] + np.cumsum(a = encoding["n_tokens"], axis = 0).tolist()[:-1] # in the encoded order
+    dimension_code_range_starts = {dimension: dimension_code_range_starts[dimension_index] for dimension_index, dimension in enumerate(encoding["dimensions"])}
+    return dimension_code_range_starts
 
 ##################################################
 
@@ -774,6 +787,7 @@ def get_encoding(include_velocity: bool = False, use_absolute_time: bool = False
     # add encoding order for unidimensional encoding as well as dimension indicies
     encoding["unidimensional_encoding_order"] = get_unidimensional_encoding_order(include_velocity = include_velocity, use_absolute_time = use_absolute_time)
     encoding["unidimensional_encoding_dimension_indicies"], encoding["unidimensional_decoding_dimension_indicies"] = get_unidimensional_dimension_indicies(encoding = encoding)
+    encoding["unidimensional_dimension_code_range_starts"] = get_unidimensional_dimension_code_range_starts(encoding = encoding)
 
     return encoding
 
@@ -795,6 +809,7 @@ def load_encoding(filepath: str) -> dict:
     encoding["unidimensional_encoding_order"] = list(map(str, encoding["unidimensional_encoding_order"]))
     encoding["unidimensional_encoding_dimension_indicies"] = list(map(int, encoding["unidimensional_encoding_dimension_indicies"]))
     encoding["unidimensional_decoding_dimension_indicies"] = list(map(int, encoding["unidimensional_decoding_dimension_indicies"]))
+    encoding["unidimensional_dimension_code_range_starts"] = {str(k): int(v) for k, v in encoding["unidimensional_dimension_code_range_starts"].items()}
 
     # type-code
     encoding["type_code_map"] = {str(k): int(v) for k, v in encoding["type_code_map"].items()}

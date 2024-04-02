@@ -39,7 +39,7 @@ import parse_mscz
 import expressive_features_plots
 import train
 import evaluate_baseline
-from evaluate_baseline import pad # for padding batches
+from evaluate_baseline import pad, unpad_prefix # for padding batches
 
 ##################################################
 
@@ -322,7 +322,7 @@ if __name__ == "__main__":
         max_seq_len = train_args["max_seq_len"]
         conditioning = train_args["conditioning"]
         unidimensional = train_args.get("unidimensional", False)
-        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, conditioning = conditioning, max_seq_len = max_seq_len, use_augmentation = False, is_baseline = ("baseline" in args.output_dir), unidimensional = unidimensional, include_eos_token = False)
+        test_dataset = dataset.MusicDataset(paths = args.paths, encoding = encoding, conditioning = conditioning, max_seq_len = max_seq_len, use_augmentation = False, is_baseline = ("baseline" in args.output_dir), unidimensional = unidimensional, for_generation = True)
 
         # create the model
         logging.info(f"Creating the model...")
@@ -358,7 +358,7 @@ if __name__ == "__main__":
         note_token, grace_note_token = encoding["type_code_map"]["note"], encoding["type_code_map"]["grace-note"]
         expressive_feature_token = encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING]
         is_anticipation = (conditioning == encode.CONDITIONINGS[-1])
-        sigma = train_args["sigma"] # if use_absolute_time else encode.SIGMA_METRICAL
+        sigma = train_args["sigma"]
         unidimensional_encoding_function, unidimensional_decoding_function = representation.get_unidimensional_coding_functions(encoding = encoding)
         get_type_field = lambda prefix_conditional: prefix_conditional[type_dim::model.decoder.net.n_tokens_per_event] if unidimensional else prefix_conditional[:, type_dim] # helper function for quickly accessing the type field
 
@@ -369,7 +369,7 @@ if __name__ == "__main__":
     ##################################################
 
     # create data loader and instantiate iterable
-    test_data_loader = torch.utils.data.DataLoader(dataset = test_dataset, num_workers = args.jobs, collate_fn = dataset.MusicDataset.collate, batch_size = args.batch_size, shuffle = False)
+    test_data_loader = torch.utils.data.DataLoader(dataset = test_dataset, num_workers = args.jobs, collate_fn = test_dataset.collate, batch_size = args.batch_size, shuffle = False)
     test_iter = iter(test_data_loader)
     chunk_size = int(args.batch_size / 2)
 
@@ -423,7 +423,7 @@ if __name__ == "__main__":
                         prefix_default[..., dimension_index] = unidimensional_encoding_function(code = prefix_default[..., dimension_index], dimension_index = dimension_index)
                     prefix_default = prefix_default[..., unidimensional_encoding_order].reshape(prefix_default.shape[0], -1)
                 n_notes_so_far = utils.rep(x = 0, times = len(batch["seq"]))
-                last_prefix_indicies = utils.rep(x = -1, times = len(batch["seq"]))
+                last_sos_token_indicies, last_prefix_indicies = utils.rep(x = -1, times = len(batch["seq"])), utils.rep(x = -1, times = len(batch["seq"]))
                 for seq_index in range(len(last_prefix_indicies)):
                     for j in range(type_dim, batch["seq"].shape[1], model.decoder.net.n_tokens_per_event):
                         current_event_type = batch["seq"][seq_index, j + type_dim] if unidimensional else batch["seq"][seq_index, j, type_dim]
@@ -433,7 +433,9 @@ if __name__ == "__main__":
                         elif current_event_type in (note_token, grace_note_token): # if event is a note
                             n_notes_so_far[seq_index] += 1 # increment
                             last_prefix_indicies[seq_index] = j # update last prefix index
-                prefix_conditional_default = [batch["seq"][seq_index, :(last_prefix_indicies[seq_index] + model.decoder.net.n_tokens_per_event)] for seq_index in range(len(last_prefix_indicies))] # truncate to last prefix for each sequence in batch
+                        elif current_event_type == sos:
+                            last_sos_token_indicies[seq_index] = j
+                prefix_conditional_default = [batch["seq"][seq_index, last_sos_token_indicies[seq_index]:(last_prefix_indicies[seq_index] + model.decoder.net.n_tokens_per_event)] for seq_index in range(len(last_prefix_indicies))] # truncate to last prefix for each sequence in batch
                 for seq_index in range(len(prefix_conditional_default)):
                     if len(prefix_conditional_default[seq_index]) == 0: # make sure the prefix conditional default is not just empty
                         prefix_conditional_default[seq_index] = prefix_default[0]
@@ -480,6 +482,8 @@ if __name__ == "__main__":
                             is_anticipation = is_anticipation,
                             sigma = sigma
                         )
+
+                        # concatenate generation to prefix
                         generated = torch.cat(tensors = (prefix, generated), dim = 1).cpu().numpy() # wrangle a bit
 
                     else:
@@ -498,7 +502,7 @@ if __name__ == "__main__":
                             mask = loss_query * mask
                             del loss_query
                         # evaluate
-                        evaluate(data = generated[j],
+                        evaluate(data = unpad_prefix(prefix = generated[j], sos_token = sos, pad_value = model.decoder.pad_value, n_tokens_per_event = model.decoder.net.n_tokens_per_event),
                                  encoding = encoding,
                                  stem = f"{stem}_{j}",
                                  eval_dir = eval_dir,

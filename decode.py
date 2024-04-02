@@ -45,10 +45,9 @@ def decode_data(
 
     # infer unidimensional, if so, convert to original 2-d scheme
     if len(codes.shape) == 1:
-        codes = codes.reshape(int(len(codes.shape) / len(encoding["dimensions"])), len(encoding["dimensions"])) # reshape
+        codes = codes.reshape(int(codes.shape[0] / len(encoding["dimensions"])), len(encoding["dimensions"])) # reshape
         codes = codes[:, encoding["unidimensional_decoding_dimension_indicies"]] # reorder to correct dimensions
         codes = unidimensional_decoding_function(code = codes) # convert codes to dimension-specific codes
-
 
     # determine include_velocity and use_absolute_time
     include_velocity = encoding["include_velocity"]
@@ -92,7 +91,8 @@ def decode_data(
         elif event_type in ("note", "grace-note", representation.EXPRESSIVE_FEATURE_TYPE_STRING):
             value = code_value_map[max(int(row[value_dim]), 0)]
             duration = code_duration_map[int(row[duration_dim])]
-            program = instrument_program_map[code_instrument_map[int(row[instrument_dim])]]
+            instrument = code_instrument_map[int(row[instrument_dim])]
+            program = instrument_program_map[representation.DEFAULT_INSTRUMENT if instrument is None else instrument]
             if use_absolute_time:
                 time = code_time_map[int(row[time_dim])]
                 current_row = [event_type, time, value, duration, program]
@@ -101,7 +101,7 @@ def decode_data(
                 position = code_position_map[int(row[position_dim])]
                 current_row = [event_type, beat, position, value, duration, program]
             if include_velocity:
-                current_row.append(code_velocity_map[int(row[velocity_dim])])
+                current_row.append(code_velocity_map[min(int(row[velocity_dim]), representation.MAX_VELOCITY)])
             data.append(current_row)
         else:
             raise ValueError("Unknown event type.")

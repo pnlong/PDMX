@@ -245,8 +245,8 @@ if __name__ == "__main__":
         RELEVANT_PARTITIONS[1]: MusicDataset(paths = args.paths_valid, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, is_baseline = args.baseline, max_seq_len = args.max_seq_len, use_augmentation = args.aug, unidimensional = args.unidimensional)
         }
     data_loader = {
-        RELEVANT_PARTITIONS[0]: torch.utils.data.DataLoader(dataset = dataset[RELEVANT_PARTITIONS[0]], batch_size = args.batch_size, shuffle = True, num_workers = args.jobs, collate_fn = MusicDataset.collate),
-        RELEVANT_PARTITIONS[1]: torch.utils.data.DataLoader(dataset = dataset[RELEVANT_PARTITIONS[1]], batch_size = args.batch_size, shuffle = True, num_workers = args.jobs, collate_fn = MusicDataset.collate)
+        RELEVANT_PARTITIONS[0]: torch.utils.data.DataLoader(dataset = dataset[RELEVANT_PARTITIONS[0]], batch_size = args.batch_size, shuffle = True, num_workers = args.jobs, collate_fn = dataset[RELEVANT_PARTITIONS[0]].collate),
+        RELEVANT_PARTITIONS[1]: torch.utils.data.DataLoader(dataset = dataset[RELEVANT_PARTITIONS[1]], batch_size = args.batch_size, shuffle = True, num_workers = args.jobs, collate_fn = dataset[RELEVANT_PARTITIONS[1]].collate)
     }
 
     # create the model

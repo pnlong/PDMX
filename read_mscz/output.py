@@ -168,14 +168,18 @@ def to_mido_meta_track(music: "MusicExpress") -> MidiTrack:
     
     # create a track to store the metadata
     meta_track = MidiTrack()
+    all_notes = sum((track.notes for track in music.tracks), []) # all notes
+    max_note_time = max((note.time for note in all_notes))
 
     # song title
     if music.metadata.title is not None:
         meta_track.append(MetaMessage(type = "track_name", name = music.metadata.title))
 
     # tempos and time signatures
-    if not music.absolute_time:
-        combined_temporal_features = sorted(music.tempos + music.time_signatures, key = lambda temporal_feature: temporal_feature.time) # get sorted list of tempos and time signatures
+    metrical_time = (not music.absolute_time)
+    if metrical_time:
+        combined_temporal_features = list(filter(lambda temporal_feature: temporal_feature.time <= max_note_time, music.tempos + music.time_signatures))
+        combined_temporal_features = sorted(combined_temporal_features, key = lambda temporal_feature: temporal_feature.time) # get sorted list of tempos and time signatures
         current_time_signature = music.time_signatures[0] if len(music.time_signatures) > 0 else TimeSignature(time = 0) # instantiate current_time_signature
         tempo_changes = [] # keep track of tempo changes to deal with tempo spanners later
         for temporal_feature in combined_temporal_features:
@@ -190,18 +194,17 @@ def to_mido_meta_track(music: "MusicExpress") -> MidiTrack:
         meta_track.append(MetaMessage(type = "set_tempo", time = 0, tempo = DEFAULT_TEMPO))
 
     # key signatures
-    for key_signature in music.key_signatures:
+    for key_signature in filter(lambda key_signature: key_signature.time <= max_note_time, music.key_signatures):
         if (key_signature.root is not None) and (key_signature.mode in ("major", "minor")):
             meta_track.append(MetaMessage(type = "key_signature", time = key_signature.time, key = PITCH_NAMES[key_signature.root] + ("m" if key_signature.mode == "minor" else "")))        
 
     # lyrics
-    for lyric in music.lyrics:
+    for lyric in filter(lambda lyric: lyric.time <= max_note_time, music.lyrics):
         meta_track.append(MetaMessage(type = "lyrics", time = lyric.time, text = lyric.lyric))
 
     # system and staff level annotations
     current_tempo_index = 0
-    all_notes = sum((track.notes for track in music.tracks), []) # all notes
-    for annotation in music.annotations + sum((track.annotations for track in music.tracks), []):
+    for annotation in filter(lambda annotation: annotation.time <= max_note_time, music.annotations + sum((track.annotations for track in music.tracks), [])):
         # ensure that values are valid
         if hasattr(annotation.annotation, "subtype"): # make sure subtype field is not none
             if annotation.annotation.subtype is None:
@@ -209,9 +212,10 @@ def to_mido_meta_track(music: "MusicExpress") -> MidiTrack:
             else:
                 annotation.annotation.subtype = clean_up_subtype(subtype = annotation.annotation.subtype) # clean up the subtype
         # update current_tempo_index if necessary
-        if current_tempo_index < len(tempo_changes) - 1: # avoid index error later on at last element in tempo_changes
-            if tempo_changes[current_tempo_index + 1]["time"] <= annotation.time: # update current_tempo_index if necessary
-                current_tempo_index += 1 # increment
+        if metrical_time:
+            if current_tempo_index < len(tempo_changes) - 1: # avoid index error later on at last element in tempo_changes
+                if tempo_changes[current_tempo_index + 1]["time"] <= annotation.time: # update current_tempo_index if necessary
+                    current_tempo_index += 1 # increment
         # Text and TextSpanner
         if annotation.annotation.__class__.__name__ in ("Text", "TextSpanner"):
             meta_track.append(MetaMessage(type = "text", time = annotation.time, text = annotation.annotation.text))
@@ -220,7 +224,7 @@ def to_mido_meta_track(music: "MusicExpress") -> MidiTrack:
             meta_track.append(MetaMessage(type = "marker", time = annotation.time, text = annotation.annotation.text))
         elif not music.absolute_time:
             # Fermata and fermatas stored inside of Articulation
-            if annotation.annotation.__class__.__name__ in ("Fermata", "Articulation"):
+            if (annotation.annotation.__class__.__name__ in ("Fermata", "Articulation")) and metrical_time: # only apply when metrical time in use
                 if annotation.annotation.__class__.__name__ == "Articulation": # looking for fermatas
                     if "fermata" not in annotation.annotation.subtype: # hidden as articulations
                         continue # if not a fermata-articulation, skip
@@ -229,7 +233,7 @@ def to_mido_meta_track(music: "MusicExpress") -> MidiTrack:
                 meta_track.append(MetaMessage(type = "set_tempo", time = annotation.time + longest_note_duration_at_current_time, tempo = tempo_changes[current_tempo_index]["tempo"])) # end of fermata
                 del longest_note_duration_at_current_time
             # TempoSpanner
-            elif annotation.annotation.__class__.__name__ == "TempoSpanner":
+            elif (annotation.annotation.__class__.__name__ == "TempoSpanner") and metrical_time: # only apply when metrical time in use
                 tempo_change_factor_magnitude = 1 # amount to multiply the tempo by
                 for time in range(annotation.time, annotation.time + annotation.annotation.duration, int(annotation.annotation.duration / 5)):
                     tempo_change_factor = 1 # default, unknown TempoSpanner subtype

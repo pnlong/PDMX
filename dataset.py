@@ -26,11 +26,19 @@ import encode
 #################################################
 
 
+# CONSTANTS
+#################################################
+
+PAD_VALUE = 0
+
+#################################################
+
+
 # HELPER FUNCTIONS
 ##################################################
 
 # padder function
-def pad(data: np.array, max_length: int = None) -> np.array:
+def pad(data: List[np.array], max_length: int = None, front: bool = False) -> np.array:
 
     # deal with maxlen argument
     if max_length is None:
@@ -38,17 +46,17 @@ def pad(data: np.array, max_length: int = None) -> np.array:
     else:
         for seq in data:
             assert len(seq) <= max_length
-    
-    # check dimensionality of data
-    if data[0].ndim == 1:
-        padded = [np.pad(array = seq, pad_width = (0, max_length - len(seq))) for seq in data]
-    elif data[0].ndim == 2:
-        padded = [np.pad(array = seq, pad_width = ((0, max_length - len(seq)), (0, 0))) for seq in data]
-    else:
-        raise ValueError("Received data in higher than two dimensions.")
-    
+
+    # pad the data
+    padded = [np.pad(array = seq,
+                     pad_width = (
+                         ((max_length - (seq), 0) if front else (0, max_length - len(seq))) if (len(data[0].shape) == 1) else
+                         (((max_length - len(seq), 0) if front else (0, max_length - len(seq))), (0, 0))),
+                     mode = "constant",
+                     constant_values = PAD_VALUE) for seq in data]
+
     # return
-    return np.stack(arrays = padded)
+    return np.stack(arrays = padded, axis = 0)
 
 # masking function
 def get_mask(data: List[np.array]) -> np.array:
@@ -79,7 +87,7 @@ class MusicDataset(Dataset):
             max_seq_len: int = None,
             use_augmentation: bool = False,
             unidimensional: bool = False,
-            include_eos_token: bool = True,
+            for_generation: bool = False,
         ):
         super().__init__()
         with open(paths, "r") as file:
@@ -96,7 +104,7 @@ class MusicDataset(Dataset):
         self.temporal_dim = self.encoding["dimensions"].index(temporal)
         self.value_dim = self.encoding["dimensions"].index("value")
         self.unidimensional = unidimensional
-        self.include_eos_token = include_eos_token
+        self.for_generation = for_generation
         self.n_tokens_per_event = len(self.encoding["dimensions"]) if unidimensional else 1
         self.unidimensional_encoding_function, _ = representation.get_unidimensional_coding_functions(encoding = self.encoding)
         if self.unidimensional:
@@ -170,23 +178,22 @@ class MusicDataset(Dataset):
                 axis = 0
             )
 
-        # remove eos token if necessary
-        if (not self.include_eos_token):
+        # remove eos token if this dataset is for generation
+        if self.for_generation:
             seq = seq[:-self.n_tokens_per_event]
 
         return {"path": path, "seq": seq}
 
     ##################################################
 
-    # CLASS METHODS
+    # FOR CREATING BATCHES
     ##################################################
 
-    @classmethod
-    def collate(cls, data: List[dict]):
+    def collate(self, data: List[dict]) -> dict:
         seq = [sample["seq"] for sample in data]
         return {
             "path": [sample["path"] for sample in data],
-            "seq": torch.tensor(pad(data = seq), dtype = torch.long),
+            "seq": torch.tensor(pad(data = seq, front = self.for_generation), dtype = torch.long),
             "seq_len": torch.tensor([len(s) for s in seq], dtype = torch.long),
             "mask": get_mask(data = seq),
         }

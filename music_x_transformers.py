@@ -29,6 +29,7 @@ from x_transformers.x_transformers import (AbsolutePositionalEmbedding, Attentio
 
 import representation
 import utils
+from dataset import PAD_VALUE
 
 ##################################################
 
@@ -86,7 +87,7 @@ class MusicTransformerWrapper(nn.Module):
         n_tokens = encoding["n_tokens"]
         use_absolute_time = encoding["use_absolute_time"]
         if max_temporal is not None:
-            temporal_dim = encoding["dimensions"].index("time" if use_absolute_time else "beat")
+            temporal_dim = encoding["dimensions"].index("time" if use_absolute_time else "beat") # no reordering here because we reference "n_tokens"
             n_tokens[temporal_dim] = int(max_temporal / (representation.TIME_STEP if use_absolute_time else 1)) + 1
             del temporal_dim
 
@@ -251,7 +252,7 @@ class MusicAutoregressiveWrapper(nn.Module):
             net: MusicTransformerWrapper,
             encoding: dict = DEFAULT_ENCODING,
             ignore_index: int = DEFAULT_IGNORE_INDEX,
-            pad_value: int = 0
+            pad_value: int = PAD_VALUE
         ):
         
         # intialize some fields
@@ -271,9 +272,11 @@ class MusicAutoregressiveWrapper(nn.Module):
         self.note_type_codes = [encoding["type_code_map"]["note"], encoding["type_code_map"]["grace-note"]]
         self.expressive_feature_type_code = encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING]
         self.value_type_codes = {self.expressive_feature_type_code,}.union(set(self.note_type_codes))
-        self.max_temporal = encoding["max_" + ("time" if self.use_absolute_time else "beat")]
+        self.temporal = "time" if self.use_absolute_time else "beat"
+        self.temporal_code_map = encoding[f"{self.temporal}_code_map"]
+        self.max_temporal = encoding[f"max_{self.temporal}"]
         if self.use_absolute_time:
-            self.time_code_map = encoding["time_code_map"]
+            self.max_temporal = self.temporal_code_map[self.max_temporal]
 
         # for masking out expressive features
         self.expressive_feature_value_codes = torch.tensor(data = utils.rep(x = 0, times = representation.N_NOTES + 1) + utils.rep(x = 1, times = len(encoding["value_code_map"]) - (representation.N_NOTES + 1)), dtype = torch.bool)
@@ -281,47 +284,58 @@ class MusicAutoregressiveWrapper(nn.Module):
         # get the dimension indices
         self.dimensions = {dimension: i for i, dimension in enumerate(encoding["unidimensional_encoding_order" if self.net.unidimensional else "dimensions"])}
         assert self.dimensions["type"] == 0
+        self.type_dim = self.dimensions["type"]
+        self.value_dim = self.dimensions["value"]
+        self.temporal_dim = self.dimensions[self.temporal]
+        self.instrument_dim = self.dimensions["instrument"]
 
         # extra stuff for unidimensionality
         if self.net.unidimensional:
-            # get encoding dimension indicies
-            self.unidimensional_encoding_dimension_indicies = encoding["unidimensional_encoding_dimension_indicies"]
             # the index on which a new field starts
-            self.dimension_code_range_starts = [0] + np.cumsum(a = [encoding["n_tokens"][dimension_index] for dimension_index in self.unidimensional_encoding_dimension_indicies], axis = 0).tolist()
+            self.unidimensional_encoding_dimension_indicies = encoding["unidimensional_encoding_dimension_indicies"]
+            unidimensional_dimension_code_range_starts = encoding["unidimensional_dimension_code_range_starts"]
+            self.dimension_code_range_starts = [unidimensional_dimension_code_range_starts[dimension] for dimension in encoding["unidimensional_encoding_order"]]
+            n_tokens_total = sum(encoding["n_tokens"])
             # ranges that a field spans, or more accurately, the inverse of those ranges
-            self.dimension_code_ranges = torch.ones(size = ((len(self.dimension_code_range_starts) - 1), self.dimension_code_range_starts[-1]), dtype = torch.bool) # a bit of a lie, makes everything outside the code range true, while the range itself is all false
-            for i in range(len(self.dimensions)): # self.dimension_code_ranges ordered in the order of unidimensional_encoding_dimension_indicies
-                self.dimension_code_ranges[i, self.dimension_code_range_starts[i]:self.dimension_code_range_starts[i + 1]] = False
+            self.dimension_code_ranges = torch.ones(size = (len(self.dimension_code_range_starts), n_tokens_total), dtype = torch.bool) # a bit of a lie, makes everything outside the code range true, while the range itself is all false
+            for dimension_index in range(len(self.dimensions)): # self.dimension_code_ranges ordered in the order of unidimensional_encoding_dimension_indicies
+                start = self.dimension_code_range_starts[dimension_index]
+                end = min(list(filter(lambda dimension_code_range_start: dimension_code_range_start > start, self.dimension_code_range_starts)) + [n_tokens_total]) # smallest code range start thats still bigger than the current
+                self.dimension_code_ranges[dimension_index, start:end] = False
             # redefine certain codes to unidimensional encoding
-            type_dim = self.dimensions["type"]
-            self.sos_type_code += self.dimension_code_range_starts[type_dim]
-            self.eos_type_code += self.dimension_code_range_starts[type_dim]
-            self.son_type_code += self.dimension_code_range_starts[type_dim]
+            self.sos_type_code += self.dimension_code_range_starts[self.type_dim]
+            self.eos_type_code += self.dimension_code_range_starts[self.type_dim]
+            self.son_type_code += self.dimension_code_range_starts[self.type_dim]
             self.special_token_type_codes = {self.sos_type_code, self.son_type_code, self.eos_type_code}
-            self.instrument_type_code += self.dimension_code_range_starts[type_dim]
-            self.note_type_codes[0] += self.dimension_code_range_starts[type_dim]
-            self.note_type_codes[1] += self.dimension_code_range_starts[type_dim]
-            self.expressive_feature_type_code += self.dimension_code_range_starts[type_dim]
+            self.instrument_type_code += self.dimension_code_range_starts[self.type_dim]
+            self.note_type_codes[0] += self.dimension_code_range_starts[self.type_dim]
+            self.note_type_codes[1] += self.dimension_code_range_starts[self.type_dim]
+            self.expressive_feature_type_code += self.dimension_code_range_starts[self.type_dim]
             self.value_type_codes = {self.expressive_feature_type_code,}.union(set(self.note_type_codes))
-            value_dim = self.dimensions["value"]
-            self.expressive_feature_value_codes = torch.cat(tensors = (torch.zeros(size = (self.dimension_code_range_starts[value_dim],), dtype = torch.bool), self.expressive_feature_value_codes, torch.zeros(size = (self.dimension_code_range_starts[-1] - self.dimension_code_range_starts[value_dim + 1],), dtype = torch.bool)), dim = 0)
-            del type_dim, value_dim
-
+            self.max_temporal += self.dimension_code_range_starts[self.temporal_dim]
+            value_dim_start = self.dimension_code_range_starts[self.value_dim]
+            self.expressive_feature_value_codes = torch.cat(tensors = 
+                (
+                torch.zeros(size = (value_dim_start,), dtype = torch.bool),
+                self.expressive_feature_value_codes,
+                torch.zeros(size = (n_tokens_total - min(list(filter(lambda dimension_code_range_start: dimension_code_range_start > value_dim_start, self.dimension_code_range_starts)) + [n_tokens_total]),), dtype = torch.bool)
+                ), dim = 0)
+    
     ##################################################
 
 
     # HELPER FUNCTION TO FRONT PAD
     ##################################################
         
-    def front_pad(self, sequences: List[torch.tensor], device: torch.device) -> torch.tensor:
+    def pad(self, sequences: List[torch.tensor], device: torch.device, front: bool = True) -> torch.tensor:
         """
         Front pad sequences of variable length such that they all have the same length, then combine into a single tensor.
         Assumes all sequences in `sequences` have shape (1, seq_len, n_fields) or (1, seq_len * n_fields).
         Returns a tensor with shape (batch_size, seq_len, n_fields) or (batch_size, seq_len * n_fields).
         """
         longest_seq_len = max((seq.shape[1] for seq in sequences)) # get the longest sequence length
-        for seq_index in range(len(sequences)):
-            sequences[seq_index] = F.pad(input = sequences[seq_index], pad = (0, 0, 0, longest_seq_len - sequences[seq_index].shape[1]), mode = "constant", value = self.pad_value)
+        pad_prefix = [] if self.net.unidimensional else [0, 0]
+        sequences = [F.pad(input = seq, pad = tuple(pad_prefix + ([longest_seq_len - seq.shape[1], 0] if front else [0, longest_seq_len - seq.shape[1]])), mode = "constant", value = self.pad_value) for seq in sequences]
         out = torch.cat(tensors = sequences, dim = 0)
         return out.to(device)
     
@@ -356,31 +370,40 @@ class MusicAutoregressiveWrapper(nn.Module):
         
         # get shape from start_tokens
         batch_size = start_tokens.shape[0]
-        dim = start_tokens.shape[-1] if (not self.net.unidimensional) else self.n_tokens_per_event
-        start_tokens_per_seq = [len(seq) for seq in start_tokens]
+        dim = start_tokens.shape[-1] if (not self.net.unidimensional) else self.net.n_tokens_per_event
+        # get masks of the actual sequence, excluding any pad
+        start_tokens_per_seq = [torch.repeat_interleave(input = ~torch.all(input = ((seq.reshape(int(len(seq) / self.net.n_tokens_per_event), self.net.n_tokens_per_event) if self.net.unidimensional else seq) == self.pad_value), dim = -1), repeats = self.net.n_tokens_per_event, dim = -1) for seq in start_tokens]
+        # ensure that we aren't accidentally masking out the sos row
+        if (self.pad_value == self.sos_type_code) and (not self.net.unidimensional): # does not apply to unidimensional because sos row isn't all 0s in unidimensional scheme
+            first_sos_token_index = torch.argmax(input = torch.stack(tensors = start_tokens_per_seq, dim = 0).byte(), dim = -1) - self.net.n_tokens_per_event # length of this is batch_size
+            for seq_index in range(batch_size):
+                start_tokens_per_seq[seq_index][first_sos_token_index[seq_index]] = True
+        # remove front pad from start tokens
+        start_tokens_unpadded = [seq[start_token_per_seq].unsqueeze(dim = 0) for seq, start_token_per_seq in zip(start_tokens, start_tokens_per_seq)]
+        if self.net.unidimensional: # get the eos tokens for unidimensionality
+            eos_tokens = torch.cat(tensors = [seq[:, :self.net.n_tokens_per_event] for seq in start_tokens_unpadded], dim = 0).to(start_tokens.device)
+            eos_tokens[:, 0] = self.eos_type_code
+        # pad the wrangled sequences in our desired way
+        start_tokens = self.pad(sequences = start_tokens_unpadded, device = start_tokens.device) # remove pad values from start tokens
+        # get the number of start tokens per sequence
+        start_tokens_per_seq = [sum(start_token_per_seq) for start_token_per_seq in start_tokens_per_seq]
 
         # convert temperature to list
-        if self.net.unidimensional and isinstance(temperature, (list, tuple)):
-            temperature = temperature[0] # convert to single value
-        elif isinstance(temperature, (float, int)):
+        if isinstance(temperature, (float, int)):
             temperature = [temperature] * dim
         elif len(temperature) == 1:
             temperature = temperature * dim
         else:
             assert len(temperature) == dim, f"`temperature` must be of length {dim}"
         # convert filter_logits_fn to list
-        if self.net.unidimensional and isinstance(filter_logits_fn, (list, tuple)):
-            filter_logits_fn = filter_logits_fn[0] # convert to single value
-        elif isinstance(filter_logits_fn, str):
+        if isinstance(filter_logits_fn, str):
             filter_logits_fn = [filter_logits_fn] * dim
         elif len(filter_logits_fn) == 1:
             filter_logits_fn = filter_logits_fn * dim
         else:
             assert len(filter_logits_fn) == dim, f"`filter_logits_fn` must be of length {dim}"
         # convert filter_thres to list
-        if self.net.unidimensional and isinstance(filter_thres, (list, tuple)):
-            filter_thres = filter_thres[0] # convert to single value
-        elif isinstance(filter_thres, (float, int)):
+        if isinstance(filter_thres, (float, int)):
             filter_thres = [filter_thres] * dim
         elif len(filter_thres) == 1:
             filter_thres = filter_thres * dim
@@ -391,17 +414,12 @@ class MusicAutoregressiveWrapper(nn.Module):
             monotonicity_dim = [self.dimensions[monotonicity_dim]]
         else:
             monotonicity_dim = [self.dimensions[dim] for dim in monotonicity_dim]
-        # tokenize sigma if sigma is in absolute time (seconds)
-        if self.use_absolute_time:
-            sigma = self.time_code_map[sigma]
+        # tokenize sigma (convert from temporal metric to code)
+        sigma = self.temporal_code_map[sigma]
 
         # some dimension indicies
-        type_dim = self.dimensions["type"]
-        temporal_dim = self.dimensions["time" if self.use_absolute_time else "beat"]
-        value_dim = self.dimensions["value"]
-        instrument_dim = self.dimensions["instrument"]
         if exists(eos_token) and self.net.unidimensional:
-            eos_token += self.dimension_code_range_starts[type_dim] # recalculate eos token for full unidimensional vocabulary
+            eos_token += self.dimension_code_range_starts[self.type_dim] # recalculate eos token for full unidimensional vocabulary
 
         # get some constants
         was_training = self.net.training
@@ -418,11 +436,11 @@ class MusicAutoregressiveWrapper(nn.Module):
                 start_tokens_temp = start_tokens_temp.reshape(batch_size, -1, dim)
             for seq_index in range(len(expressive_features)): # filter expressive features so that its only the features after the last note in the prefix
                 if len(start_tokens_temp[seq_index]) > 0:
-                    expressive_feature_matches = (start_tokens_temp[seq_index, :, type_dim] != self.expressive_feature_type_code)
+                    expressive_feature_matches = (start_tokens_temp[seq_index, :, self.type_dim] != self.expressive_feature_type_code)
                     last_note_index = len(expressive_feature_matches) - torch.argmax(input = expressive_feature_matches.flip(dims = (0,)).byte(), dim = 0).item() - 1 # get the index of the last note
-                    current_temporal[seq_index] = start_tokens_temp[seq_index, last_note_index, temporal_dim].item() # get the last note index's time
+                    current_temporal[seq_index] = start_tokens_temp[seq_index, last_note_index, self.temporal_dim].item() # get the last note index's time
                     expressive_features[seq_index] = start_tokens_temp[seq_index, (last_note_index + 1):, :] # get expressive features that come after the last note
-                    expressive_features[seq_index] = expressive_features[seq_index][torch.sort(input = expressive_features[seq_index][:, temporal_dim], descending = False, dim = 0)[1]] # sort expressive features by time
+                    expressive_features[seq_index] = expressive_features[seq_index][torch.sort(input = expressive_features[seq_index][:, self.temporal_dim], descending = False, dim = 0)[1]] # sort expressive features by time
                     del expressive_feature_matches, last_note_index
             del start_tokens_temp
         
@@ -435,7 +453,7 @@ class MusicAutoregressiveWrapper(nn.Module):
                 if n_expressive_features_remaining > 0:
                     output[seq_index] = output[seq_index][:, :-n_expressive_features_remaining] # update output
                     start_tokens_per_seq[seq_index] -= n_expressive_features_remaining
-        output = self.front_pad(sequences = output, device = start_tokens.device)
+        output = self.pad(sequences = output, device = start_tokens.device)
         mask = kwargs.pop("mask", None)
         if mask is None:
             mask = torch.ones(size = (start_tokens.shape[:2]), dtype = torch.bool, device = start_tokens.device)
@@ -444,9 +462,9 @@ class MusicAutoregressiveWrapper(nn.Module):
         if (monotonicity_dim is None):
             current_values = None
         elif self.net.unidimensional:
-            current_values = {dim: [max(seq[torch.repeat_interleave(input = torch.logical_and(input = (seq[type_dim::self.net.n_tokens_per_event] == self.note_type_codes[0]), other = (seq[type_dim::self.net.n_tokens_per_event] == self.note_type_codes[1])), repeats = self.net.n_tokens_per_event)][dim::self.net.n_tokens_per_event].tolist() + [0]) for seq in output] for dim in monotonicity_dim}
-        else:
-            current_values = {dim: [max(seq[torch.logical_and(input = (seq[:, type_dim] == self.note_type_codes[0]), other = (seq[:, type_dim] == self.note_type_codes[1])), dim].tolist() + [0]) for seq in output] for dim in monotonicity_dim}
+            current_values = {dim: [max(seq[torch.repeat_interleave(input = (seq[self.type_dim::self.net.n_tokens_per_event] != self.expressive_feature_type_code), repeats = self.net.n_tokens_per_event)][dim::self.net.n_tokens_per_event].tolist() + [0]) for seq in output] for dim in monotonicity_dim}
+        elif not self.net.unidimensional:
+            current_values = {dim: [max(seq[(seq[:, self.type_dim] != self.expressive_feature_type_code), dim].tolist() + [0]) for seq in output] for dim in monotonicity_dim}
 
         # logits to return
         if return_logits:
@@ -458,8 +476,10 @@ class MusicAutoregressiveWrapper(nn.Module):
         ##################################################
             
         # loop through sequences
-        max_temporal_token_buildup = torch.zeros(size = (batch_size,), dtype = torch.uint8)
-        for _ in range(int(seq_len / self.net.n_tokens_per_event)):
+        max_temporal_token_buildup = torch.zeros(size = (batch_size,), dtype = torch.uint8, device = output.device)
+        n_iterations = int(seq_len / self.net.n_tokens_per_event)
+        final_iteration_index = n_iterations - 1
+        for i in range(n_iterations):
 
             # SETUP FOR SAMPLING
             ##################################################
@@ -469,12 +489,12 @@ class MusicAutoregressiveWrapper(nn.Module):
                 sequences = [seq for seq in output]
                 for seq_index in range(batch_size):
                     if len(expressive_features[seq_index]) > 0:
-                        relevant_expressive_features = expressive_features[seq_index][expressive_features[seq_index][:, temporal_dim] <= (current_temporal[seq_index] + sigma)]
+                        relevant_expressive_features = expressive_features[seq_index][expressive_features[seq_index][:, self.temporal_dim] <= (current_temporal[seq_index] + sigma)]
                         if self.net.unidimensional:
                             relevant_expressive_features = relevant_expressive_features.flatten()
                         sequences[seq_index] = torch.cat(tensors = (sequences[seq_index], relevant_expressive_features), dim = 0)
                         expressive_features[seq_index] = expressive_features[seq_index][len(relevant_expressive_features):]
-                output = self.front_pad(sequences = [seq.unsqueeze(dim = 0) for seq in sequences], device = output.device)
+                output = self.pad(sequences = [seq.unsqueeze(dim = 0) for seq in sequences], device = output.device)
                 del sequences
 
             ##################################################
@@ -486,7 +506,7 @@ class MusicAutoregressiveWrapper(nn.Module):
 
                 # sample different fields
                 batch_event = torch.zeros(size = (batch_size, dim), dtype = output.dtype, device = output.device)
-                output_temp, mask_temp = deepcopy(output), deepcopy(mask)
+                output_temp, mask_temp = deepcopy(output).to(output.device), deepcopy(mask).to(mask.device)
                 for dimension_index in range(len(self.dimensions)): # order is unidimensionally-encoded dimensions, not the normal encoding["dimensions"]
                     
                     # get current x and mask
@@ -504,29 +524,25 @@ class MusicAutoregressiveWrapper(nn.Module):
 
                     # enforce monotonicity
                     if (monotonicity_dim is not None) and (dimension_index in monotonicity_dim):
-                        if (dimension_index == type_dim):
-                            for seq_index, type_dim_current_value in enumerate(current_values[type_dim]):
-                                if type_dim_current_value in self.value_type_codes: # as to not unnecessarily filter out any notes or expressive features
-                                    type_dim_current_value = min(self.value_type_codes)
-                                logits[seq_index, self.dimension_code_range_starts[type_dim]:type_dim_current_value] = -float("inf")
-                        else:
-                            for seq_index in range(batch_size):
-                                logits[seq_index, :current_values[dimension_index][seq_index]] = -float("inf") # zero out values up until current value
-                    
+                        for seq_index in range(batch_size):
+                            current_value = current_values[dimension_index][seq_index]
+                            if (dimension_index == self.type_dim) and (current_value in self.value_type_codes):
+                                current_value = min(self.value_type_codes)
+                            logits[seq_index, self.dimension_code_range_starts[dimension_index]:current_value] = -float("inf") # zero out values up until current value
+                                            
                     # restrict sampling
                     logits[:, self.dimension_code_ranges[dimension_index]] = -float("inf") # restrict codes not in the current dimension
-                    if (dimension_index == type_dim): # filter out sos token if necessary
+                    if (dimension_index == self.type_dim): # filter out sos token if necessary
                         logits[:, self.sos_type_code] = -float("inf") # the 0th code in the type dimension code range should be the sos token
-                    if (dimension_index == self.instrument_dim) or (dimension_index == self.value_dim): # avoid none value in instrument and value dimensions
-                        logits[:, self.dimension_code_range_starts[dimension_index]] = -float("inf") # avoid none value                        
+                    logits[:, self.dimension_code_range_starts[dimension_index]] = -float("inf") # avoid none value                        
                     
                     # don't allow for sampling of expressive features if conditional
                     if notes_only:
                         logits[:, self.expressive_feature_type_code] = -float("inf") # don't allow for the expressive feature type
                         logits[:, self.expressive_feature_value_codes] = -float("inf") # don't allow for expressive feature values
-                    
+
                     # sample from the restricted logits
-                    sampled = sample(logits = logits, kind = filter_logits_fn, threshold = filter_thres, temperature = temperature, min_p_pow = min_p_pow, min_p_ratio = min_p_ratio).flatten() # length is batch_size
+                    sampled = sample(logits = logits, kind = filter_logits_fn[dimension_index], threshold = filter_thres[dimension_index], temperature = temperature[dimension_index], min_p_pow = min_p_pow, min_p_ratio = min_p_ratio).flatten() # length is batch_size
 
                     # add sampled values to batch_event and output_temp, update mask_temp
                     batch_event[:, dimension_index] = sampled
@@ -535,22 +551,25 @@ class MusicAutoregressiveWrapper(nn.Module):
 
                     # update current values
                     if (monotonicity_dim is not None) and (dimension_index in monotonicity_dim):
-                        current_values[dimension_index] = np.maximum(current_values[dimension_index], sampled).tolist()
-                    if is_anticipation and (dimension_index == temporal_dim):
+                        current_values[dimension_index] = np.maximum(current_values[dimension_index], sampled.cpu()).tolist()
+                    if is_anticipation and (dimension_index == self.temporal_dim):
                         current_temporal = sampled.tolist()
 
                     # to avoid buildup of tokens at max temporal, end song
-                    if (dimension_index == temporal_dim):
-                        max_temporal_token_buildup += (sampled == (self.max_temporal - self.dimension_code_range_starts[temporal_dim]))
+                    if (dimension_index == self.temporal_dim):
+                        max_temporal_token_buildup += (sampled >= self.max_temporal)
 
                     # add to return logits if necessary
                     if return_logits:
                         logits_to_return.append(logits)                    
 
                 # to avoid buildup of tokens at max temporal, end song
-                exceeds_max_temporal_token_buildup_limit = (max_temporal_token_buildup < MAX_TEMPORAL_TOKEN_BUILDUP_LIMIT)
-                batch_event *= torch.repeat_interleave(input = torch.bitwise_not(input = exceeds_max_temporal_token_buildup_limit).byte().unsqueeze(dim = -1), repeats = dim, dim = -1) # if the number of tokens exceeds or equals the buildup limit, zero out the row
-                batch_event[exceeds_max_temporal_token_buildup_limit, type_dim] = self.eos_type_code # place end of song token
+                exceeds_max_temporal_token_buildup_limit = (max_temporal_token_buildup >= MAX_TEMPORAL_TOKEN_BUILDUP_LIMIT) # len(max_temporal_token_buildup) == batch_size
+                if exists(eos_token) and (i == final_iteration_index): # force all eos tokens if on the final iteration of generating
+                    exceeds_max_temporal_token_buildup_limit = torch.ones_like(input = exceeds_max_temporal_token_buildup_limit, dtype = torch.bool).to(output.device)
+                max_temporal_token_buildup_limit_mask = torch.repeat_interleave(input = (~exceeds_max_temporal_token_buildup_limit).unsqueeze(dim = -1), repeats = self.net.n_tokens_per_event, dim = -1) # if the number of tokens exceeds or equals the buildup limit, zero out the row
+                batch_event *= max_temporal_token_buildup_limit_mask.byte() # zero out sequences in the batch that exceed the buildup limit
+                batch_event += (~max_temporal_token_buildup_limit_mask).byte() * eos_tokens # make rows match sos rows (type dim followed by all 0s)
 
                 # wrangle output a bit
                 output = torch.cat(tensors = (output, batch_event), dim = 1)
@@ -558,21 +577,22 @@ class MusicAutoregressiveWrapper(nn.Module):
 
                 # if end of song token is provided
                 if exists(eos_token):
-                    is_eos_tokens = (output == eos_token)
                     # mask out everything after the eos tokens
-                    if torch.all(input = torch.any(input = is_eos_tokens, dim = 1), dim = 0): # if all sequences in the batch have an eos token, break
+                    if torch.all(input = torch.any(input = (output == eos_token), dim = 1), dim = 0): # if all sequences in the batch have an eos token, break
                         if self.pad_value == self.sos_type_code: # get the index of the last sos token to remove the front pad
-                            last_sos_token_index = torch.argmax(input = (output[type_dim::self.net.n_tokens_per_event] > self.sos_type_code).byte(), dim = 1) - 1
+                            last_sos_token_indicies = torch.argmax(input = (output[:, self.type_dim::self.net.n_tokens_per_event] > self.sos_type_code).byte(), dim = 1) - 1
                         else:
-                            last_sos_token_index = torch.argmax(input = (output[type_dim::self.net.n_tokens_per_event] == self.sos_type_code).byte(), dim = 1)
-                        last_sos_token_index *= self.net.n_tokens_per_event
-                        sequences = [seq[last_sos_token_index:] for seq in output] # remove front pad
+                            last_sos_token_indicies = torch.argmax(input = (output[:, self.type_dim::self.net.n_tokens_per_event] == self.sos_type_code).byte(), dim = 1)
+                        last_sos_token_indicies *= self.net.n_tokens_per_event
+                        sequences = [seq[last_sos_token_index:] for seq, last_sos_token_index in zip(output, last_sos_token_indicies)] # remove front pad
                         is_eos_tokens = [(seq == eos_token) for seq in sequences] # recalculate because we removed the front pad
                         for seq_index, is_eos_tokens_seq in enumerate(is_eos_tokens):
                             first_eos_token_index = torch.argmax(input = is_eos_tokens_seq.byte(), dim = 0).item() # index of the first eos token
-                            sequences[seq_index][(first_eos_token_index + 1):] = self.pad_value # pad after eos token
-                            sequences[seq_index] = sequences[seq_index][start_tokens_per_seq[seq_index]:] # remove start tokens from output
-                        output = self.front_pad(sequences = [seq.unsqueeze(dim = 0) for seq in sequences], device = output.device) # front pad
+                            # sequences[seq_index][(first_eos_token_index + self.net.n_tokens_per_event):] = self.pad_value # pad after eos token
+                            # sequences[seq_index] = sequences[seq_index][start_tokens_per_seq[seq_index]:] # remove start tokens from output
+                            sequences[seq_index][first_eos_token_index:(first_eos_token_index + self.net.n_tokens_per_event)] = eos_tokens[seq_index] # make sure row is correct for eos row
+                            sequences[seq_index] = sequences[seq_index][start_tokens_per_seq[seq_index]:(first_eos_token_index + self.net.n_tokens_per_event)]
+                        output = self.pad(sequences = [seq.unsqueeze(dim = 0) for seq in sequences], device = output.device, front = False) # rear pad
                         break
 
             ##################################################
@@ -596,42 +616,42 @@ class MusicAutoregressiveWrapper(nn.Module):
                 logits = [logit[:, -1, :] for logit in logits] # first dim is batch size, next is sequence length, next is the vocabulary for that field
                 
                 # enforce monotonicity on type dimension
-                if (monotonicity_dim is not None) and (type_dim in monotonicity_dim):
-                    for seq_index, type_dim_current_value in enumerate(current_values[type_dim]):
+                if (monotonicity_dim is not None) and (self.type_dim in monotonicity_dim):
+                    for seq_index, type_dim_current_value in enumerate(current_values[self.type_dim]):
                         if type_dim_current_value in self.value_type_codes: # as to not unnecessarily filter out any notes or expressive features
                             type_dim_current_value = min(self.value_type_codes)
-                        logits[type_dim][seq_index, :type_dim_current_value] = -float("inf")
+                        logits[self.type_dim][seq_index, :type_dim_current_value] = -float("inf")
                 
                 # filter out sos token
-                logits[type_dim][:, self.sos_type_code] = -float("inf") # the 0th token should be the sos token
+                logits[self.type_dim][:, self.sos_type_code] = -float("inf") # the 0th token should be the sos token
 
                 # sample from the logits
-                event_types = sample(logits = logits[type_dim], kind = filter_logits_fn[type_dim], threshold = filter_thres[type_dim], temperature = temperature[type_dim], min_p_pow = min_p_pow, min_p_ratio = min_p_ratio).flatten().tolist() # length is batch_size
+                event_types = sample(logits = logits[self.type_dim], kind = filter_logits_fn[self.type_dim], threshold = filter_thres[self.type_dim], temperature = temperature[self.type_dim], min_p_pow = min_p_pow, min_p_ratio = min_p_ratio).flatten().tolist() # length is batch_size
 
                 # update current values
-                if (monotonicity_dim is not None) and (type_dim in monotonicity_dim):
-                    current_values[type_dim] = [max(current_value, event_type) for current_value, event_type in zip(current_values[type_dim], event_types)]
+                if (monotonicity_dim is not None) and (self.type_dim in monotonicity_dim):
+                    current_values[self.type_dim] = [max(current_value, event_type) for current_value, event_type in zip(current_values[self.type_dim], event_types)]
 
                 # don't allow for sampling of expressive features
                 if notes_only:
-                    logits[type_dim][:, self.expressive_feature_type_code] = -float("inf") # don't allow for the expressive feature type
-                    logits[value_dim][:, self.expressive_feature_value_codes] = -float("inf") # don't allow for expressive feature values
+                    logits[self.type_dim][:, self.expressive_feature_type_code] = -float("inf") # don't allow for the expressive feature type
+                    logits[self.value_dim][:, self.expressive_feature_value_codes] = -float("inf") # don't allow for expressive feature values
 
                 # iterate after each sample
                 batch_event = torch.zeros(size = (batch_size, 1, dim), dtype = output.dtype, device = output.device)
-                batch_event[..., type_dim] = torch.tensor(data = event_types, dtype = batch_event.dtype)
+                batch_event[..., self.type_dim] = torch.tensor(data = event_types, dtype = batch_event.dtype).unsqueeze(dim = -1)
                 for seq_index, event_type in enumerate(event_types): # seq_index is the sequence index within the batch
 
                     # to avoid buildup of tokens at max temporal, end song
-                    if (max_temporal_token_buildup[seq_index].item() >= MAX_TEMPORAL_TOKEN_BUILDUP_LIMIT): # if the number of tokens exceeds or equals the buildup limit, place end of song token
+                    if (max_temporal_token_buildup[seq_index].item() >= MAX_TEMPORAL_TOKEN_BUILDUP_LIMIT) or (i == final_iteration_index): # if the number of tokens exceeds or equals the buildup limit, place end of song token
                         event_type = self.eos_type_code
-                        batch_event[seq_index, :, type_dim] = self.eos_type_code
+                        batch_event[seq_index, :, self.type_dim] = self.eos_type_code
 
                     # an instrument code
                     if (event_type == self.instrument_type_code):
-                        logits[instrument_dim][:, 0] = -float("inf") # avoid none in instrument dimension
-                        sampled = sample(logits = logits[instrument_dim][seq_index].unsqueeze(dim = 0), kind = filter_logits_fn[instrument_dim], threshold = filter_thres[instrument_dim], temperature = temperature[instrument_dim], min_p_pow = min_p_pow, min_p_ratio = min_p_ratio).item()
-                        batch_event[seq_index, :, instrument_dim] = sampled
+                        logits[self.instrument_dim][:, 0] = -float("inf") # avoid none in instrument dimension
+                        sampled = sample(logits = logits[self.instrument_dim][seq_index].unsqueeze(dim = 0), kind = filter_logits_fn[self.instrument_dim], threshold = filter_thres[self.instrument_dim], temperature = temperature[self.instrument_dim], min_p_pow = min_p_pow, min_p_ratio = min_p_ratio).item()
+                        batch_event[seq_index, :, self.instrument_dim] = sampled
 
                     # a value code
                     elif (event_type in self.value_type_codes):
@@ -643,7 +663,7 @@ class MusicAutoregressiveWrapper(nn.Module):
                             logits[d][:, 0] = -float("inf") # avoid none in value dimension
                             sampled = sample(logits = logits[d][seq_index].unsqueeze(dim = 0), kind = filter_logits_fn[d], threshold = filter_thres[d], temperature = temperature[d], min_p_pow = min_p_pow, min_p_ratio = min_p_ratio).item()
                             batch_event[seq_index, :, d] = sampled
-                            if (d == temporal_dim) and is_anticipation:
+                            if (d == self.temporal_dim) and is_anticipation:
                                 current_temporal[seq_index] = sampled
                             # update current values
                             if (monotonicity_dim is not None) and (d in monotonicity_dim):
@@ -658,7 +678,7 @@ class MusicAutoregressiveWrapper(nn.Module):
                         logits_to_return[dimension_index].append(logits[dimension_index])
                 
                 # update the count of tokens that are at temporal of max_temporal
-                max_temporal_token_buildup += (batch_event[..., temporal_dim] == self.max_temporal).flatten()
+                max_temporal_token_buildup += (batch_event[..., self.temporal_dim] >= self.max_temporal).flatten()
 
                 # wrangle output a bit
                 output = torch.cat(tensors = (output, batch_event), dim = 1)
@@ -666,20 +686,20 @@ class MusicAutoregressiveWrapper(nn.Module):
 
                 # if end of song token is provided
                 if exists(eos_token):
-                    is_eos_tokens = (output[..., type_dim] == eos_token) # [(seq[:, type_dim] == eos_token) for seq in output]
                     # mask out everything after the eos tokens
-                    if torch.all(input = torch.any(input = is_eos_tokens, dim = 1), dim = 0): # if all sequences in the batch have an eos token, break
+                    if torch.all(input = torch.any(input = (output[..., self.type_dim] == eos_token), dim = 1), dim = 0): # if all sequences in the batch have an eos token, break
                         if self.pad_value == self.sos_type_code: # get the index of the last sos token to remove the front pad
-                            last_sos_token_index = torch.argmax(input = (output[..., type_dim] > self.sos_type_code).byte(), dim = 1) - 1
+                            last_sos_token_indicies = torch.argmax(input = (output[..., self.type_dim] > self.sos_type_code).byte(), dim = 1) - 1
                         else:
-                            last_sos_token_index = torch.argmax(input = (output[..., type_dim] == self.sos_type_code).byte(), dim = 1)
-                        sequences = [seq[last_sos_token_index:] for seq in output] # remove front pad
-                        is_eos_tokens = [(seq[:, type_dim] == eos_token) for seq in sequences] # recalculate because we removed the front pad
+                            last_sos_token_indicies = torch.argmax(input = (output[..., self.type_dim] == self.sos_type_code).byte(), dim = 1)
+                        sequences = [seq[last_sos_token_index:] for seq, last_sos_token_index in zip(output, last_sos_token_indicies)] # remove front pad
+                        is_eos_tokens = [(seq[:, self.type_dim] == eos_token) for seq in sequences] # recalculate because we removed the front pad
                         for seq_index, is_eos_tokens_seq in enumerate(is_eos_tokens):
                             first_eos_token_index = torch.argmax(input = is_eos_tokens_seq.byte(), dim = 0).item() # index of the first eos token
-                            sequences[seq_index][(first_eos_token_index + 1):] = self.pad_value # pad after eos token
-                            sequences[seq_index] = sequences[seq_index][start_tokens_per_seq[seq_index]:] # remove start tokens from output
-                        output = self.front_pad(sequences = [seq.unsqueeze(dim = 0) for seq in sequences], device = output.device) # front pad
+                            # sequences[seq_index][(first_eos_token_index + self.net.n_tokens_per_event):] = self.pad_value # pad after eos token
+                            # sequences[seq_index] = sequences[seq_index][start_tokens_per_seq[seq_index]:] # remove start tokens from output
+                            sequences[seq_index] = sequences[seq_index][start_tokens_per_seq[seq_index]:(first_eos_token_index + self.net.n_tokens_per_event)]
+                        output = self.pad(sequences = [seq.unsqueeze(dim = 0) for seq in sequences], device = output.device, front = False) # rear pad
                         break
 
             ##################################################
