@@ -534,13 +534,15 @@ class MusicAutoregressiveWrapper(nn.Module):
                     logits[:, self.dimension_code_ranges[dimension_index]] = -float("inf") # restrict codes not in the current dimension
                     if (dimension_index == self.type_dim): # filter out sos token if necessary
                         logits[:, self.sos_type_code] = -float("inf") # the 0th code in the type dimension code range should be the sos token
-                    logits[:, self.dimension_code_range_starts[dimension_index]] = -float("inf") # avoid none value                        
+                    logits[:, self.dimension_code_range_starts[dimension_index]] = -float("inf") # avoid none value
                     
                     # don't allow for sampling of expressive features if conditional
                     if notes_only:
                         logits[:, self.expressive_feature_type_code] = -float("inf") # don't allow for the expressive feature type
                         logits[:, self.expressive_feature_value_codes] = -float("inf") # don't allow for expressive feature values
 
+                    if (dimension_index == self.temporal_dim):
+                        logits_temporal = logits[:, ~self.dimension_code_ranges[self.temporal_dim]]
                     # sample from the restricted logits
                     sampled = sample(logits = logits, kind = filter_logits_fn[dimension_index], threshold = filter_thres[dimension_index], temperature = temperature[dimension_index], min_p_pow = min_p_pow, min_p_ratio = min_p_ratio).flatten() # length is batch_size
 

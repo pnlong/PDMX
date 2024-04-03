@@ -20,7 +20,7 @@ from os import mkdir, makedirs
 from typing import Union, List, Callable
 import math
 import multiprocessing
-from glob import iglob
+from glob import glob
 
 import muspy
 import numpy as np
@@ -45,11 +45,11 @@ from train import PARTITIONS, NA_VALUE, DEFAULT_MAX_SEQ_LEN
 # CONSTANTS
 ##################################################
 
-DATA_DIR = "/data2/pnlong/musescore/data"
+DATA_DIR = "/home/pnlong/musescore/datav"
 PATHS = f"{DATA_DIR}/test.txt"
 EVAL_STEM = "eval_baseline"
 TRUTH_DIR_STEM = "eval_truth"
-OUTPUT_DIR = "/data2/pnlong/musescore/data"
+OUTPUT_DIR = f"{DATA_DIR}/model"
 EVAL_METRICS = ["pitch_class_entropy", "scale_consistency", "groove_consistency"]
 OUTPUT_COLUMNS = ["i", "original_path", "path",] + EVAL_METRICS
 
@@ -95,6 +95,9 @@ def unpad_prefix(prefix: np.array, sos_token: int, pad_value: float = dataset.PA
     # if unidimensional, reshape to multidimensional
     unidimensional = (len(prefix.shape) == 1)
     if unidimensional:
+        # make sure prefix is correct length
+        if (len(prefix) % n_tokens_per_event) > 0:
+            prefix = np.pad(array = prefix, pad_width = [0, n_tokens_per_event - (len(prefix) % n_tokens_per_event)], mode = "constant", constant_values = pad_value)
         prefix = prefix.reshape(int(len(prefix) / n_tokens_per_event), n_tokens_per_event)
 
     # mask out pad values
@@ -389,7 +392,8 @@ if __name__ == "__main__":
         # load the checkpoint
         CHECKPOINT_DIR = f"{args.output_dir}/checkpoints"
         checkpoint_filepath = f"{CHECKPOINT_DIR}/best_model.{PARTITIONS[1]}.pth"
-        model.load_state_dict(state_dict = torch.load(f = checkpoint_filepath, map_location = device))
+        model_state_dict = torch.load(f = checkpoint_filepath, map_location = device)
+        model.load_state_dict(state_dict = model_state_dict)
         logging.info(f"Loaded the model weights from: {checkpoint_filepath}")
         model.eval()
         
@@ -466,15 +470,17 @@ if __name__ == "__main__":
                 ##################################################
 
                 eval_dir = eval_output_dir
-                generated_output_filepaths = iglob(pathname = f"{eval_dir}/{stem}_*.npy")
-                if not all((exists(generated_output_filepath) for generated_output_filepath in generated_output_filepaths)):
+                generated_output_filepaths = glob(pathname = f"{eval_dir}/{stem}_*.npy")
+                generated_output_filepaths_exist = tuple(map(exists, generated_output_filepaths))
+                if (not all(generated_output_filepaths_exist)) or (len(generated_output_filepaths_exist) == 0):
 
                     # get output start tokens
-                    prefix = torch.repeat_interleave(input = torch.tensor(data = [sos] + ([0] * (len(encoding["dimensions"]) - 1)), dtype = torch.long, device = device).reshape(1, 1, len(encoding["dimensions"])), repeats = len(batch["seq"]), dim = 0)
+                    prefix = torch.repeat_interleave(input = torch.tensor(data = [sos] + ([0] * (len(encoding["dimensions"]) - 1)), dtype = torch.long).reshape(1, 1, len(encoding["dimensions"])), repeats = len(batch["seq"]), dim = 0).cpu().numpy()
                     if unidimensional:
                         for dimension_index in range(prefix.shape[-1]):
                             prefix[..., dimension_index] = unidimensional_encoding_function(code = prefix[..., dimension_index], dimension_index = dimension_index)
                         prefix = prefix[..., unidimensional_encoding_order].flatten(start_dim = 1)
+                    prefix = torch.from_numpy(ndarray = prefix).to(device)
 
                     # generate new samples
                     generated = model.generate(
@@ -495,7 +501,7 @@ if __name__ == "__main__":
                 else:
                 
                     # load in previously generated samples
-                    generated = np.stack(arrays = [np.load(file = generated_output_filepath) for generated_output_filepath in generated_output_filepaths], axis = 0)
+                    generated = dataset.pad(data = list(map(np.load, generated_output_filepaths)), front = True)
 
                 # add to results
                 def evaluate_helper(j: int) -> dict:

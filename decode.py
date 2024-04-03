@@ -108,8 +108,10 @@ def decode_data(
     
     # resort data in sort-order
     if use_absolute_time:
+        data = list(filter(lambda row: row[time_dim] is not None, data))
         data = sorted(data, key = lambda row: row[time_dim])
     else:
+        data = list(filter(lambda row: not ((row[position_dim] is None) or (row[beat_dim] is None)), data))
         data = sorted(sorted(data, key = lambda row: row[position_dim]), key = lambda row: row[beat_dim])
     
     return data

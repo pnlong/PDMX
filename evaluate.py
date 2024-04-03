@@ -19,7 +19,7 @@ from os import makedirs
 from typing import Union, Callable
 import math
 import multiprocessing
-from glob import iglob
+from glob import glob
 
 import numpy as np
 import pandas as pd
@@ -345,7 +345,8 @@ if __name__ == "__main__":
         # load the checkpoint
         CHECKPOINT_DIR = f"{args.output_dir}/checkpoints"
         checkpoint_filepath = f"{CHECKPOINT_DIR}/best_model.{train.PARTITIONS[1]}.pth"
-        model.load_state_dict(state_dict = torch.load(f = checkpoint_filepath, map_location = device))
+        model_state_dict = torch.load(f = checkpoint_filepath, map_location = device)
+        model.load_state_dict(state_dict = model_state_dict)
         logging.info(f"Loaded the model weights from: {checkpoint_filepath}")
         model.eval()
         
@@ -417,11 +418,12 @@ if __name__ == "__main__":
                 ##################################################
 
                 # default prefix sequence
-                prefix_default = torch.repeat_interleave(input = torch.tensor(data = [sos] + ([0] * (len(encoding["dimensions"]) - 1)), dtype = torch.long, device = device).reshape(1, 1, len(encoding["dimensions"])), repeats = batch["seq"].shape[0], dim = 0)
+                prefix_default = torch.repeat_interleave(input = torch.tensor(data = [sos] + ([0] * (len(encoding["dimensions"]) - 1)), dtype = torch.long).reshape(1, 1, len(encoding["dimensions"])), repeats = batch["seq"].shape[0], dim = 0).cpu().numpy()
                 if unidimensional:
                     for dimension_index in range(prefix_default.shape[-1]):
                         prefix_default[..., dimension_index] = unidimensional_encoding_function(code = prefix_default[..., dimension_index], dimension_index = dimension_index)
                     prefix_default = prefix_default[..., unidimensional_encoding_order].reshape(prefix_default.shape[0], -1)
+                prefix_default = torch.from_numpy(ndarray = prefix_default).to(device)
                 n_notes_so_far = utils.rep(x = 0, times = len(batch["seq"]))
                 last_sos_token_indicies, last_prefix_indicies = utils.rep(x = -1, times = len(batch["seq"])), utils.rep(x = -1, times = len(batch["seq"]))
                 for seq_index in range(len(last_prefix_indicies)):
@@ -466,8 +468,9 @@ if __name__ == "__main__":
                     ##################################################
 
                     eval_dir = eval_output_dirs[eval_type]
-                    generated_output_filepaths = iglob(pathname = f"{eval_dir}/{stem}_*.npy")
-                    if not all((exists(generated_output_filepath) for generated_output_filepath in generated_output_filepaths)):
+                    generated_output_filepaths = glob(pathname = f"{eval_dir}/{stem}_*.npy")
+                    generated_output_filepaths_exist = tuple(map(exists, generated_output_filepaths))
+                    if (not all(generated_output_filepaths_exist)) or (len(generated_output_filepaths_exist) == 0):
 
                         # generate new samples
                         generated = model.generate(
@@ -489,7 +492,7 @@ if __name__ == "__main__":
                     else:
 
                         # load in previously generated samples
-                        generated = np.stack(arrays = [np.load(file = generated_output_filepath) for generated_output_filepath in generated_output_filepaths], axis = 0)
+                        generated = dataset.pad(data = list(map(np.load, generated_output_filepaths)), front = True)
 
                     # add to results
                     def evaluate_helper(j: int):
