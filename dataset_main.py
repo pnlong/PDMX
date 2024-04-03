@@ -29,7 +29,7 @@ from train import NA_VALUE
 # CONSTANTS
 ##################################################
 
-INPUT_DIR = "/data2/pnlong/expressive_features"
+INPUT_DIR = "/data2/pnlong/musescore/expressive_features"
 OUTPUT_DIR = "/data2/pnlong/musescore"
 
 DATASET_NAME = "ExpressionNet"
@@ -58,6 +58,7 @@ def parse_args(args = None, namespace = None):
 # FUNCTION TO PRODUCE JSON FILES FOR DATASET
 ##################################################
 
+# main function for getting data
 def get_data(input_path: str, output_path_prefix: str, compressed: bool = False) -> str:
     """
     Given the input path, load that MuseScore file and save it in JSON format.
@@ -89,6 +90,14 @@ def get_data(input_path: str, output_path_prefix: str, compressed: bool = False)
     # if that fails, return None
     except:
         return None
+    
+
+# function to help with copying metadata files
+def get_metadata(input_path: str) -> str:
+    """Copy over a metadata file, returning the copied filepath."""
+    output_path = f"{METADATA_DIR}/{basename(input_path)}" # get output filepath
+    copy(src = input_path, dst = output_path) # copy over file
+    return output_path
 
 ##################################################
 
@@ -144,37 +153,51 @@ if __name__ == "__main__":
     ##################################################
 
 
-    # SCRAPE EXPRESSIVE FEATURES
+    # MAKE DATASET
     ##################################################
 
-    # use multiprocessing to generate dataset
+    # some pre dataset building stuff
     logging.info(f"N_PATHS = {len(input_paths)}") # print number of paths to process
     chunk_size = 1
+    make_path_relative = lambda path: path.replace(OUTPUT_DIR_MAIN, ".")
     start_time = perf_counter() # start the timer
+
+    # use multiprocessing to generate dataset
     with multiprocessing.Pool(processes = args.jobs) as pool:
-        output_paths = pool.starmap(func = get_data, iterable = tqdm(iterable = zip(input_paths, output_path_prefixes), desc = f"Creating {DATASET_NAME}", total = len(input_paths)), chunksize = chunk_size)
+
+        # get json files
+        output_paths = pool.starmap(
+            func = get_data,
+            iterable = tqdm(
+                iterable = zip(input_paths, output_path_prefixes),
+                desc = f"Creating {DATASET_NAME}",
+                total = len(input_paths)),
+            chunksize = chunk_size)
+        dataset["path"] = output_paths
+        dataset = dataset[~pd.isna(dataset["path"])]
+        dataset["path"] = dataset["path"].apply(make_path_relative) # transform output paths into relative paths
+        
+        # copy metadata files over, or drop the metadata column altogether
+        if args.metadata:
+            valid_metadata_paths = ((~pd.isna(dataset["metadata"])) & dataset["metadata"].apply(exists))
+            dataset.loc[~valid_metadata_paths, "metadata"] = None
+            metadata_paths = list(tqdm(
+                iterable = pool.imap(
+                    func = get_metadata,
+                    iterable = dataset["metadata"][valid_metadata_paths],
+                    chunksize = chunk_size
+                ),
+                desc = "Copying over metadata",
+                total = sum(valid_metadata_paths)))
+            dataset.loc[valid_metadata_paths, "metadata"] = list(map(make_path_relative, metadata_paths))
+        else:
+            dataset = dataset.drop(columns = "metadata")    
+    
+    # output total time
     end_time = perf_counter() # stop the timer
     total_time = end_time - start_time # compute total time elapsed
     total_time = strftime("%H:%M:%S", gmtime(total_time)) # convert into pretty string
-    logging.info(f"Total time: {total_time}")
-
-    # update path column
-    dataset["path"] = output_paths
-    dataset = dataset[~pd.isna(dataset["path"])]
-    make_path_relative = lambda path: path.replace(OUTPUT_DIR_MAIN, ".")
-    dataset["path"] = dataset["path"].apply(make_path_relative) # transform output paths into relative paths
-
-    # drop metadata column if necessary, elsewise, copy files over and wrangle them
-    if args.metadata:
-        valid_metadata_paths = ~pd.isna(dataset["metadata"])
-        input_paths = dataset["metadata"][valid_metadata_paths]
-        output_paths = input_paths.apply(lambda path: f"{METADATA_DIR}/{basename(path)}")
-        get_metadata = lambda input_path, output_path: copy(src = input_path, dst = output_path)
-        with multiprocessing.Pool(processes = args.jobs) as pool:
-            metadata_paths = pool.starmap(func = get_metadata, iterable = tqdm(iterable = zip(input_paths, output_paths), desc = "Copying over metadata", total = len(input_paths)), chunksize = chunk_size)
-        dataset["metadata"][valid_metadata_paths] = list(map(make_path_relative, metadata_paths))
-    else:
-        dataset = dataset.drop(columns = "metadata")    
+    logging.info(f"Total time: {total_time}")    
 
     # save dataset mapping
     dataset.to_csv(path_or_buf = OUTPUT_PATH, sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w")
