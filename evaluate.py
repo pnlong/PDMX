@@ -55,7 +55,7 @@ EVAL_STEM = "eval"
 DEFAULT_MAX_PREFIX_LEN = 50
 
 CONDITIONAL_TYPES = train.MASKS
-GENERATION_TYPES = train.MASKS[:-1]
+GENERATION_TYPES = train.MASKS
 EVAL_TYPES = ["joint",] + [f"conditional_{conditional_type}_{generation_type}" for conditional_type in CONDITIONAL_TYPES for generation_type in GENERATION_TYPES]
 PLOT_TYPES = ["baseline", "n_expressive_features", "density", "summary", "sparsity", "loss_for_perplexity"]
 
@@ -183,7 +183,7 @@ def evaluate(
     path = f"{eval_dir}/{stem}"
     np.save(file = f"{path}.npy", arr = data) # save as a numpy array
     # encode.save_csv_codes(filepath = f"{path}.csv", data = data) # save as a .csv file
-    music = decode.decode(codes = data, encoding = encoding, unidimensional_decoding_function = unidimensional_decoding_function) # convert to a MusicExpress object
+    music = decode.decode(codes = data, encoding = encoding, infer_metrical_time = True, unidimensional_decoding_function = unidimensional_decoding_function) # convert to a MusicExpress object
     # music.trim(end = music.resolution * 64) # trim the music
 
     # extract data
@@ -358,6 +358,10 @@ if __name__ == "__main__":
         eos = encoding["type_code_map"]["end-of-song"]
         note_token, grace_note_token = encoding["type_code_map"]["note"], encoding["type_code_map"]["grace-note"]
         expressive_feature_token = encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING]
+        conditional_on_controls = (bool(train_args.get("conditional", False)) or bool(train_args.get("econditional", False)))
+        notes_are_controls = bool(train_args.get("econditional", False))
+        event_tokens = (note_token, grace_note_token) if (not notes_are_controls) else (expressive_feature_token,)
+        control_tokens = torch.tensor(data = (note_token, grace_note_token) if notes_are_controls else (expressive_feature_token,), device = device)
         is_anticipation = (conditioning == encode.CONDITIONINGS[-1])
         sigma = train_args["sigma"]
         unidimensional_encoding_function, unidimensional_decoding_function = representation.get_unidimensional_coding_functions(encoding = encoding)
@@ -423,17 +427,17 @@ if __name__ == "__main__":
                     for dimension_index in range(prefix_default.shape[-1]):
                         prefix_default[..., dimension_index] = unidimensional_encoding_function(code = prefix_default[..., dimension_index], dimension_index = dimension_index)
                     prefix_default = prefix_default[..., unidimensional_encoding_order].reshape(prefix_default.shape[0], -1)
-                prefix_default = torch.from_numpy(ndarray = prefix_default).to(device)
-                n_notes_so_far = utils.rep(x = 0, times = len(batch["seq"]))
+                prefix_default = torch.from_numpy(prefix_default).to(device)
+                n_events_so_far = utils.rep(x = 0, times = len(batch["seq"]))
                 last_sos_token_indicies, last_prefix_indicies = utils.rep(x = -1, times = len(batch["seq"])), utils.rep(x = -1, times = len(batch["seq"]))
                 for seq_index in range(len(last_prefix_indicies)):
                     for j in range(type_dim, batch["seq"].shape[1], model.decoder.net.n_tokens_per_event):
                         current_event_type = batch["seq"][seq_index, j + type_dim] if unidimensional else batch["seq"][seq_index, j, type_dim]
-                        if (n_notes_so_far[seq_index] > args.prefix_len) or (current_event_type == eos): # make sure the prefix isn't too long, or if end of song token, no end of song tokens in prefix
+                        if (n_events_so_far[seq_index] > args.prefix_len) or (current_event_type == eos): # make sure the prefix isn't too long, or if end of song token, no end of song tokens in prefix
                             last_prefix_indicies[seq_index] = j - model.decoder.net.n_tokens_per_event
                             break
-                        elif current_event_type in (note_token, grace_note_token): # if event is a note
-                            n_notes_so_far[seq_index] += 1 # increment
+                        elif current_event_type in event_tokens: # if an event
+                            n_events_so_far[seq_index] += 1 # increment
                             last_prefix_indicies[seq_index] = j # update last prefix index
                         elif current_event_type == sos:
                             last_sos_token_indicies[seq_index] = j
@@ -448,19 +452,25 @@ if __name__ == "__main__":
                     # DETERMINE PREFIX SEQUENCE AND ANY RELEVANT VARIABLES
                     ##################################################
 
-                    if eval_type == EVAL_TYPES[0]: # joint
-                        notes_only = False
+                    joint = (eval_type == EVAL_TYPES[0])
+                    if joint: # joint
                         prefix = prefix_default
                     else: # conditional
                         conditional_type, generation_type = eval_type.split("_")[1:]
-                        notes_only = (generation_type != train.ALL_STRING)
-                        
                         if conditional_type == CONDITIONAL_TYPES[1]: # conditional on notes only
                             prefix = pad(data = [prefix_conditional[(get_type_field(prefix_conditional = prefix_conditional) != expressive_feature_token)] for prefix_conditional in prefix_conditional_default]).to(device)
                         elif conditional_type == CONDITIONAL_TYPES[2]: # conditional on expressive features only
                             prefix = pad(data = [prefix_conditional[torch.logical_and(input = (get_type_field(prefix_conditional = prefix_conditional) != note_token), other = (get_type_field(prefix_conditional = prefix_conditional) != grace_note_token))] for prefix_conditional in prefix_conditional_default]).to(device)
                         else: # conditional on everything
                             prefix = prefix_conditional_default
+
+                    # skip irrelevant eval types
+                    if conditional_on_controls and (
+                        joint or 
+                        (((notes_are_controls) and (generation_type in (GENERATION_TYPES[0], GENERATION_TYPES[1]))) or # notes are controls and generation is notes
+                         ((not notes_are_controls) and (generation_type == (GENERATION_TYPES[0], GENERATION_TYPES[2]))) # expressive features are controls and generation is expressive features
+                        )):
+                        continue
 
                     ##################################################
 
@@ -481,7 +491,8 @@ if __name__ == "__main__":
                             filter_logits_fn = args.filter,
                             filter_thres = args.filter_threshold,
                             monotonicity_dim = ("type", "time" if use_absolute_time else "beat"),
-                            notes_only = notes_only,
+                            joint = joint,
+                            notes_are_controls = notes_are_controls,
                             is_anticipation = is_anticipation,
                             sigma = sigma
                         )
@@ -499,9 +510,9 @@ if __name__ == "__main__":
                         # setup for loss for perplexity calculations
                         seq = batch["seq"][j].unsqueeze(dim = 0).to(device)
                         mask = batch["mask"][j].unsqueeze(dim = 0).to(device)
-                        if notes_only:
-                            loss_query = ((seq[:, 0::model.decoder.net.n_tokens_per_event] if unidimensional else seq[..., 0]) != encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING]) # filter out expressive features
-                            seq = (loss_query if unidimensional else torch.repeat_interleave(input = loss_query.unsqueeze(dim = -1), repeats = seq.shape[-1], dim = -1)) * seq
+                        if not joint:
+                            loss_query = torch.isin(seq[:, 0::model.decoder.net.n_tokens_per_event] if unidimensional else seq[..., 0], test_elements = control_tokens, invert = True) # filter out controls
+                            seq *= loss_query if unidimensional else torch.repeat_interleave(input = loss_query.unsqueeze(dim = -1), repeats = seq.shape[-1], dim = -1)
                             mask = loss_query * mask
                             del loss_query
                         # evaluate

@@ -480,7 +480,7 @@ if __name__ == "__main__":
                         for dimension_index in range(prefix.shape[-1]):
                             prefix[..., dimension_index] = unidimensional_encoding_function(code = prefix[..., dimension_index], dimension_index = dimension_index)
                         prefix = prefix[..., unidimensional_encoding_order].flatten(start_dim = 1)
-                    prefix = torch.from_numpy(ndarray = prefix).to(device)
+                    prefix = torch.from_numpy(prefix).to(device)
 
                     # generate new samples
                     generated = model.generate(
@@ -491,7 +491,8 @@ if __name__ == "__main__":
                         filter_logits_fn = args.filter,
                         filter_thres = args.filter_thres,
                         monotonicity_dim = ("type", "time" if use_absolute_time else "beat"),
-                        notes_only = True,
+                        joint = False,
+                        notes_are_controls = False,
                         is_anticipation = is_anticipation,
                         sigma = sigma
                     )

@@ -13,7 +13,7 @@
 ##################################################
 
 software_dir="/home/pnlong/model_musescore"
-data_dir="/data2/pnlong/musescore/data"
+data_dir="/home/pnlong/musescore/datav"
 gpu=3
 model="truth"
 

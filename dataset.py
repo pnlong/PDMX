@@ -89,6 +89,7 @@ class MusicDataset(Dataset):
             max_seq_len: int = None,
             use_augmentation: bool = False,
             unidimensional: bool = False,
+            controls_are_notes: bool = False,
             for_generation: bool = False,
         ):
         super().__init__()
@@ -106,6 +107,7 @@ class MusicDataset(Dataset):
         self.temporal_dim = self.encoding["dimensions"].index(temporal)
         self.value_dim = self.encoding["dimensions"].index("value")
         self.unidimensional = unidimensional
+        self.controls_are_notes = controls_are_notes
         self.for_generation = for_generation
         self.n_tokens_per_event = len(self.encoding["dimensions"]) if unidimensional else 1
         self.unidimensional_encoding_function, _ = representation.get_unidimensional_coding_functions(encoding = self.encoding)
@@ -168,6 +170,7 @@ class MusicDataset(Dataset):
         seq = encode.encode_data(data = data[data[:, 0] != representation.EXPRESSIVE_FEATURE_TYPE_STRING] if self.is_baseline else data,
                                  encoding = self.encoding,
                                  conditioning = self.conditioning,
+                                 controls_are_notes = self.controls_are_notes,
                                  sigma = self.sigma,
                                  unidimensional = self.unidimensional,
                                  unidimensional_encoding_function = self.unidimensional_encoding_function)

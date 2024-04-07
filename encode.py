@@ -203,7 +203,7 @@ def scrape_time_signatures(time_signatures: List[TimeSignature], song_length: in
     time_signatures.append(TimeSignature(time = song_length, measure = 0, numerator = 4, denominator = 4)) # for duration
     for i in range(1, len(time_signatures) - 1): # ignore first time_signature, since we are tracking changes in time_signature; also ignore last one, since it is used for duration
         time_signatures_encoded["type"][i - 1] = representation.EXPRESSIVE_FEATURE_TYPE_STRING
-        time_signature_change_ratio = ((time_signatures[i].numerator / time_signatures[i].denominator) / (time_signatures[i - 1].numerator / time_signatures[i - 1].denominator)) if all(((time_signature.numerator != None and time_signature.denominator != None) for time_signature in time_signatures[i - 1:i + 1])) else -1e6 # ratio between time signatures
+        time_signature_change_ratio = ((time_signatures[i].numerator / time_signatures[i].denominator) / (time_signatures[i - 1].numerator / time_signatures[i - 1].denominator)) if all((((time_signature.numerator != None) and (time_signature.denominator != None) or (time_signature.denominator != 0)) for time_signature in time_signatures[i - 1:i + 1])) else -1e6 # ratio between time signatures
         time_signatures_encoded["value"][i - 1] = check_text(text = representation.TIME_SIGNATURE_CHANGE_MAPPER(time_signature_change_ratio = time_signature_change_ratio)) # check_text(text = f"{time_signatures[i].numerator}/{time_signatures[i].denominator}")
         time_signatures_encoded["duration"][i - 1] = (time_signatures[i + 1].time - time_signatures[i].time) if use_implied_duration else 0
         time_signatures_encoded["time"][i - 1] = time_signatures[i].time
@@ -488,6 +488,7 @@ def encode_data(
         data: np.array,
         encoding: dict = DEFAULT_ENCODING,
         conditioning: str = DEFAULT_CONDITIONING,
+        controls_are_notes: bool = False,
         sigma: Union[float, int] = SIGMA,
         unidimensional: bool = False,
         unidimensional_encoding_function: Callable = representation.get_unidimensional_coding_functions(encoding = DEFAULT_ENCODING)[0]
@@ -627,40 +628,40 @@ def encode_data(
         core_codes[:, position_dim] = list(map(position_code_mapper, data[:, position_dim])) # encode position
 
     # apply conditioning to core_codes
-    expressive_feature_code = type_code_map[representation.EXPRESSIVE_FEATURE_TYPE_STRING]
+    control_codes = [type_code_map["note"], type_code_map["grace-note"]] if controls_are_notes else [type_code_map[representation.EXPRESSIVE_FEATURE_TYPE_STRING],]
     if conditioning == CONDITIONINGS[0]: # prefix
         core_codes_with_time_steps = np.concatenate((core_codes, data[:, data.shape[1] - 2].reshape(data.shape[0], 1)[:len(core_codes)]), axis = 1) # add time steps column
         time_steps_column = core_codes_with_time_steps.shape[1] - 1
-        expressive_feature_indicies = sorted(np.where(core_codes[:, 0] == expressive_feature_code)[0]) # get indicies of expressive features
-        expressive_features = core_codes_with_time_steps[expressive_feature_indicies] # extract expressive features
-        expressive_features = expressive_features[expressive_features[:, time_steps_column].argsort()] # sort by time, just argsort because the only type is expressive-feature
-        expressive_features = np.delete(arr = expressive_features, obj = time_steps_column, axis = 1).astype(ENCODING_ARRAY_TYPE) # delete time steps column
-        notes = np.delete(arr = core_codes_with_time_steps, obj = expressive_feature_indicies, axis = 0) # delete expressive features from core
-        notes = notes[np.lexsort(keys = (notes[:, 0], notes[:, time_steps_column]), axis = 0)] # sort by time
-        notes = np.delete(arr = notes, obj = time_steps_column, axis = 1).astype(ENCODING_ARRAY_TYPE) # delete time steps column
-        core_codes = np.concatenate((expressive_features, codes[len(codes) - 1].reshape(1, codes.shape[1]), notes), axis = 0, dtype = ENCODING_ARRAY_TYPE) # sandwich: expressive features, start of notes row, notes
-        codes = np.delete(arr = codes, obj = len(codes) - 1, axis = 0) # remove start of notes row from codes
-        del core_codes_with_time_steps, expressive_feature_indicies, expressive_features, notes, time_steps_column
+        control_indicies = sorted(np.where(np.isin(core_codes[:, 0], test_elements = control_codes))[0]) # get indicies of controls
+        controls = core_codes_with_time_steps[control_indicies] # extract controls
+        controls = controls[controls[:, time_steps_column].argsort()] # sort by time, just argsort because the only type is expressive-feature
+        controls = np.delete(arr = controls, obj = time_steps_column, axis = 1).astype(ENCODING_ARRAY_TYPE) # delete time steps column
+        events = np.delete(arr = core_codes_with_time_steps, obj = control_indicies, axis = 0) # delete controls from core
+        events = events[np.lexsort(keys = (events[:, 0], events[:, time_steps_column]), axis = 0)] # sort by time
+        events = np.delete(arr = events, obj = time_steps_column, axis = 1).astype(ENCODING_ARRAY_TYPE) # delete time steps column
+        core_codes = np.concatenate((controls, codes[len(codes) - 1].reshape(1, codes.shape[1]), events), axis = 0, dtype = ENCODING_ARRAY_TYPE) # sandwich: controls, start of events row, events
+        codes = np.delete(arr = codes, obj = len(codes) - 1, axis = 0) # remove start of events row from codes
+        del core_codes_with_time_steps, control_indicies, controls, events, time_steps_column
     elif conditioning == CONDITIONINGS[1]: # anticipation
         if sigma is None: # make sure sigma is not none
             sigma = SIGMA if use_absolute_time else SIGMA_METRICAL
             warnings.warn(f"Encountered NoneValue sigma argument for anticipation conditioning. Using sigma = {sigma} {'seconds' if use_absolute_time else 'beats'}.", RuntimeWarning)
         temporals = data[:, (data.shape[1] - 1) if use_absolute_time else beat_dim]
-        expressive_features = (core_codes[:, 0] == expressive_feature_code)
-        expressive_feature_indicies = np.where(expressive_features)[0]
-        note_indicies = np.where(np.bitwise_not(expressive_features))[0]
-        anticipation_indicies = copy(note_indicies)
-        note_times = temporals[note_indicies]
-        if len(note_times) > 0:
-            for i, expressive_feature_index in enumerate(expressive_feature_indicies):
-                time_differences = note_times - (temporals[expressive_feature_index] - sigma) # difference between each note time and the current expressive feature time (with anticipation constant accounted for)
-                valid_index = np.argmax(time_differences >= 0) + 1 # get the first index with a positive time difference (the first note occurs at or after the expressive feature with anticipation), and +1 because control goes after this event
-                anticipation_indicies = np.insert(arr = anticipation_indicies, obj = valid_index + i, values = expressive_feature_index, axis = 0) # +i to account for new insert each time
+        controls = np.isin(core_codes[:, 0], test_elements = control_codes)
+        control_indicies = np.where(controls)[0]
+        event_indicies = np.where(np.bitwise_not(controls))[0]
+        anticipation_indicies = copy(event_indicies)
+        event_times = temporals[event_indicies]
+        if len(event_times) > 0:
+            for i, control_index in enumerate(control_indicies):
+                time_differences = event_times - (temporals[control_index] - sigma) # difference between each event time and the current control time (with anticipation constant accounted for)
+                valid_index = np.argmax(time_differences >= 0) + 1 # get the first index with a positive time difference (the first event occurs at or after the control with anticipation), and +1 because control goes after this event
+                anticipation_indicies = np.insert(arr = anticipation_indicies, obj = valid_index + i, values = control_index, axis = 0) # +i to account for new insert each time
         else:
-            anticipation_indicies = expressive_feature_indicies
+            anticipation_indicies = control_indicies
         core_codes = core_codes[anticipation_indicies, :]
-        del temporals, expressive_features, expressive_feature_indicies, note_indicies, anticipation_indicies, note_times
-    del expressive_feature_code
+        del temporals, controls, control_indicies, event_indicies, anticipation_indicies, event_times
+    del control_codes
 
     # add core_codes to the general codes matrix
     codes = np.concatenate((codes, core_codes), axis = 0) # append them to the code sequence
@@ -687,6 +688,7 @@ def encode(
         use_implied_duration: bool = True,
         encoding: dict = DEFAULT_ENCODING,
         conditioning: str = DEFAULT_CONDITIONING,
+        controls_are_notes: bool = False,
         sigma: Union[float, int] = SIGMA,
         unidimensional: bool = False,
         unidimensional_encoding_function: Callable = representation.get_unidimensional_coding_functions(encoding = DEFAULT_ENCODING)[0]
@@ -701,7 +703,7 @@ def encode(
     data = extract_data(music = music, use_implied_duration = use_implied_duration, include_velocity = include_velocity, use_absolute_time = use_absolute_time)
 
     # encode data
-    codes = encode_data(data = data, encoding = encoding, conditioning = conditioning, sigma = sigma, unidimensional = unidimensional, unidimensional_encoding_function = unidimensional_encoding_function)
+    codes = encode_data(data = data, encoding = encoding, conditioning = conditioning, controls_are_notes = controls_are_notes, sigma = sigma, unidimensional = unidimensional, unidimensional_encoding_function = unidimensional_encoding_function)
 
     return codes
 

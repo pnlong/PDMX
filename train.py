@@ -99,7 +99,8 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("--dropout", default = 0.2, type = float, help = "Dropout rate")
     parser.add_argument("--abs_pos_emb", action = argparse.BooleanOptionalAction, default = True, help = "Whether to use absolute positional embedding")
     parser.add_argument("--rel_pos_emb", action = argparse.BooleanOptionalAction, default = False, help = "Whether to use relative positional embedding")
-    parser.add_argument("--conditional", action = "store_true", help = "Do we want to train in a purely conditional way (i.e. masking out the loss on expressive-feature tokens)?")
+    parser.add_argument("--conditional", action = "store_true", help = "Do we want to train in a purely conditional way, masking out the loss on expressive-feature tokens?")
+    parser.add_argument("--econditional", action = "store_true", help = "Do we want to train in a purely conditional way, masking out the loss on note tokens?")
     parser.add_argument("--unidimensional", action = "store_true", help = "Should we train a model with unidimensional, as opposed to multidimensional, inputs?")
     # training
     parser.add_argument("--steps", default = 100000, type = int, help = "Number of steps")
@@ -241,8 +242,8 @@ if __name__ == "__main__":
     # create the dataset and data loader
     print(f"Creating the data loader...")
     dataset = {
-        RELEVANT_PARTITIONS[0]: MusicDataset(paths = args.paths_train, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, is_baseline = args.baseline, max_seq_len = args.max_seq_len, use_augmentation = args.aug, unidimensional = args.unidimensional),
-        RELEVANT_PARTITIONS[1]: MusicDataset(paths = args.paths_valid, encoding = encoding, conditioning = args.conditioning, sigma = args.sigma, is_baseline = args.baseline, max_seq_len = args.max_seq_len, use_augmentation = args.aug, unidimensional = args.unidimensional)
+        RELEVANT_PARTITIONS[0]: MusicDataset(paths = args.paths_train, encoding = encoding, conditioning = args.conditioning, controls_are_notes = args.econditional, sigma = args.sigma, is_baseline = args.baseline, max_seq_len = args.max_seq_len, use_augmentation = args.aug, unidimensional = args.unidimensional),
+        RELEVANT_PARTITIONS[1]: MusicDataset(paths = args.paths_valid, encoding = encoding, conditioning = args.conditioning, controls_are_notes = args.econditional, sigma = args.sigma, is_baseline = args.baseline, max_seq_len = args.max_seq_len, use_augmentation = args.aug, unidimensional = args.unidimensional)
         }
     data_loader = {
         RELEVANT_PARTITIONS[0]: torch.utils.data.DataLoader(dataset = dataset[RELEVANT_PARTITIONS[0]], batch_size = args.batch_size, shuffle = True, num_workers = args.jobs, collate_fn = dataset[RELEVANT_PARTITIONS[0]].collate),
@@ -278,7 +279,9 @@ if __name__ == "__main__":
     else:
         positional_embedding = "npe"
     model_size = int(n_parameters_trainable / 1e+6)
-    args.output_dir = args.output_dir + "/" + (args.conditioning if not args.baseline else "baseline") + ("_conditional" if args.conditional else "") + ("_unidimensional" if args.unidimensional else "") + f"_{positional_embedding}_{model_size}M" # custom output directory based on arguments
+    if args.conditional and args.econditional: # default to conditional on notes if there are two conditional boolean arguments supplied
+        args.econditional = False
+    args.output_dir = args.output_dir + "/" + (args.conditioning if not args.baseline else "baseline") + ("_conditional" if args.conditional else "") + ("_econditional" if args.econditional else "") + ("_unidimensional" if args.unidimensional else "") + f"_{positional_embedding}_{model_size}M" # custom output directory based on arguments
     if not exists(args.output_dir):
         makedirs(args.output_dir)
     CHECKPOINTS_DIR = f"{args.output_dir}/checkpoints" # models will be stored in the output directory
@@ -333,6 +336,14 @@ if __name__ == "__main__":
     if args.resume and all(exists(filepath) for filepath in best_scheduler_filepath.values()):
         scheduler.load_state_dict(torch.load(f = best_scheduler_filepath[RELEVANT_PARTITIONS[1]]))
     
+    # get conditional mask type
+    conditional_mask_type = 0
+    if args.conditional:
+        conditional_mask_type = 1
+    elif args.econditional:
+        conditional_mask_type = 2
+    conditional_mask_type = MASKS[conditional_mask_type] # get conditional mask type
+
     ##################################################
 
 
@@ -402,7 +413,7 @@ if __name__ == "__main__":
                 return_list = True,
                 reduce = False, # reduce = False so that we have loss at each token
                 return_output = True,
-                conditional_mask = masks[MASKS[1 if args.conditional else 0]] # mask to notes only if a conditional model
+                conditional_mask = masks[conditional_mask_type] # mask if a conditional model
             )
             accuracies_batch = get_accuracies(model_output = output_batch, seq = seq, unidimensional = args.unidimensional, n_tokens_per_event = model.decoder.net.n_tokens_per_event) # calculate accuracy
 
@@ -491,12 +502,10 @@ if __name__ == "__main__":
                     return_list = True,
                     reduce = False, # reduce = False so that we have loss at each token
                     return_output = True,
-                    conditional_mask = masks[MASKS[1 if args.conditional else 0]] # mask to notes only if a conditional model
+                    conditional_mask = masks[conditional_mask_type] # mask if a conditional model
                 )
                 accuracies_batch = get_accuracies(model_output = output_batch, seq = seq, unidimensional = args.unidimensional, n_tokens_per_event = model.decoder.net.n_tokens_per_event) # calculate accuracies
-                
-                # no need for the conditional loss_batch because it is calculated later and not needed for backprop
-                
+                                
                 # update counts
                 count += len(batch)
                 for mask_type in MASKS:
@@ -522,8 +531,8 @@ if __name__ == "__main__":
                 performance[PERFORMANCE_METRICS[1]][RELEVANT_PARTITIONS[1]][mask_type][field] /= (count_token[mask_type] if count_token[mask_type] > 0 else 1) # accuracy
 
         # output statistics
-        logging.info(f"Validation loss: {performance[PERFORMANCE_METRICS[0]][RELEVANT_PARTITIONS[1]][MASKS[1 if args.conditional else 0]][ALL_STRING]:.4f}")
-        logging.info("Individual losses: " + ", ".join((f"{field} = {value:.4f}" for field, value in performance[PERFORMANCE_METRICS[0]][RELEVANT_PARTITIONS[1]][MASKS[1 if args.conditional else 0]].items())))
+        logging.info(f"Validation loss: {performance[PERFORMANCE_METRICS[0]][RELEVANT_PARTITIONS[1]][conditional_mask_type][ALL_STRING]:.4f}")
+        logging.info("Individual losses: " + ", ".join((f"{field} = {value:.4f}" for field, value in performance[PERFORMANCE_METRICS[0]][RELEVANT_PARTITIONS[1]][conditional_mask_type].items())))
 
         # log validation info for wandb
         for metric in PERFORMANCE_METRICS:

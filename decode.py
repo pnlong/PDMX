@@ -305,6 +305,7 @@ def reconstruct(
 def decode(
         codes: np.array,
         encoding: dict = DEFAULT_ENCODING,
+        infer_metrical_time: bool = True,
         unidimensional_decoding_function: Callable = representation.get_unidimensional_coding_functions(encoding = DEFAULT_ENCODING)[-1]
     ) -> MusicExpress:
     """Decode codes into a MusPy Music object.
@@ -319,7 +320,7 @@ def decode(
     data = decode_data(codes = codes, encoding = encoding, unidimensional_decoding_function = unidimensional_decoding_function)
 
     # reconstruct the music object
-    music = reconstruct(data = data, resolution = resolution, encoding = encoding)
+    music = reconstruct(data = data, resolution = resolution, encoding = encoding, infer_metrical_time = infer_metrical_time)
 
     return music
 
