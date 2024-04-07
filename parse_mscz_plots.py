@@ -418,7 +418,7 @@ def make_descriptor_plot(descriptor: str, output_filepath: str, top_n: int = 10)
     
     # create figure
     plot_type = plot_types[0] # path
-    fig, axes = plt.subplot_mosaic(mosaic = [[plot_type]], constrained_layout = True, figsize = (4, 8))
+    fig, axes = plt.subplot_mosaic(mosaic = [[plot_type]], constrained_layout = True, figsize = (4, 4))
 
     # plot information
     no_descriptor = data_by[plot_type][column_name].apply(no_descriptor_determiner)
@@ -442,7 +442,7 @@ def make_descriptor_plot(descriptor: str, output_filepath: str, top_n: int = 10)
     axes[plot_type].set_yticklabels([f"{10**logtick:,}" for logtick in logticks])
     axes[plot_type].set_ylim(bottom = min_data - border_margin_fraction, top = max_data + border_margin_fraction)
     axes[plot_type].set_ylabel("Count")
-    axes[plot_type].set_title(label = f"{column_name.title()}", fontdict = {"fontweight": "bold"})
+    # axes[plot_type].set_title(label = f"{column_name.title()}", fontdict = {"fontweight": "bold"})
 
     # save image
     output_filepath = output_filepath.split(".")[0] + ".paper.png"

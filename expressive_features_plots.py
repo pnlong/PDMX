@@ -240,6 +240,12 @@ def make_summary_plot(input_filepath: str, output_filepath_prefix: str) -> list:
     expressive_features = summary[plot_types[0]]["type"].tolist()
     # summary[plot_types[0]]["size"] = summary[plot_types[0]]["size"].apply(lambda count: np.log10(count + DIVIDE_BY_ZERO_CONSTANT)) # apply log scale to total count
 
+    # print out table for paper
+    summary_for_paper = summary[plot_types[0]][::-1].reset_index(drop = True)
+    summary_for_paper.to_csv(path_or_buf = f"{output_filepath_prefix}.csv", sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # write mean values per expressive feature
+    for i in summary_for_paper.index:
+        print(f"{summary_for_paper.at[i, 'type']} & {summary_for_paper.at[i, 'size'] / 1000:,.2f} \\\\")
+
     # create plot
     for i, plot_type in enumerate(plot_types):
         axes[plot_type].xaxis.grid(True)
@@ -266,18 +272,18 @@ def make_summary_plot(input_filepath: str, output_filepath_prefix: str) -> list:
     # SUMMARY HISTOGRAM
 
     # data wrangle
-    n_expressive_feature_types_to_include = 10 - 1 # -1 to account for the all feature types plot
+    n_expressive_feature_types_to_include = -1 # -1 to account for the all feature types plot
+    n_col = 7
     expressive_features_for_histogram = deepcopy(expressive_features)
     expressive_features_for_histogram.remove("Lyric")
     plot_types = [ALL_FEATURES_TYPE_NAME] + expressive_features_for_histogram[::-1][:(n_expressive_feature_types_to_include if n_expressive_feature_types_to_include > 0 else len(expressive_features))]
-    n_col = 5
     mosaic = [plot_types[i:(i + n_col)] for i in range(0, len(plot_types), n_col)]
     mosaic[-1] += rep(x = "", times = n_col - len(mosaic[-1]))
 
     # create figure
     plot_size_factor = 3
-    fig, axes = plt.subplot_mosaic(mosaic = mosaic, constrained_layout = True, figsize = (n_col * plot_size_factor, len(mosaic) * plot_size_factor))
-    fig.suptitle("Expressive Features", fontweight = "bold")
+    fig, axes = plt.subplot_mosaic(mosaic = mosaic, constrained_layout = True, figsize = (n_col * plot_size_factor, len(mosaic) * plot_size_factor), empty_sentinel = "")
+    # fig.suptitle("Expressive Features", fontweight = "bold")
 
     # plot histograms
     n_bins = 15
@@ -301,7 +307,7 @@ def make_summary_plot(input_filepath: str, output_filepath_prefix: str) -> list:
         if (column_index == 0): # if a left most plot
             axes[plot_type].set_ylabel("Frequency") # only set a y label for the leftmost row
         axes[plot_type].get_yaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda count, _: f"{int(count):,}")) # add commas
-        axes[plot_type].set_title(split_camel_case(string = plot_type, sep = " ").title()) # set title
+        axes[plot_type].set_title(label = split_camel_case(string = plot_type, sep = " ").title(), fontdict = {"fontweight": "bold"}) # set title
 
     # save image
     output_filepath = f"{output_filepath_prefix}.histogram.png"
