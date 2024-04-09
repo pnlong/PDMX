@@ -45,7 +45,8 @@ LARGE_PLOTS_DPI = int(1.5 * OUTPUT_RESOLUTION_DPI)
 ALL_FEATURES_TYPE_NAME = "AllFeatures" # name of all features plot name
 
 # columns of data tables
-DENSITY_COLUMNS = ["path", "time_steps", "seconds", "bars", "beats"]
+SONG_LENGTH_SUFFIX = "_song_length"
+DENSITY_COLUMNS = ["path", "time_steps", "seconds", "bars", "beats", "time_steps" + SONG_LENGTH_SUFFIX, "seconds" + SONG_LENGTH_SUFFIX, "bars" + SONG_LENGTH_SUFFIX, "beats" + SONG_LENGTH_SUFFIX]
 FEATURE_TYPES_SUMMARY_COLUMNS = ["path", "type", "size"]
 SPARSITY_SUCCESSIVE_SUFFIX = "_successive"
 SPARSITY_COLUMNS = ["path", "type", "value", "time_steps", "seconds", "beats", "fraction"]
@@ -125,6 +126,7 @@ def extract_information(path: str):
     ##################################################
 
     density = {time_unit: (song_length_in_time_unit / len(expressive_features)) for time_unit, song_length_in_time_unit in unpickled["track_length"].items()} # time unit per expressive feature
+    density.update({(time_unit + SONG_LENGTH_SUFFIX): song_length_in_time_unit for time_unit, song_length_in_time_unit in unpickled["track_length"].items()})
     density["path"] = path
     density = pd.DataFrame(data = [density], columns = DENSITY_COLUMNS)
     density.to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[0], sep = ",", na_rep = NA_VALUE, header = False, index = False, mode = "a")
@@ -184,14 +186,14 @@ def make_density_plot(input_filepath: str, output_filepath: str) -> None:
     fig.suptitle(f"Expressive Feature [EF] Densities in Public-Domain Tracks ({len(density):,} total)", fontweight = "bold")
 
     # create plot
-    n_bins = 50
-    relevant_ranges = {relevant_density_types[0]: (0, 100), relevant_density_types[1]: (0, 40), relevant_density_types[2]: (0, 100)}
+    n_bins = 40
+    relevant_ranges = {relevant_density_types[0]: (0, 40), relevant_density_types[1]: (0, 40), relevant_density_types[2]: (0, 40)}
     for i in range(len(relevant_density_types) - 1, -1, -1): # traverse backwards
         relevant_density_type = relevant_density_types[i]
         n_points_excluded = len(density[~((density[relevant_density_type] >= relevant_ranges[relevant_density_type][0]) & (density[relevant_density_type] <= relevant_ranges[relevant_density_type][1]))])
         axes[relevant_density_type].hist(x = density[relevant_density_type], bins = n_bins, range = relevant_ranges[relevant_density_type], orientation = "horizontal", log = False, color = GREY) # , color = COLORS[i], edgecolor = "0"
         axes[relevant_density_type].set_ylabel(relevant_density_type.title())
-        axes[relevant_density_type].set_title(f"{relevant_density_type.title()} per EF ({n_points_excluded:,} excluded tracks)")
+        axes[relevant_density_type].set_title(f"{relevant_density_type.title()} per EF ({n_points_excluded:,} excluded, Mean: {np.mean(density[relevant_density_type]):.2f}, Median: {np.median(density[relevant_density_type]):.2f})")
         axes[relevant_density_type].get_xaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda count, _: f"{int(count):,}"))
         if i < len(relevant_density_types) - 1: # remove x axis stuff for top 2 columns
             axes[relevant_density_type].sharex(axes[relevant_density_types[-1]])
@@ -275,7 +277,7 @@ def make_summary_plot(input_filepath: str, output_filepath_prefix: str) -> list:
     n_expressive_feature_types_to_include = -1 # -1 to account for the all feature types plot
     n_col = 7
     expressive_features_for_histogram = deepcopy(expressive_features)
-    expressive_features_for_histogram.remove("Lyric")
+    # expressive_features_for_histogram.remove("Lyric")
     plot_types = [ALL_FEATURES_TYPE_NAME] + expressive_features_for_histogram[::-1][:(n_expressive_feature_types_to_include if n_expressive_feature_types_to_include > 0 else len(expressive_features))]
     mosaic = [plot_types[i:(i + n_col)] for i in range(0, len(plot_types), n_col)]
     mosaic[-1] += rep(x = "", times = n_col - len(mosaic[-1]))

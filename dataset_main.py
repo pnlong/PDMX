@@ -123,7 +123,7 @@ if __name__ == "__main__":
         if args.nested:
             subprocess.run(args = ["bash", f"{dirname(__file__)}/create_data_dir.sh", "-d", DATA_DIR], check = True)
     METADATA_DIR = f"{OUTPUT_DIR_MAIN}/metadata"
-    if args.metadata:
+    if args.metadata and not exists(METADATA_DIR):
         mkdir(METADATA_DIR)
 
     # load in data frame
