@@ -18,6 +18,7 @@ from read_mscz.classes import *
 from read_mscz.read_mscz import read_musescore
 from read_mscz.output import FERMATA_TEMPO_SLOWDOWN
 from muspy.utils import CIRCLE_OF_FIFTHS
+from muspy import DEFAULT_RESOLUTION
 ##################################################
 
 
@@ -150,7 +151,17 @@ def reconstruct(
                 - multiply by qpm value to convert to quarter beats since start time
                 - multiply by MusicExpress resolution
             """
-            return lambda time: int(start_time + ((((time - start_time_seconds) / 60) * qpm) * resolution))
+            if np.isnan(start_time) or np.isinf(start_time_seconds):
+                start_time = 0
+            if np.isnan(start_time_seconds) or np.isinf(start_time_seconds):
+                start_time_seconds = 0.0
+            if np.isnan(qpm) or np.isinf(qpm):
+                qpm = representation.DEFAULT_QPM
+            def absolute_to_metrical_time_func(time: float) -> int:
+                if np.isnan(time) or np.isinf(time):
+                    time = 0
+                return int(start_time + ((((time - start_time_seconds) / 60) * qpm) * music.resolution))
+            return absolute_to_metrical_time_func
 
     # append the tracks
     programs = sorted(set(row[-2 if include_velocity else -1] for row in data)) # get programs

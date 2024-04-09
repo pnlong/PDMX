@@ -203,7 +203,10 @@ def scrape_time_signatures(time_signatures: List[TimeSignature], song_length: in
     time_signatures.append(TimeSignature(time = song_length, measure = 0, numerator = 4, denominator = 4)) # for duration
     for i in range(1, len(time_signatures) - 1): # ignore first time_signature, since we are tracking changes in time_signature; also ignore last one, since it is used for duration
         time_signatures_encoded["type"][i - 1] = representation.EXPRESSIVE_FEATURE_TYPE_STRING
-        time_signature_change_ratio = ((time_signatures[i].numerator / time_signatures[i].denominator) / (time_signatures[i - 1].numerator / time_signatures[i - 1].denominator)) if all((((time_signature.numerator != None) and (time_signature.denominator != None) or (time_signature.denominator != 0)) for time_signature in time_signatures[i - 1:i + 1])) else -1e6 # ratio between time signatures
+        if (time_signatures[i].numerator == 0) or (time_signatures[i].denominator == 0) or (time_signatures[i].denominator == None) or (time_signatures[i - 1].numerator == 0) or (time_signatures[i - 1].denominator == 0) or (time_signatures[i - 1].denominator == None):
+            time_signature_change_ratio = -1e6
+        else:
+            time_signature_change_ratio = (time_signatures[i].numerator / time_signatures[i].denominator) / (time_signatures[i - 1].numerator / time_signatures[i - 1].denominator)
         time_signatures_encoded["value"][i - 1] = check_text(text = representation.TIME_SIGNATURE_CHANGE_MAPPER(time_signature_change_ratio = time_signature_change_ratio)) # check_text(text = f"{time_signatures[i].numerator}/{time_signatures[i].denominator}")
         time_signatures_encoded["duration"][i - 1] = (time_signatures[i + 1].time - time_signatures[i].time) if use_implied_duration else 0
         time_signatures_encoded["time"][i - 1] = time_signatures[i].time

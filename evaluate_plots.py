@@ -36,7 +36,7 @@ from read_mscz.music import DIVIDE_BY_ZERO_CONSTANT
 # CONSTANTS
 ##################################################
 
-DATA_DIR = "/data2/pnlong/musescore/data"
+DATA_DIR = "/home/pnlong/musescore/datav"
 MODELS_FILEPATH = f"{DATA_DIR}/models.txt"
 OUTPUT_DIR = DATA_DIR
 LARGE_PLOTS_DPI = int(1.5 * expressive_features_plots.OUTPUT_RESOLUTION_DPI)
@@ -67,14 +67,16 @@ def combine_data_tables(models: list, output_filepath: str, is_baseline: bool = 
     
     # create the combined data table
     else:
+        first_successful_iteration = True
         for i, model in enumerate(models):
             input_filepath = args.output_dir + "/" + model + "/eval" + ("_baseline" if is_baseline else "") + (f"/{eval_type}" if not ((model == evaluate_baseline.TRUTH_DIR_STEM) or (is_baseline)) else "") + "/" + stem + ".csv"
             if not exists(input_filepath):
                 continue
             df_model = pd.read_csv(filepath_or_buffer = input_filepath, sep = ",", na_values = train.NA_VALUE, header = 0, index_col = False) # read in performance
-            if i == 0: # learn the column names on the first iteration
+            if first_successful_iteration: # learn the column names on the first iteration
                 columns = ["model"] + df_model.columns.tolist()
                 df = pd.DataFrame(columns = columns) # create df
+                first_successful_iteration = False
             df_model["model"] = utils.rep(x = model, times = len(df_model)) # add model column
             df_model = df_model[columns] # reorder columns
             df = pd.concat(objs = (df, df_model), axis = 0, ignore_index = True) # concatenate

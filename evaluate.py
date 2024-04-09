@@ -546,7 +546,8 @@ if __name__ == "__main__":
             logging.info("\n" + eval_type_fancy)
             losses_for_perplexity = pd.read_csv(filepath_or_buffer = output_filepaths[eval_type][-1], sep = ",", na_values = train.NA_VALUE, header = 0, index_col = False) # load in previous values
             for field in losses_for_perplexity.columns[1:]:
-                logging.info(f"  - {field.replace('loss_', '').title()}: {math.exp(-math.log(np.sum(losses_for_perplexity[field]))):.4f}")
+                loss_by_field = np.sum(losses_for_perplexity[field])
+                logging.info(f"  - {field.replace('loss_', '').title()}: " + (f"{math.exp(-math.log(loss_by_field)):.4f}" if loss_by_field != 0 else "NaN"))
 
     ##################################################
 
