@@ -426,9 +426,9 @@ def extract_data(
 
         # create dataframe, do some wrangling to semi-encode values
         data = pd.concat(objs = (pd.DataFrame(columns = output_columns), system_level_expressive_features, staff_level_expressive_features), axis = 0, ignore_index = True) # combine system and staff expressive features
-        data["type"] = data["type"].apply(lambda type_: type_ if type_ is not None else representation.EXPRESSIVE_FEATURE_TYPE_STRING) # make sure no missing type values
+        data["type"] = data["type"].fillna(value = representation.EXPRESSIVE_FEATURE_TYPE_STRING) # make sure no missing type values
         data["instrument"] = utils.rep(x = track.program, times = len(data)) # add the instrument column
-        data["velocity"] = data["velocity"].apply(lambda velocity: representation.NONE_VELOCITY if (velocity is None) else velocity)
+        data["velocity"] = data["velocity"].fillna(value = representation.NONE_VELOCITY)
 
         # convert time to seconds for certain types of sorting that might require it
         absolute_time_helper = lambda time_steps: music.metrical_time_to_absolute_time(time_steps = time_steps)
@@ -454,7 +454,7 @@ def extract_data(
         #     data.at[i, "position"] = int((RESOLUTION * (data.at[i, "time"] - beats[beat_index])) / (beats[beat_index + 1] - beats[beat_index]))
 
         # convert duration to absolute time if necessary
-        data["duration"] = data["duration"].apply(lambda duration: duration if not np.isnan(duration) else 0) # semi-encode duration, checking for missing values
+        data["duration"] = data["duration"].fillna(value = 0) # semi-encode duration, checking for missing values
         if use_absolute_time:
             data["duration"] = (data["time"] + data["duration"]).apply(absolute_time_helper) - data["time.s"]
         else:

@@ -43,16 +43,18 @@ FILE_OUTPUT_DIR = "/data2/pnlong/musescore/expressive_features"
 
 LARGE_PLOTS_DPI = int(1.5 * OUTPUT_RESOLUTION_DPI)
 ALL_FEATURES_TYPE_NAME = "AllFeatures" # name of all features plot name
+CUTOFF_PERCENTILE = 95
 
 # columns of data tables
-SONG_LENGTH_SUFFIX = "_song_length"
-DENSITY_COLUMNS = ["path", "time_steps", "seconds", "bars", "beats", "time_steps" + SONG_LENGTH_SUFFIX, "seconds" + SONG_LENGTH_SUFFIX, "bars" + SONG_LENGTH_SUFFIX, "beats" + SONG_LENGTH_SUFFIX]
+RELEVANT_TIME_UNITS = ["time_steps", "seconds", "bars", "beats"]
+SONG_LENGTH_COLUMNS = ["path", "track"] + RELEVANT_TIME_UNITS
+DENSITY_COLUMNS = ["path"] + RELEVANT_TIME_UNITS
 FEATURE_TYPES_SUMMARY_COLUMNS = ["path", "type", "size"]
 SPARSITY_SUCCESSIVE_SUFFIX = "_successive"
 SPARSITY_COLUMNS = ["path", "type", "value", "time_steps", "seconds", "beats", "fraction"]
-SPARSITY_COLUMNS += [column + SPARSITY_SUCCESSIVE_SUFFIX for column in SPARSITY_COLUMNS[SPARSITY_COLUMNS.index("time_steps"):]]
-DISTANCE_COLUMNS = SPARSITY_COLUMNS[SPARSITY_COLUMNS.index("time_steps"):SPARSITY_COLUMNS.index("time_steps" + SPARSITY_SUCCESSIVE_SUFFIX)]
+DISTANCE_COLUMNS = SPARSITY_COLUMNS[SPARSITY_COLUMNS.index("time_steps"):]
 SUCCESSIVE_DISTANCE_COLUMNS = [distance_column + SPARSITY_SUCCESSIVE_SUFFIX for distance_column in DISTANCE_COLUMNS]
+SPARSITY_COLUMNS += SUCCESSIVE_DISTANCE_COLUMNS
 
 ##################################################
 
@@ -80,12 +82,8 @@ def calculate_difference_between_successive_entries(df: pd.DataFrame, columns: l
     """Calculates the difference between successive features."""
     df = df.copy().sort_values(by = columns[0]) # sort values
     df_values = df[columns] # store values of columns
-    for column in columns: # for every column in columns
-        df[column] = rep(x = np.nan, times = len(df)) # set columns' values to None
-    df_indicies = df.index
-    for i in range(len(df_indicies) - 1): # loop through entries
-        for column in columns: # calculate for each column
-            df.at[df_indicies[i], column] = df_values.at[df_indicies[i + 1], column] - df_values.at[df_indicies[i], column] # calculate differences
+    df.loc[:, columns] = np.nan # set columns' values to None
+    df.loc[df.index[:-1], columns] = df_values.loc[df.index[1:], columns].to_numpy() - df_values.loc[df.index[:-1], columns].to_numpy() # calculate differences
     return df
 ##################################################
 
@@ -122,14 +120,25 @@ def extract_information(path: str):
     ##################################################
 
     
+    # SONG LENGTH
+    ##################################################
+    
+    song_length = {time_unit: song_length_in_time_unit for time_unit, song_length_in_time_unit in unpickled["track_length"].items()}
+    song_length["path"] = path.split(".")[0] + ".mscz"
+    song_length["track"] = int(path.split(".")[1])
+    song_lenth = pd.DataFrame(data = [song_length], columns = SONG_LENGTH_COLUMNS)
+    song_lenth.to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[0], sep = ",", na_rep = NA_VALUE, header = False, index = False, mode = "a")
+
+    ##################################################
+
+    
     # CALCULATE DENSITY OF EXPRESSIVE FEATURES
     ##################################################
 
     density = {time_unit: (song_length_in_time_unit / len(expressive_features)) for time_unit, song_length_in_time_unit in unpickled["track_length"].items()} # time unit per expressive feature
-    density.update({(time_unit + SONG_LENGTH_SUFFIX): song_length_in_time_unit for time_unit, song_length_in_time_unit in unpickled["track_length"].items()})
     density["path"] = path
     density = pd.DataFrame(data = [density], columns = DENSITY_COLUMNS)
-    density.to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[0], sep = ",", na_rep = NA_VALUE, header = False, index = False, mode = "a")
+    density.to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[1], sep = ",", na_rep = NA_VALUE, header = False, index = False, mode = "a")
 
     ##################################################
 
@@ -140,7 +149,7 @@ def extract_information(path: str):
     feature_types_summary = expressive_features[["type", "value"]].groupby(by = "type", as_index = False).size() # group by type
     feature_types_summary["path"] = rep(x = path, times = len(feature_types_summary))
     feature_types_summary = feature_types_summary[FEATURE_TYPES_SUMMARY_COLUMNS] # ensure we have just the columns we need
-    feature_types_summary.to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[1], sep = ",", na_rep = NA_VALUE, header = False, index = False, mode = "a")
+    feature_types_summary.to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[2], sep = ",", na_rep = NA_VALUE, header = False, index = False, mode = "a")
 
     ##################################################
 
@@ -150,26 +159,55 @@ def extract_information(path: str):
 
     # add some columns, set up for calculation of distance
     sparsity = expressive_features[["type", "value", "time", TIME_IN_SECONDS_COLUMN_NAME]]
+    print(sparsity)
     sparsity = sparsity.rename(columns = {"time": "time_steps", TIME_IN_SECONDS_COLUMN_NAME: "seconds"})
     sparsity["path"] = rep(x = path, times = len(sparsity))
     sparsity["beats"] = sparsity["time_steps"] / unpickled["resolution"]
     sparsity["fraction"] = sparsity["time_steps"] / (unpickled["track_length"]["time_steps"] + DIVIDE_BY_ZERO_CONSTANT)
     for successive_distance_column, distance_column in zip(SUCCESSIVE_DISTANCE_COLUMNS, DISTANCE_COLUMNS): # add successive times columns
         sparsity[successive_distance_column] = sparsity[distance_column]
-    sparsity = sparsity[SPARSITY_COLUMNS].sort_values("time_steps").reset_index(drop = True) # sort by increasing times
+    sparsity = sparsity[SPARSITY_COLUMNS].sort_values(by = "time_steps").reset_index(drop = True) # sort by increasing times
 
     # calculate distances
-    sparsity = calculate_difference_between_successive_entries(df = sparsity, columns = DISTANCE_COLUMNS)
     expressive_feature_types = pd.unique(expressive_features["type"]) # get types of expressive features
-    distance = pd.DataFrame(columns = SPARSITY_COLUMNS)
+    distance = calculate_difference_between_successive_entries(df = sparsity, columns = DISTANCE_COLUMNS)
     for expressive_feature_type in expressive_feature_types: # get distances between successive features of the same type
         distance_for_expressive_feature_type = calculate_difference_between_successive_entries(df = sparsity[sparsity["type"] == expressive_feature_type], columns = SUCCESSIVE_DISTANCE_COLUMNS) # calculate sparsity for certain feature type
-        distance = pd.concat(objs = (distance, distance_for_expressive_feature_type), axis = 0, ignore_index = False) # append to overall distance
-    distance = distance.sort_index(axis = 0) # sort by index (return to original index)
-    distance.to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[2], sep = ",", na_rep = NA_VALUE, header = False, index = False, mode = "a")
+        distance.loc[distance_for_expressive_feature_type.index, SUCCESSIVE_DISTANCE_COLUMNS] = distance_for_expressive_feature_type[SUCCESSIVE_DISTANCE_COLUMNS].to_numpy()
+    distance.to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[3], sep = ",", na_rep = NA_VALUE, header = False, index = False, mode = "a")
 
     ##################################################
     
+##################################################
+
+
+# GET SONG LENGTH STATISTICS
+##################################################
+
+def get_song_length_statistics(input_filepath: str) -> dict:
+    """Returns a dictionary with various statistics on song length."""
+
+    # load in table
+    song_length = pd.read_csv(filepath_or_buffer = input_filepath, sep = ",", header = 0, index_col = False)
+
+    # create statistics dictionary
+    statistics = {relevant_time_unit: {"total_track_length": 0, "total_song_length": 0, "mean_song_length": 0, "median_song_length": 0} for relevant_time_unit in RELEVANT_TIME_UNITS}
+
+    # get total track length, where each track is counted independently, for different time units
+    for relevant_time_unit in statistics.keys():
+        statistics[relevant_time_unit]["total_track_length"] = sum(song_length[relevant_time_unit])
+
+    # filter so that this is by song, not track
+    song_length = song_length.drop_duplicates(subset = "path", keep = "first", ignore_index = True) # drop duplicates because all tracks from the same song will have the same length
+
+    # get totals by song for different time units
+    for relevant_time_unit in RELEVANT_TIME_UNITS:
+        statistics[relevant_time_unit]["total_song_length"] = sum(song_length[relevant_time_unit])
+        statistics[relevant_time_unit]["mean_song_length"] = np.mean(song_length[relevant_time_unit])
+        statistics[relevant_time_unit]["median_song_length"] = np.median(song_length[relevant_time_unit])
+
+    return statistics
+
 ##################################################
 
 
@@ -275,7 +313,7 @@ def make_summary_plot(input_filepath: str, output_filepath_prefix: str) -> list:
 
     # data wrangle
     n_expressive_feature_types_to_include = -1 # -1 to account for the all feature types plot
-    n_col = 7
+    n_col = 5
     expressive_features_for_histogram = deepcopy(expressive_features)
     # expressive_features_for_histogram.remove("Lyric")
     plot_types = [ALL_FEATURES_TYPE_NAME] + expressive_features_for_histogram[::-1][:(n_expressive_feature_types_to_include if n_expressive_feature_types_to_include > 0 else len(expressive_features))]
@@ -284,31 +322,36 @@ def make_summary_plot(input_filepath: str, output_filepath_prefix: str) -> list:
 
     # create figure
     plot_size_factor = 3
-    fig, axes = plt.subplot_mosaic(mosaic = mosaic, constrained_layout = True, figsize = (n_col * plot_size_factor, len(mosaic) * plot_size_factor), empty_sentinel = "")
+    fig, axes = plt.subplot_mosaic(mosaic = mosaic, constrained_layout = True, figsize = (int(n_col * plot_size_factor), int(len(mosaic) * plot_size_factor * 0.7)), empty_sentinel = "")
     # fig.suptitle("Expressive Features", fontweight = "bold")
 
     # plot histograms
     n_bins = 15
-    cutoff_percentile = 95 # percentile at which to cut off graphs
     for i, plot_type in enumerate(plot_types):
         if plot_type == ALL_FEATURES_TYPE_NAME:
             counts = data.drop(columns = "type").groupby(by = "path", as_index = False).sum()["size"].tolist()
         else:
             counts = data[data["type"] == plot_type]["size"].tolist()
-        cutoff = np.percentile(a = counts, q = cutoff_percentile, axis = None)
+        cutoff = np.percentile(a = counts, q = CUTOFF_PERCENTILE, axis = None)
         counts = list(filter(lambda count: count <= cutoff, counts))
-        axes[plot_type].hist(x = counts, bins = min(n_bins, max(counts)), align = "mid", histtype = "stepfilled", color = GREY)
+        axes[plot_type].hist(x = counts, bins = min(n_bins, max(counts)), log = True, align = "mid", histtype = "stepfilled", color = GREY)
         column_index = i % n_col
         if (i >= len(plot_types) - n_col):
             axes[plot_type].set_xlabel("Amount per Track") # only set an x label for the bottom row
+        else:
+            axes[plot_type].set_xticks([])
+            axes[plot_type].set_xticklabels([])
+        # x axis
         min_count, max_count = min(counts), max(counts)
         step = max(1, int((max_count - min_count) / 3))
         xticks = list(range(min_count, max_count + step, step))
         axes[plot_type].set_xticks(xticks)
         axes[plot_type].set_xticklabels(xticks)
+        # y axis
         if (column_index == 0): # if a left most plot
-            axes[plot_type].set_ylabel("Frequency") # only set a y label for the leftmost row
-        axes[plot_type].get_yaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda count, _: f"{int(count):,}")) # add commas
+            axes[plot_type].set_ylabel("log(Frequency)") # only set a y label for the leftmost row
+        axes[plot_type].get_yaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda y_value, _: f"{int(y_value):,}")) # make ticks look nice
+        # title
         axes[plot_type].set_title(label = split_camel_case(string = plot_type, sep = " ").title(), fontdict = {"fontweight": "bold"}) # set title
 
     # save image
@@ -379,6 +422,43 @@ def make_sparsity_plot(input_filepath: str, output_filepath_prefix: str, express
         with open(pickle_output, "rb") as pickle_file:
             percentile_values = pickle.load(file = pickle_file)
 
+    # create paper figure for sparsity
+    plot_size_factor = 3
+    fig, axes = plt.subplot_mosaic(mosaic = [["sparsity"]], constrained_layout = True, figsize = (plot_size_factor * 4, plot_size_factor))
+    axes["sparsity"].yaxis.grid(True)
+    relevant_time_unit = relevant_time_units[0]
+    sparsity_values = [[],] * len(expressive_feature_types)
+    for i, expressive_feature_type in enumerate(expressive_feature_types):
+        if expressive_feature_type == ALL_FEATURES_TYPE_NAME:
+            current_values = sparsity[["path", relevant_time_unit]]
+        else:
+            current_values = sparsity[sparsity["type"] == expressive_feature_type][["path", relevant_time_unit + SPARSITY_SUCCESSIVE_SUFFIX]].rename(columns = {relevant_time_unit + SPARSITY_SUCCESSIVE_SUFFIX: relevant_time_unit}) # get subset of sparsity
+        # current_values = current_values.groupby(by = "path", as_index = False, dropna = True).mean()
+        current_values = current_values[relevant_time_unit].dropna().tolist()
+        cutoff = np.percentile(a = current_values, q = CUTOFF_PERCENTILE, axis = None)
+        sparsity_values[i] = list(filter(lambda current_value: current_value <= cutoff, current_values))
+        print(f"{expressive_feature_type}: {' '.join(map(str, np.percentile(a = sparsity_values[i], q = [0, 25, 50, 75, 100], axis = None)))}")
+    axes["sparsity"].boxplot(x = sparsity_values, vert = True, showfliers = False)
+    # violin_parts = axes["sparsity"].violinplot(sparsity_values, vert = True, showextrema = False, showmeans = False, showmedians = True)
+    # for part_name in list(violin_parts.keys())[1:]:
+    #     violin_part = violin_parts[part_name]
+    #     violin_part.set_edgecolor("0")
+    #     violin_part.set_linewidth(0.8)
+    # for violin_part in violin_parts["bodies"]:
+    #     violin_part.set_facecolor(GREY)
+    #     # violin_part.set_edgecolor("0")
+    #     violin_part.set_linewidth(1)
+    #     violin_part.set_alpha(0.5)
+    # axis labels
+    axes["sparsity"].set_xlabel("Expression Text Type")
+    axes["sparsity"].set_xticks(list(range(1, len(expressive_feature_types) + 1)), labels = [split_camel_case(string = expressive_feature_type, sep = " ").title() for expressive_feature_type in expressive_feature_types], rotation = 75)
+    axes["sparsity"].set_ylabel(f"{' '.join(relevant_time_unit.split('_')).title()}")
+    # axes["sparsity"].get_yaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda y_value, _: f"{y_value:,.2f}")) # add commas
+    # save image
+    output_filepath_paper = f"{output_filepath_prefix}.paper.png"
+    fig.savefig(output_filepath_paper, dpi = OUTPUT_RESOLUTION_DPI) # save image
+    logging.info(f"Sparsity Paper plot saved to {output_filepath_paper}.")
+
     # create figure of percentiles (faceted by expressive_feature)
     use_twin_axis_percentiles = False
     n_cols = 5
@@ -431,7 +511,6 @@ def make_sparsity_plot(input_filepath: str, output_filepath_prefix: str, express
     use_twin_axis_histogram = False
     n_bins = 15
     histogram_range = (0, 256) # in beats
-    histogram_colors = ("#0004FF", "#FFF400", "#C90000")
     fig, axes = plt.subplot_mosaic(mosaic = plot_mosaic, constrained_layout = True, figsize = (24, 16))
     fig.suptitle("Sparsity of Expressive Features", fontweight = "bold")
     # create histogram plot
@@ -554,7 +633,7 @@ if __name__ == "__main__":
         makedirs(args.output_dir)
 
     # output filepaths for data used in plots
-    PLOT_DATA_OUTPUT_FILEPATHS = {plot_type : f"{args.file_output_dir}/{plot_type}.csv" for plot_type in ("density", "summary", "sparsity")}
+    PLOT_DATA_OUTPUT_FILEPATHS = {plot_type : f"{args.file_output_dir}/{plot_type}.csv" for plot_type in ("song_length", "density", "summary", "sparsity")}
 
     # set up logging
     logging.basicConfig(level = logging.INFO, format = "%(message)s")
@@ -575,9 +654,10 @@ if __name__ == "__main__":
         data = data[data["in_dataset"] & (data["expressive_features"].apply(lambda expressive_features_path: exists(str(expressive_features_path))))]
 
         # create column names
-        pd.DataFrame(columns = DENSITY_COLUMNS).to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[0], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # density
-        pd.DataFrame(columns = FEATURE_TYPES_SUMMARY_COLUMNS).to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[1], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # features summary
-        pd.DataFrame(columns = SPARSITY_COLUMNS).to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[2], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # sparsity
+        pd.DataFrame(columns = SONG_LENGTH_COLUMNS).to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[0], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # song length
+        pd.DataFrame(columns = DENSITY_COLUMNS).to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[1], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # density
+        pd.DataFrame(columns = FEATURE_TYPES_SUMMARY_COLUMNS).to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[2], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # features summary
+        pd.DataFrame(columns = SPARSITY_COLUMNS).to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[3], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # sparsity
 
         # parse through data with multiprocessing
         logging.info(f"N_PATHS = {len(data)}") # print number of paths to process
@@ -597,9 +677,15 @@ if __name__ == "__main__":
     ##################################################
 
     plot_output_filepaths = [f"{args.output_dir}/{plot_type}.png" for plot_type in PLOT_DATA_OUTPUT_FILEPATHS.keys()]
-    _ = make_density_plot(input_filepath = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[0], output_filepath = plot_output_filepaths[0])
-    expressive_feature_types = make_summary_plot(input_filepath = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[1], output_filepath_prefix = plot_output_filepaths[1].split(".")[0])
-    _ = make_sparsity_plot(input_filepath = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[2], output_filepath_prefix = plot_output_filepaths[2].split(".")[0], expressive_feature_types = expressive_feature_types[::-1])
+    song_length_statistics = get_song_length_statistics(input_filepath = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[0])
+    logging.info("Song Length Statistics:")
+    for relevant_time_unit, statistics in song_length_statistics.items():
+        logging.info(f"  = {relevant_time_unit.title}:")
+        for statistic_type, value in statistics.items():
+            logging.info(f"    - {' '.join(statistic_type.split('_')).title()}: {value:,.2f}")
+    _ = make_density_plot(input_filepath = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[1], output_filepath = plot_output_filepaths[1])
+    expressive_feature_types = make_summary_plot(input_filepath = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[2], output_filepath_prefix = plot_output_filepaths[1].split(".")[2])
+    _ = make_sparsity_plot(input_filepath = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[3], output_filepath_prefix = plot_output_filepaths[2].split(".")[3], expressive_feature_types = expressive_feature_types[::-1])
 
     ##################################################
 

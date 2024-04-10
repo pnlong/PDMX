@@ -262,9 +262,9 @@ class MusicExpress(muspy.music.Music):
             most_recent_time_step += period_length
 
             # check for temporal feature type
-            if type(temporal_features[i]) is TimeSignature:
+            if isinstance(temporal_features[i], TimeSignature):
                 time_signature_idx = i
-            elif type(temporal_features[i]) is Tempo:
+            elif isinstance(temporal_features[i], Tempo):
                 tempo_idx = i
 
         # return end time if we never reached time steps
