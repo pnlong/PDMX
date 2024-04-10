@@ -135,13 +135,11 @@ def sparsity(expressive_features: pd.DataFrame, music: MusicExpress, stem: str, 
     for successive_distance_column, distance_column in zip(expressive_features_plots.SUCCESSIVE_DISTANCE_COLUMNS, expressive_features_plots.DISTANCE_COLUMNS): # add successive times columns
         sparsity[successive_distance_column] = sparsity[distance_column]
     sparsity = sparsity[expressive_features_plots.SPARSITY_COLUMNS].sort_values("time_steps").reset_index(drop = True) # sort by increasing times
-    sparsity = expressive_features_plots.calculate_difference_between_successive_entries(df = sparsity, columns = expressive_features_plots.DISTANCE_COLUMNS) # calculate distances
     expressive_feature_types = pd.unique(expressive_features["type"]) # get types of expressive features
-    distance = pd.DataFrame(columns = expressive_features_plots.SPARSITY_COLUMNS)
+    distance = expressive_features_plots.calculate_difference_between_successive_entries(df = sparsity, columns = expressive_features_plots.DISTANCE_COLUMNS) # calculate distances
     for expressive_feature_type in expressive_feature_types: # get distances between successive features of the same type
         distance_for_expressive_feature_type = expressive_features_plots.calculate_difference_between_successive_entries(df = sparsity[sparsity["type"] == expressive_feature_type], columns = expressive_features_plots.SUCCESSIVE_DISTANCE_COLUMNS) # calculate sparsity for certain feature type
-        distance = pd.concat(objs = (distance, distance_for_expressive_feature_type), axis = 0, ignore_index = False) # append to overall distance
-    distance = distance.sort_index(axis = 0) # sort by index (return to original index)
+        distance.loc[distance_for_expressive_feature_type.index, expressive_features_plots.SUCCESSIVE_DISTANCE_COLUMNS] = distance_for_expressive_feature_type[expressive_features_plots.SUCCESSIVE_DISTANCE_COLUMNS]
     distance.to_csv(path_or_buf = output_filepath, sep = ",", na_rep = train.NA_VALUE, header = False, index = False, mode = "a") # output
 
 def loss_for_perplexity(model, seq: torch.tensor, mask: torch.tensor, stem: str, loss_for_perplexity_columns: str, output_filepath: str):

@@ -24,11 +24,14 @@ import matplotlib.pyplot as plt
 
 import utils
 import train
-import expressive_features_plots
+from expressive_features_plots import SPARSITY_SUCCESSIVE_SUFFIX, OUTPUT_RESOLUTION_DPI
 from train_plots import make_model_name_fancy
 import evaluate
 import evaluate_baseline
 from read_mscz.music import DIVIDE_BY_ZERO_CONSTANT
+
+plt.style.use("default")
+plt.rcParams["font.family"] = "serif"
 
 ##################################################
 
@@ -39,7 +42,7 @@ from read_mscz.music import DIVIDE_BY_ZERO_CONSTANT
 DATA_DIR = "/home/pnlong/musescore/datav"
 MODELS_FILEPATH = f"{DATA_DIR}/models.txt"
 OUTPUT_DIR = DATA_DIR
-LARGE_PLOTS_DPI = int(1.5 * expressive_features_plots.OUTPUT_RESOLUTION_DPI)
+LARGE_PLOTS_DPI = int(1.5 * OUTPUT_RESOLUTION_DPI)
 
 ##################################################
 
@@ -122,11 +125,14 @@ def make_n_expressive_features_plot(n_expressive_features: pd.DataFrame, models:
     fig.suptitle("Number of Expressive Features in Data", fontweight = "bold")
 
     # make plot
-    for j, model in enumerate(models):
-        percentile_values = np.percentile(a = n_expressive_features[n_expressive_features["model"] == model]["n"].tolist(), q = percentiles)
+    for model in models:
+        current = n_expressive_features[n_expressive_features["model"] == model]["n"].tolist()
+        if len(current) == 0:
+            continue
+        percentile_values = np.percentile(a = current, q = percentiles)
         if apply_log:
             percentile_values = np.log10(percentile_values + DIVIDE_BY_ZERO_CONSTANT)
-        axes["n"].plot(percentiles, percentile_values, label = model, color = expressive_features_plots.LINE_COLORS[j])
+        axes["n"].plot(percentiles, percentile_values, label = model)
     del percentiles, percentile_values
     axes["n"].set_xlabel("Percentile (%)")
     axes["n"].set_ylabel("Number of Expressive Features")
@@ -147,7 +153,7 @@ def make_n_expressive_features_plot(n_expressive_features: pd.DataFrame, models:
     axes["legend"].axis("off")
 
     # save image
-    fig.savefig(f"{output_dir}/{evaluate.PLOT_TYPES[1]}.png", dpi = expressive_features_plots.OUTPUT_RESOLUTION_DPI) # save image
+    fig.savefig(f"{output_dir}/{evaluate.PLOT_TYPES[1]}.png", dpi = OUTPUT_RESOLUTION_DPI) # save image
 
     # clear up some memory
     del n_expressive_features
@@ -173,14 +179,17 @@ def make_density_plot(density: pd.DataFrame, models: list, output_dir: str) -> N
         relevant_density = density[relevant_density_query]
         bins = np.arange(start = relevant_ranges[relevant_density_type][0], stop = relevant_ranges[relevant_density_type][1] + 1e-3, step = (relevant_ranges[relevant_density_type][1] - relevant_ranges[relevant_density_type][0]) / n_bins)
         truth = get_histogram_data_table(data = relevant_density[relevant_density["model"] == evaluate_baseline.TRUTH_DIR_STEM][relevant_density_type], bins = bins)["frequency"].tolist()
-        total = sum(truth)
+        total = sum(truth) + DIVIDE_BY_ZERO_CONSTANT
         truth = list(map(lambda q: q / total, truth))
-        for j, model in enumerate(models):
-            model_relevant_density = get_histogram_data_table(data = relevant_density[relevant_density["model"] == model][relevant_density_type], bins = bins)["frequency"].tolist()
-            total = sum(model_relevant_density)
+        for model in models:
+            current = relevant_density[relevant_density["model"] == model][relevant_density_type]
+            if len(current) == 0:
+                continue
+            model_relevant_density = get_histogram_data_table(data = current, bins = bins)["frequency"].tolist()
+            total = sum(model_relevant_density) + DIVIDE_BY_ZERO_CONSTANT
             model_relevant_density = list(map(lambda p: p / total, model_relevant_density))
             kl_divergence = list(map(lambda P, Q: P * math.log(P / (Q + DIVIDE_BY_ZERO_CONSTANT)) if P != 0 else 0, model_relevant_density, truth))
-            axes[relevant_density_type].plot(bins[:-1], kl_divergence, label = model, color = expressive_features_plots.LINE_COLORS[j])
+            axes[relevant_density_type].plot(bins[:-1], kl_divergence, label = model)
         fancy_relevant_density_type = ''.join(relevant_density_type.split('_')).title()
         axes[relevant_density_type].set_xlabel(fancy_relevant_density_type)
         if i != 0: # remove y axis stuff for non-leftmost
@@ -203,7 +212,7 @@ def make_density_plot(density: pd.DataFrame, models: list, output_dir: str) -> N
     axes["legend"].axis("off")
 
     # save image
-    fig.savefig(f"{output_dir}/{evaluate.PLOT_TYPES[2]}.png", dpi = expressive_features_plots.OUTPUT_RESOLUTION_DPI) # save image
+    fig.savefig(f"{output_dir}/{evaluate.PLOT_TYPES[2]}.png", dpi = OUTPUT_RESOLUTION_DPI) # save image
 
     # clear up memory
     del density
@@ -234,9 +243,11 @@ def make_summary_plot(summary: pd.DataFrame, models: list, output_dir: str, appl
     # create plot
     for i, plot_type in enumerate(plot_types):
         axes[plot_type].xaxis.grid(True)
-        for j, model in enumerate(models):
+        for model in models:
             model_summary = summary[plot_type][summary[plot_type]["model"] == model][::-1]
-            axes[plot_type].scatter(model_summary["size"], model_summary["type"], label = model, color = expressive_features_plots.LINE_COLORS[j])
+            if len(model_summary) == 0:
+                continue
+            axes[plot_type].scatter(model_summary["size"], model_summary["type"], label = model)
         del model_summary
         axes[plot_type].set_title(f"{plot_type.title()}")
         axes[plot_type].ticklabel_format(axis = "x", style = "scientific", scilimits = (-1, 3))
@@ -258,7 +269,7 @@ def make_summary_plot(summary: pd.DataFrame, models: list, output_dir: str, appl
     axes["legend"].axis("off")
 
     # save image
-    fig.savefig(f"{output_dir}/{evaluate.PLOT_TYPES[3]}.png", dpi = expressive_features_plots.OUTPUT_RESOLUTION_DPI) # save image
+    fig.savefig(f"{output_dir}/{evaluate.PLOT_TYPES[3]}.png", dpi = OUTPUT_RESOLUTION_DPI) # save image
 
     # return the order from most common to least
     return pd.unique(values = summary[plot_types[0]]["type"]).tolist()
@@ -269,7 +280,7 @@ def make_sparsity_plot(sparsity: pd.DataFrame, models: list, output_dir: str, ex
 
     # hyper parameters
     relevant_time_units = ["beats", "seconds"]
-    relevant_time_units_suffix = [relevant_time_unit + expressive_features_plots.SPARSITY_SUCCESSIVE_SUFFIX for relevant_time_unit in relevant_time_units]
+    relevant_time_units_suffix = [relevant_time_unit + SPARSITY_SUCCESSIVE_SUFFIX for relevant_time_unit in relevant_time_units]
     plot_types = ["total", "mean", "median"]
     plot_type = plot_types[1] # which plot type to display
     output_filepaths = [f"{output_dir}/{evaluate.PLOT_TYPES[4]}.{suffix}.png" for suffix in ("percentiles", "histograms", "percentiles2")]
@@ -293,7 +304,7 @@ def make_sparsity_plot(sparsity: pd.DataFrame, models: list, output_dir: str, ex
             if n == 0:
                 return (None, 0)
             df = df[["path"] + columns] # filter down to only necessary columns
-            out_columns = [column.replace(expressive_features_plots.SPARSITY_SUCCESSIVE_SUFFIX, "") for column in columns] # get rid of suffix if necessary
+            out_columns = [column.replace(SPARSITY_SUCCESSIVE_SUFFIX, "") for column in columns] # get rid of suffix if necessary
             out = dict(zip(plot_types, utils.rep(x = pd.DataFrame(columns = out_columns), times = len(plot_types)))) # create output dataframe
             for plot_type in plot_types:
                 if plot_type == "mean":
@@ -322,7 +333,7 @@ def make_sparsity_plot(sparsity: pd.DataFrame, models: list, output_dir: str, ex
     use_twin_axis_percentiles = False
     n_cols = 5
     plot_mosaic = [expressive_feature_types[i:i + n_cols] for i in range(0, len(expressive_feature_types), n_cols)] # create plot grid
-    if len(plot_mosaic[-1]) < len(plot_mosaic[-2]):
+    if (len(plot_mosaic) >= 2) and (len(plot_mosaic[-1]) < len(plot_mosaic[-2])):
         plot_mosaic[-1] += utils.rep(x = "legend", times = (len(plot_mosaic[-2]) - len(plot_mosaic[-1])))
     else:
         for i in range(len(plot_mosaic)):
@@ -343,9 +354,9 @@ def make_sparsity_plot(sparsity: pd.DataFrame, models: list, output_dir: str, ex
             if apply_log_percentiles_by_feature: # apply log function
                 for column in relevant_time_units:
                     percentiles_values_current[column] = np.log10(abs(percentiles_values_current[column]) + DIVIDE_BY_ZERO_CONSTANT)
-            axes[expressive_feature_type].plot(percentiles, percentiles_values_current[relevant_time_units[0]], label = model, color = expressive_features_plots.LINE_COLORS[j])
+            axes[expressive_feature_type].plot(percentiles, percentiles_values_current[relevant_time_units[0]], label = model)
             if use_twin_axis_percentiles:
-                percentile_right_axis.plot(percentiles, percentiles_values_current[relevant_time_units[1]], label = model, color = expressive_features_plots.LINE_COLORS[j])
+                percentile_right_axis.plot(percentiles, percentiles_values_current[relevant_time_units[1]], label = model)
         if is_left_plot(expressive_feature_type = expressive_feature_type) or use_twin_axis_percentiles:
             axes[expressive_feature_type].set_ylabel(f"log({relevant_time_units[0].title()})" if apply_log_percentiles_by_feature else f"{relevant_time_units[0].title()}")
             axes[expressive_feature_type].get_yaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda count, _: f"{int(count):,}")) # add commas
@@ -393,17 +404,19 @@ def make_sparsity_plot(sparsity: pd.DataFrame, models: list, output_dir: str, ex
             histogram_values = histogram_values
         histogram_values = histogram_values[(histogram_values[relevant_time_units[0]] >= histogram_range[0]) & (histogram_values[relevant_time_units[0]] <= histogram_range[1])]
         bins = np.arange(start = histogram_range[0], stop = histogram_range[1] + 1e-3, step = (histogram_range[1] - histogram_range[0]) / n_bins)
-        for j, model in enumerate(models):
+        for model in models:
             histogram_values_model = histogram_values[histogram_values["model"] == model]
+            if len(histogram_values_model) == 0:
+                continue
             histogram = get_histogram_data_table(data = histogram_values_model[relevant_time_units[0]], bins = bins)
             if apply_log_histogram:
                 histogram["frequency"] = np.log10(histogram["frequency"] + DIVIDE_BY_ZERO_CONSTANT)
-            axes[expressive_feature_type].plot(histogram["bins"], histogram["frequency"], label = model, color = expressive_features_plots.LINE_COLORS[j])
+            axes[expressive_feature_type].plot(histogram["bins"], histogram["frequency"], label = model)
             if use_twin_axis_histogram:
                 histogram = get_histogram_data_table(data = histogram_values_model[relevant_time_units[1]], bins = bins)
                 if apply_log_histogram:
                     histogram["frequency"] = np.log10(histogram["frequency"] + DIVIDE_BY_ZERO_CONSTANT)
-                axes[expressive_feature_type].plot(histogram["bins"], histogram["frequency"], label = model, color = expressive_features_plots.LINE_COLORS[j])
+                axes[expressive_feature_type].plot(histogram["bins"], histogram["frequency"], label = model)
         axes[expressive_feature_type].set_xlabel(relevant_time_units[0].title())
         axes[expressive_feature_type].get_xaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda count, _: f"{int(count):,}" if (not math.isnan(count)) else "")) # add commas
         if use_twin_axis_histogram:
@@ -453,9 +466,9 @@ def make_sparsity_plot(sparsity: pd.DataFrame, models: list, output_dir: str, ex
             if apply_log_percentiles_by_model: # apply log function
                 for column in relevant_time_units:
                     percentiles_values_current[column] = np.log10(abs(percentiles_values_current[column]) + DIVIDE_BY_ZERO_CONSTANT)
-            axes[model].plot(percentiles, percentiles_values_current[relevant_time_units[0]], label = expressive_feature_type, color = expressive_features_plots.LINE_COMBINATIONS[i][0], linestyle = expressive_features_plots.LINE_COMBINATIONS[i][1])
+            axes[model].plot(percentiles, percentiles_values_current[relevant_time_units[0]], label = expressive_feature_type)
             if use_twin_axis_percentiles:
-                percentile_right_axis.plot(percentiles, percentiles_values_current[relevant_time_units[1]], label = expressive_feature_type, color = expressive_features_plots.LINE_COMBINATIONS[i][0], linestyle = expressive_features_plots.LINE_COMBINATIONS[i][1])
+                percentile_right_axis.plot(percentiles, percentiles_values_current[relevant_time_units[1]], label = expressive_feature_type)
         if is_left_plot(model = model) or use_twin_axis_percentiles:
             axes[model].set_ylabel(f"log({relevant_time_units[0].title()})" if apply_log_percentiles_by_model else f"{relevant_time_units[0].title()}")
             axes[model].get_yaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda count, _: f"{int(count):,}")) # add commas
@@ -527,7 +540,7 @@ if __name__ == "__main__":
     with open(args.models, "r") as models_output: # read in list of trained models
         models = [model.strip() for model in models_output.readlines()] # use a set because better for `in` operations
     models_with_truth = [evaluate_baseline.TRUTH_DIR_STEM] + models
-    models_without_conditional = [model for model in models_with_truth if "conditional" not in model]
+    models_joint = [model for model in models_with_truth if "conditional" not in model]
 
     # make sure eval directory exists
     eval_dir = f"{args.output_dir}/eval"
@@ -574,39 +587,39 @@ if __name__ == "__main__":
         del baseline
 
         # n expressive features
-        n_expressive_features = combine_data_tables(models = models_without_conditional,
+        n_expressive_features = combine_data_tables(models = models_joint,
                                                     output_filepath = f"{eval_subdir}/eval_{evaluate.PLOT_TYPES[1]}.csv",
                                                     is_baseline = False,
                                                     eval_type = eval_type,
                                                     stem = f"eval_{evaluate.PLOT_TYPES[1]}")
-        _ = make_n_expressive_features_plot(n_expressive_features = n_expressive_features, models = models_without_conditional, output_dir = plots_dir)
+        _ = make_n_expressive_features_plot(n_expressive_features = n_expressive_features, models = models_joint, output_dir = plots_dir)
         del n_expressive_features
 
         # density
-        density = combine_data_tables(models = [model for model in models_without_conditional if not ((model == evaluate_baseline.TRUTH_DIR_STEM) or ("baseline" in model))],
+        density = combine_data_tables(models = [model for model in models_joint if not ((model == evaluate_baseline.TRUTH_DIR_STEM) or ("baseline" in model))],
                                       output_filepath = f"{eval_subdir}/eval_{evaluate.PLOT_TYPES[2]}.csv",
                                       is_baseline = False,
                                       eval_type = eval_type,
                                       stem = f"eval_{evaluate.PLOT_TYPES[2]}")
-        _ = make_density_plot(density = density, models = models_without_conditional, output_dir = plots_dir)
+        _ = make_density_plot(density = density, models = models_joint, output_dir = plots_dir)
         del density
 
         # feature types summary
-        summary = combine_data_tables(models = models_without_conditional,
+        summary = combine_data_tables(models = models_joint,
                                       output_filepath = f"{eval_subdir}/eval_{evaluate.PLOT_TYPES[3]}.csv",
                                       is_baseline = False,
                                       eval_type = eval_type,
                                       stem = f"eval_{evaluate.PLOT_TYPES[3]}")
-        expressive_feature_types = make_summary_plot(summary = summary, models = models_without_conditional, output_dir = plots_dir)
+        expressive_feature_types = make_summary_plot(summary = summary, models = models_joint, output_dir = plots_dir)
         del summary
 
         # sparsity
-        sparsity = combine_data_tables(models = models_without_conditional,
+        sparsity = combine_data_tables(models = models_joint,
                                        output_filepath = f"{eval_subdir}/eval_{evaluate.PLOT_TYPES[4]}.csv",
                                        is_baseline = False,
                                        eval_type = eval_type,
                                        stem = f"eval_{evaluate.PLOT_TYPES[4]}")
-        _ = make_sparsity_plot(sparsity = sparsity, output_dir = plots_dir, models = models_without_conditional, expressive_feature_types = expressive_feature_types)
+        _ = make_sparsity_plot(sparsity = sparsity, output_dir = plots_dir, models = models_joint, expressive_feature_types = expressive_feature_types)
         del sparsity
 
         # perplexity

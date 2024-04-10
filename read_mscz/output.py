@@ -830,7 +830,7 @@ def write_musicxml(path: str, music: "MusicExpress", compressed: bool = None):
         path_temp = f"{path}.temp.xml"
         score.write(fmt = "xml", fp = path_temp)
         compressXML(filename = path_temp, deleteOriginal = True)
-        rename(src = path_temp, dst = path)
+        rename(src = f"{path}.temp.mxl", dst = path)
     else: # don't compress
         score.write(fmt = "xml", fp = path)
 
