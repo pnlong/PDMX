@@ -14,6 +14,7 @@ import pandas as pd
 from numpy import percentile, log10, arange
 from math import floor, ceil
 import matplotlib.pyplot as plt
+import matplotlib
 from os.path import exists
 from os import makedirs
 import multiprocessing
@@ -26,6 +27,7 @@ from parse_mscz import LIST_FEATURE_JOIN_STRING
 
 plt.style.use("default")
 plt.rcParams["font.family"] = "serif"
+plt.rcParams["mathtext.fontset"] = "dejavuserif"
 
 ##################################################
 
@@ -115,7 +117,7 @@ def make_versions_plot(output_filepath: str):
     axes["bar_all"].legend(["Paths", "Tracks", "Errors"]) 
 
     # save image
-    fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI) # save image
+    fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI, transparent = True, bbox_inches = "tight") # save image
     logging.info(f"Versions plot saved to {output_filepath}.")
 
 ##################################################
@@ -148,7 +150,7 @@ def make_error_plot(input_filepath: str, output_filepath: str):
     axes["bar"].set_ylabel("Error Type")
 
     # save image
-    fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI) # save image
+    fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI, transparent = True, bbox_inches = "tight") # save image
     logging.info(f"Errors plot saved to {output_filepath}.")
 
 ##################################################
@@ -190,7 +192,7 @@ def make_percentile_plot(output_filepath: str):
     axes["log"].legend(ncol = 2)
 
     # save image
-    fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI) # save image
+    fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI, transparent = True, bbox_inches = "tight") # save image
     logging.info(f"Percentiles plot saved to {output_filepath}.")
 
 ##################################################
@@ -221,7 +223,7 @@ def make_timing_plot(input_filepath: str, output_filepath: str):
     axes["time"].set_title(f"Total Time: {total_time}")
 
     # save image
-    fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI) # save image
+    fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI, transparent = True, bbox_inches = "tight") # save image
     logging.info(f"Timings plot saved to {output_filepath}.")
 
 ##################################################
@@ -255,7 +257,7 @@ def make_tracks_plot(output_filepath: str):
     axes["hist"].set_ylabel("Count")
 
     # save image
-    fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI) # save image
+    fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI, transparent = True, bbox_inches = "tight") # save image
     logging.info(f"Tracks plot saved to {output_filepath}.")
 
 ##################################################
@@ -316,7 +318,7 @@ def make_boolean_plot(boolean_column_name: str, output_filepath: str):
     _make_boolean_bar_chart(axes = axes, df = data, type_column = "percent", boolean_column_name = boolean_column_name, fancy_boolean_column_name = fancy_boolean_column_name, show_legend = False)
 
     # save image
-    fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI) # save image
+    fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI, transparent = True, bbox_inches = "tight") # save image
     logging.info(f"{fancy_boolean_column_name} plot saved to {output_filepath}.")
 
 # helper to make public domain plot
@@ -350,7 +352,7 @@ def make_complexity_plot(output_filepath: str):
     axes["box"].set_ylabel("Complexity")
 
     # save image
-    fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI) # save image
+    fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI, transparent = True, bbox_inches = "tight") # save image
     logging.info(f"Complexity plot saved to {output_filepath}.")
 
 ##################################################
@@ -410,7 +412,7 @@ def make_descriptor_plot(descriptor: str, output_filepath: str, top_n: int = 10)
     axes[plot_types[-1]].set_title(get_plot_title(plot_type = plot_types[-1], fraction_without_descriptor = fraction_without_descriptor))
     
     # save image
-    fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI) # save image
+    fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI, transparent = True, bbox_inches = "tight") # save image
     logging.info(f"{column_name.title()} plot saved to {output_filepath}.")
 
 
@@ -423,7 +425,6 @@ def make_descriptor_plot(descriptor: str, output_filepath: str, top_n: int = 10)
     # plot information
     no_descriptor = data_by[plot_type][column_name].apply(no_descriptor_determiner)
     border_margin_fraction = 0.15
-    x_label_rotation = 75
     if genre_is_first_genre:
         data = data_by[plot_type][~no_descriptor][column_name].apply(lambda sequence: str(sequence).split(LIST_FEATURE_JOIN_STRING)[0])
     else:
@@ -431,22 +432,22 @@ def make_descriptor_plot(descriptor: str, output_filepath: str, top_n: int = 10)
     data = data.value_counts(sort = True, ascending = False, dropna = True)
     data = data.head(n = top_n) # get top n results
     data = data.apply(log10) # log scale
-    axes[plot_type].yaxis.grid(True)
-    axes[plot_type].bar(x = data.index, height = data.values, color = GREY) # plot bar graph
-    axes[plot_type].set_xlabel(descriptor.title())
-    axes[plot_type].set_xticks(axes[plot_type].get_xticks())
-    axes[plot_type].set_xticklabels([descriptor_value.replace("music", "").title() for descriptor_value in data.index], rotation = x_label_rotation)
+    axes[plot_type].xaxis.grid(True)
+    axes[plot_type].barh(y = data.index, width = data.values, color = GREY) # plot bar graph
+    axes[plot_type].set_ylabel(descriptor.title())
+    axes[plot_type].set_yticks(axes[plot_type].get_yticks())
+    axes[plot_type].set_yticklabels([descriptor_value.replace("music", "").title() for descriptor_value in data.index])
+    axes[plot_type].invert_yaxis() # so most common descriptor goes on top
     min_data, max_data = min(data.values), max(data.values)
     logticks = list(range(floor(min_data), ceil(max_data) + 1, 1))
-    axes[plot_type].set_yticks(logticks)
-    axes[plot_type].set_yticklabels([f"{10**logtick:,}" for logtick in logticks])
-    axes[plot_type].set_ylim(bottom = min_data - border_margin_fraction, top = max_data + border_margin_fraction)
-    axes[plot_type].set_ylabel("Count")
-    # axes[plot_type].set_title(label = f"{column_name.title()}", fontdict = {"fontweight": "bold"})
+    axes[plot_type].set_xticks(logticks)
+    axes[plot_type].set_xticklabels([f"{10**logtick:,}" for logtick in logticks])
+    axes[plot_type].set_xlim(left = min_data - border_margin_fraction, right = max_data + border_margin_fraction)
+    axes[plot_type].set_xlabel("Count")
 
     # save image
-    output_filepath = output_filepath.split(".")[0] + ".paper.png"
-    fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI) # save image
+    output_filepath = output_filepath.split(".")[0] + ".paper.pdf"
+    fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI, transparent = True, bbox_inches = "tight") # save image
     logging.info(f"{column_name.title()} Figure plot saved to {output_filepath}.")
 
 # helper function to make genres plot
@@ -497,7 +498,7 @@ if __name__ == "__main__":
     }
 
     # get plot output filepaths
-    plot_output_filepaths = [f"{args.output_dir}/{plot_type}.png" for plot_type in (
+    plot_output_filepaths = [f"{args.output_dir}/{plot_type}.pdf" for plot_type in (
         "versions", "errors", "public_domain", "n_expressive_features_percentiles", "timings",
         "tracks", "pro_user", "complexity", "genres", "tags"
         )]

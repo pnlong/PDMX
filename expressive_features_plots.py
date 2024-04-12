@@ -13,7 +13,7 @@
 import pickle
 import multiprocessing
 from os.path import exists
-from os import makedirs
+from os import makedirs, remove
 from tqdm import tqdm
 from time import perf_counter, strftime, gmtime
 import pandas as pd
@@ -31,6 +31,7 @@ from copy import deepcopy
 
 plt.style.use("default")
 plt.rcParams["font.family"] = "serif"
+plt.rcParams["mathtext.fontset"] = "dejavuserif"
 
 ##################################################
 
@@ -42,8 +43,33 @@ INPUT_FILEPATH = "/data2/pnlong/musescore/expressive_features/expressive_feature
 FILE_OUTPUT_DIR = "/data2/pnlong/musescore/expressive_features"
 
 LARGE_PLOTS_DPI = int(1.5 * OUTPUT_RESOLUTION_DPI)
-ALL_FEATURES_TYPE_NAME = "AllFeatures" # name of all features plot name
+ALL_FEATURES_TYPE_NAME = "AllTypes" # name of all features plot name
 CUTOFF_PERCENTILE = 95
+
+# COLORS
+TEXT_GREEN = "#5e813f"
+TEMPORAL_PURPLE = "#68349a"
+SPANNER_BLUE = "#4f71be"
+DYNAMIC_GOLD = "#b89230"
+SYMBOL_ORANGE = "#ff624c"
+SYSTEM_SALMON = "#a91b0d"
+ALL_BROWN = "#964b00"
+EXPRESSIVE_FEATURE_COLORS = {
+    ALL_FEATURES_TYPE_NAME: ALL_BROWN,
+    "Lyric": TEXT_GREEN,
+    "Tempo": TEMPORAL_PURPLE,
+    "Dynamic": DYNAMIC_GOLD,
+    "TimeSignature": SYSTEM_SALMON,
+    "Text": TEXT_GREEN,
+    "KeySignature": SYSTEM_SALMON,
+    "Barline": SYSTEM_SALMON,
+    "Articulation": SYMBOL_ORANGE,
+    "HairPin": DYNAMIC_GOLD,
+    "RehearsalMark": TEXT_GREEN,
+    "Slur": SPANNER_BLUE,
+    "Fermata": TEMPORAL_PURPLE,
+    "Pedal": SPANNER_BLUE,
+}
 
 # columns of data tables
 RELEVANT_TIME_UNITS = ["time_steps", "seconds", "bars", "beats"]
@@ -159,7 +185,6 @@ def extract_information(path: str):
 
     # add some columns, set up for calculation of distance
     sparsity = expressive_features[["type", "value", "time", TIME_IN_SECONDS_COLUMN_NAME]]
-    print(sparsity)
     sparsity = sparsity.rename(columns = {"time": "time_steps", TIME_IN_SECONDS_COLUMN_NAME: "seconds"})
     sparsity["path"] = rep(x = path, times = len(sparsity))
     sparsity["beats"] = sparsity["time_steps"] / unpickled["resolution"]
@@ -244,7 +269,7 @@ def make_density_plot(input_filepath: str, output_filepath: str) -> None:
     #     axes[relevant_density_type].set_xticklabels([])
 
     # save image
-    fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI) # save image
+    fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI, transparent = True, bbox_inches = "tight") # save image
     logging.info(f"Density plot saved to {output_filepath}.")
 
     # clear up memory
@@ -280,12 +305,6 @@ def make_summary_plot(input_filepath: str, output_filepath_prefix: str) -> list:
     expressive_features = summary[plot_types[0]]["type"].tolist()
     # summary[plot_types[0]]["size"] = summary[plot_types[0]]["size"].apply(lambda count: np.log10(count + DIVIDE_BY_ZERO_CONSTANT)) # apply log scale to total count
 
-    # print out table for paper
-    summary_for_paper = summary[plot_types[0]][::-1].reset_index(drop = True)
-    summary_for_paper.to_csv(path_or_buf = f"{output_filepath_prefix}.csv", sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # write mean values per expressive feature
-    for i in summary_for_paper.index:
-        print(f"{summary_for_paper.at[i, 'type']} & {summary_for_paper.at[i, 'size'] / 1000:,.2f} \\\\")
-
     # create plot
     for i, plot_type in enumerate(plot_types):
         axes[plot_type].xaxis.grid(True)
@@ -304,8 +323,8 @@ def make_summary_plot(input_filepath: str, output_filepath_prefix: str) -> list:
             axes[plot_type].set_yticklabels([])        
 
     # save image
-    output_filepath = f"{output_filepath_prefix}.bar.png"
-    fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI) # save image
+    output_filepath = f"{output_filepath_prefix}.bar.pdf"
+    fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI, transparent = True, bbox_inches = "tight") # save image
     logging.info(f"Summary Bar plot saved to {output_filepath}.")
 
 
@@ -325,38 +344,53 @@ def make_summary_plot(input_filepath: str, output_filepath_prefix: str) -> list:
     fig, axes = plt.subplot_mosaic(mosaic = mosaic, constrained_layout = True, figsize = (int(n_col * plot_size_factor), int(len(mosaic) * plot_size_factor * 0.7)), empty_sentinel = "")
     # fig.suptitle("Expressive Features", fontweight = "bold")
 
+    # print out table for paper, no longer needed
+    # summary_for_paper = summary[plot_types[0]][::-1].reset_index(drop = True)
+    # summary_for_paper.to_csv(path_or_buf = f"{output_filepath_prefix}.csv", sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # write mean values per expressive feature
+    # print(f"{ALL_FEATURES_TYPE_NAME} & {sum(summary_for_paper['size']) / 1000:,.2f} \\\\")
+    # for i in summary_for_paper.index:
+    #     print(f"{summary_for_paper.at[i, 'type']} & {summary_for_paper.at[i, 'size'] / 1000:,.2f} \\\\")
+
     # plot histograms
     n_bins = 15
-    for i, plot_type in enumerate(plot_types):
-        if plot_type == ALL_FEATURES_TYPE_NAME:
+    axes_labels_fontsize = 14
+    def get_expressive_feature_title(expressive_feature_type: str, amount: int = 0) -> str:
+        """Helper function to get the title of a subplot in the summary histograms plot."""
+        title = split_camel_case(string = expressive_feature_type, sep = " ").title()
+        title = r"$\bf{" + r"}$ $\bf{".join(title.split(" ")) + r"}$"
+        title = title + f" ({amount / 1000:,.2f})"
+        return title
+    for i, expressive_feature_type in enumerate(plot_types):
+        if expressive_feature_type == ALL_FEATURES_TYPE_NAME:
             counts = data.drop(columns = "type").groupby(by = "path", as_index = False).sum()["size"].tolist()
         else:
-            counts = data[data["type"] == plot_type]["size"].tolist()
+            counts = data[data["type"] == expressive_feature_type]["size"].tolist()
+        amount = sum(counts)
         cutoff = np.percentile(a = counts, q = CUTOFF_PERCENTILE, axis = None)
         counts = list(filter(lambda count: count <= cutoff, counts))
-        axes[plot_type].hist(x = counts, bins = min(n_bins, max(counts)), log = True, align = "mid", histtype = "stepfilled", color = GREY)
+        axes[expressive_feature_type].hist(x = counts, bins = min(n_bins, max(counts)), log = True, align = "mid", histtype = "stepfilled", color = EXPRESSIVE_FEATURE_COLORS[expressive_feature_type])
         column_index = i % n_col
         if (i >= len(plot_types) - n_col):
-            axes[plot_type].set_xlabel("Amount per Track") # only set an x label for the bottom row
+            axes[expressive_feature_type].set_xlabel("Amount per Track") # only set an x label for the bottom row, fontsize = axes_labels_fontsize
         else:
-            axes[plot_type].set_xticks([])
-            axes[plot_type].set_xticklabels([])
+            axes[expressive_feature_type].set_xticks([])
+            axes[expressive_feature_type].set_xticklabels([])
         # x axis
         min_count, max_count = min(counts), max(counts)
         step = max(1, int((max_count - min_count) / 3))
         xticks = list(range(min_count, max_count + step, step))
-        axes[plot_type].set_xticks(xticks)
-        axes[plot_type].set_xticklabels(xticks)
+        axes[expressive_feature_type].set_xticks(xticks)
+        axes[expressive_feature_type].set_xticklabels(xticks)
         # y axis
         if (column_index == 0): # if a left most plot
-            axes[plot_type].set_ylabel("log(Frequency)") # only set a y label for the leftmost row
-        axes[plot_type].get_yaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda y_value, _: f"{int(y_value):,}")) # make ticks look nice
+            axes[expressive_feature_type].set_ylabel("Frequency") # only set a y label for the leftmost row, fontsize = axes_labels_fontsize
+        axes[expressive_feature_type].get_yaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda y_value, _: f"{int(y_value):,}")) # make ticks look nice
         # title
-        axes[plot_type].set_title(label = split_camel_case(string = plot_type, sep = " ").title(), fontdict = {"fontweight": "bold"}) # set title
+        axes[expressive_feature_type].set_title(label = get_expressive_feature_title(expressive_feature_type = expressive_feature_type, amount = amount)) # set title
 
     # save image
-    output_filepath = f"{output_filepath_prefix}.histogram.png"
-    fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI) # save image
+    output_filepath = f"{output_filepath_prefix}.histogram.pdf"
+    fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI, transparent = True, bbox_inches = "tight") # save image
     logging.info(f"Summary Histogram plot saved to {output_filepath}.")
 
     # return the order from most common to least
@@ -374,7 +408,7 @@ def make_sparsity_plot(input_filepath: str, output_filepath_prefix: str, express
     relevant_time_units = ["beats", "seconds"]
     relevant_time_units_suffix = [relevant_time_unit + SPARSITY_SUCCESSIVE_SUFFIX for relevant_time_unit in relevant_time_units]
     plot_types = ["total", "mean", "median"]
-    output_filepaths = [f"{output_filepath_prefix}.{suffix}.png" for suffix in ("percentiles", "histograms", "percentiles2")]
+    output_filepaths = [f"{output_filepath_prefix}.{suffix}.pdf" for suffix in ("percentiles", "histograms", "percentiles2")]
 
     # we have distances between successive expressive features in time_steps, beats, seconds, and as a fraction of the length of the song
     sparsity = pd.read_csv(filepath_or_buffer = input_filepath, sep = ",", header = 0, index_col = False)
@@ -423,9 +457,11 @@ def make_sparsity_plot(input_filepath: str, output_filepath_prefix: str, express
             percentile_values = pickle.load(file = pickle_file)
 
     # create paper figure for sparsity
-    plot_size_factor = 3
-    fig, axes = plt.subplot_mosaic(mosaic = [["sparsity"]], constrained_layout = True, figsize = (plot_size_factor * 4, plot_size_factor))
-    axes["sparsity"].yaxis.grid(True)
+    is_boxplot = True # if false, a violin plot
+    alpha = 0.92
+    linewidth = 1
+    fig, axes = plt.subplot_mosaic(mosaic = [["sparsity"]], constrained_layout = True, figsize = (5, 5))
+    axes["sparsity"].xaxis.grid(True)
     relevant_time_unit = relevant_time_units[0]
     sparsity_values = [[],] * len(expressive_feature_types)
     for i, expressive_feature_type in enumerate(expressive_feature_types):
@@ -437,26 +473,33 @@ def make_sparsity_plot(input_filepath: str, output_filepath_prefix: str, express
         current_values = current_values[relevant_time_unit].dropna().tolist()
         cutoff = np.percentile(a = current_values, q = CUTOFF_PERCENTILE, axis = None)
         sparsity_values[i] = list(filter(lambda current_value: current_value <= cutoff, current_values))
-        print(f"{expressive_feature_type}: {' '.join(map(str, np.percentile(a = sparsity_values[i], q = [0, 25, 50, 75, 100], axis = None)))}")
-    axes["sparsity"].boxplot(x = sparsity_values, vert = True, showfliers = False)
-    # violin_parts = axes["sparsity"].violinplot(sparsity_values, vert = True, showextrema = False, showmeans = False, showmedians = True)
-    # for part_name in list(violin_parts.keys())[1:]:
-    #     violin_part = violin_parts[part_name]
-    #     violin_part.set_edgecolor("0")
-    #     violin_part.set_linewidth(0.8)
-    # for violin_part in violin_parts["bodies"]:
-    #     violin_part.set_facecolor(GREY)
-    #     # violin_part.set_edgecolor("0")
-    #     violin_part.set_linewidth(1)
-    #     violin_part.set_alpha(0.5)
+    if is_boxplot:
+        boxplot = axes["sparsity"].boxplot(x = sparsity_values, vert = False, showfliers = False, patch_artist = True)
+        for box, color in zip(boxplot["boxes"], [EXPRESSIVE_FEATURE_COLORS[expressive_feature_type] for expressive_feature_type in expressive_feature_types]): # set fill colors
+            box.set(facecolor = color, alpha = alpha)
+        for box in boxplot["medians"]: # make medians black
+            box.set(color = "0")
+    else:
+        violin = axes["sparsity"].violinplot(sparsity_values, widths = 0.8, vert = False, showextrema = False, showmeans = False, showmedians = True)
+        for violin_part, color in zip(violin["bodies"], [EXPRESSIVE_FEATURE_COLORS[expressive_feature_type] for expressive_feature_type in expressive_feature_types]):
+            violin_part.set_facecolor(color)
+            violin_part.set_edgecolor("0")
+            violin_part.set_linewidth(linewidth)
+            violin_part.set_alpha(alpha)
+        for part_name in list(violin.keys())[1:]:
+            violin_part = violin[part_name]
+            violin_part.set_edgecolor("0")
+            violin_part.set_linewidth(linewidth)
     # axis labels
-    axes["sparsity"].set_xlabel("Expression Text Type")
-    axes["sparsity"].set_xticks(list(range(1, len(expressive_feature_types) + 1)), labels = [split_camel_case(string = expressive_feature_type, sep = " ").title() for expressive_feature_type in expressive_feature_types], rotation = 75)
-    axes["sparsity"].set_ylabel(f"{' '.join(relevant_time_unit.split('_')).title()}")
-    # axes["sparsity"].get_yaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda y_value, _: f"{y_value:,.2f}")) # add commas
+    axes["sparsity"].set_xlabel(f"{' '.join(relevant_time_unit.split('_')).title()}")
+    # axes["sparsity"].get_xaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda x_value, _: f"{x_value:,.2f}")) # add commas
+    axes["sparsity"].set_ylabel("Expression Text Type")
+    axes["sparsity"].set_yticks(list(range(1, len(expressive_feature_types) + 1)))
+    axes["sparsity"].set_yticklabels(list(map(lambda expressive_feature_type: split_camel_case(string = expressive_feature_type, sep = " ").title(), expressive_feature_types)), rotation = 0)
+    axes["sparsity"].invert_yaxis() # so we follow the order we see in other plots
     # save image
-    output_filepath_paper = f"{output_filepath_prefix}.paper.png"
-    fig.savefig(output_filepath_paper, dpi = OUTPUT_RESOLUTION_DPI) # save image
+    output_filepath_paper = f"{output_filepath_prefix}.paper.pdf"
+    fig.savefig(output_filepath_paper, dpi = OUTPUT_RESOLUTION_DPI, transparent = True, bbox_inches = "tight") # save image
     logging.info(f"Sparsity Paper plot saved to {output_filepath_paper}.")
 
     # create figure of percentiles (faceted by expressive_feature)
@@ -504,7 +547,7 @@ def make_sparsity_plot(input_filepath: str, output_filepath_prefix: str, express
     axes["legend"].legend(handles = by_label.values(), labels = by_label.keys(), loc = "center", fontsize = "x-large", title_fontsize = "xx-large", alignment = "center", mode = "expand", title = "Type")
     axes["legend"].axis("off")
     # save image
-    fig.savefig(output_filepaths[0], dpi = LARGE_PLOTS_DPI) # save image
+    fig.savefig(output_filepaths[0], dpi = LARGE_PLOTS_DPI, transparent = True, bbox_inches = "tight") # save image
     logging.info(f"Sparsity Percentiles plot saved to {output_filepaths[0]}.")
 
     # create new plot of histograms
@@ -548,7 +591,7 @@ def make_sparsity_plot(input_filepath: str, output_filepath_prefix: str, express
     axes["legend"].legend(handles = by_label.values(), labels = by_label.keys(), loc = "center", fontsize = "x-large", title_fontsize = "xx-large", alignment = "center", mode = "expand", title = "Type")
     axes["legend"].axis("off")
     # save image
-    fig.savefig(output_filepaths[1], dpi = LARGE_PLOTS_DPI) # save image
+    fig.savefig(output_filepaths[1], dpi = LARGE_PLOTS_DPI, transparent = True, bbox_inches = "tight") # save image
     logging.info(f"Sparsity Histogram plot saved to {output_filepaths[1]}.")
 
     # new plot of percentiles on different facets (by plot type)
@@ -601,7 +644,7 @@ def make_sparsity_plot(input_filepath: str, output_filepath_prefix: str, express
     axes["legend"].legend(handles = by_label.values(), labels = list(map(lambda expressive_feature_type: split_camel_case(string = expressive_feature_type, sep = " ").title(), by_label.keys())), loc = "center", fontsize = "medium", title_fontsize = "large", alignment = "center", ncol = 2, title = "Expressive Feature", mode = "expand")
     axes["legend"].axis("off")
     # save image
-    fig.savefig(output_filepaths[2], dpi = LARGE_PLOTS_DPI) # save image
+    fig.savefig(output_filepaths[2], dpi = LARGE_PLOTS_DPI, transparent = True, bbox_inches = "tight") # save image
     logging.info(f"Second Sparsity Percentiles plot saved to {output_filepaths[2]}.")
 
     # clear up some memory
@@ -633,7 +676,8 @@ if __name__ == "__main__":
         makedirs(args.output_dir)
 
     # output filepaths for data used in plots
-    PLOT_DATA_OUTPUT_FILEPATHS = {plot_type : f"{args.file_output_dir}/{plot_type}.csv" for plot_type in ("song_length", "density", "summary", "sparsity")}
+    PLOT_TYPES = ("song_length", "density", "summary", "sparsity")
+    PLOT_DATA_OUTPUT_FILEPATHS = {plot_type : f"{args.file_output_dir}/{plot_type}.csv" for plot_type in PLOT_TYPES}
 
     # set up logging
     logging.basicConfig(level = logging.INFO, format = "%(message)s")
@@ -654,10 +698,11 @@ if __name__ == "__main__":
         data = data[data["in_dataset"] & (data["expressive_features"].apply(lambda expressive_features_path: exists(str(expressive_features_path))))]
 
         # create column names
-        pd.DataFrame(columns = SONG_LENGTH_COLUMNS).to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[0], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # song length
-        pd.DataFrame(columns = DENSITY_COLUMNS).to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[1], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # density
-        pd.DataFrame(columns = FEATURE_TYPES_SUMMARY_COLUMNS).to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[2], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # features summary
-        pd.DataFrame(columns = SPARSITY_COLUMNS).to_csv(path_or_buf = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[3], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # sparsity
+        pd.DataFrame(columns = SONG_LENGTH_COLUMNS).to_csv(path_or_buf = PLOT_DATA_OUTPUT_FILEPATHS["song_length"], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # song length
+        pd.DataFrame(columns = DENSITY_COLUMNS).to_csv(path_or_buf = PLOT_DATA_OUTPUT_FILEPATHS["density"], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # density
+        pd.DataFrame(columns = FEATURE_TYPES_SUMMARY_COLUMNS).to_csv(path_or_buf = PLOT_DATA_OUTPUT_FILEPATHS["summary"], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # features summary
+        pd.DataFrame(columns = SPARSITY_COLUMNS).to_csv(path_or_buf = PLOT_DATA_OUTPUT_FILEPATHS["sparsity"], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # sparsity
+        remove(PLOT_DATA_OUTPUT_FILEPATHS["sparsity"].split(".")[0] + "_percentiles.pickle") # remove pickled percentiles file
 
         # parse through data with multiprocessing
         logging.info(f"N_PATHS = {len(data)}") # print number of paths to process
@@ -676,16 +721,16 @@ if __name__ == "__main__":
     # CREATE PLOTS
     ##################################################
 
-    plot_output_filepaths = [f"{args.output_dir}/{plot_type}.png" for plot_type in PLOT_DATA_OUTPUT_FILEPATHS.keys()]
-    song_length_statistics = get_song_length_statistics(input_filepath = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[0])
+    plot_output_filepaths = [f"{args.output_dir}/{plot_type}.pdf" for plot_type in PLOT_DATA_OUTPUT_FILEPATHS.keys()]
+    song_length_statistics = get_song_length_statistics(input_filepath = PLOT_DATA_OUTPUT_FILEPATHS["song_length"])
     logging.info("Song Length Statistics:")
     for relevant_time_unit, statistics in song_length_statistics.items():
-        logging.info(f"  = {relevant_time_unit.title}:")
+        logging.info(f"  = {relevant_time_unit.title()}:")
         for statistic_type, value in statistics.items():
             logging.info(f"    - {' '.join(statistic_type.split('_')).title()}: {value:,.2f}")
-    _ = make_density_plot(input_filepath = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[1], output_filepath = plot_output_filepaths[1])
-    expressive_feature_types = make_summary_plot(input_filepath = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[2], output_filepath_prefix = plot_output_filepaths[1].split(".")[2])
-    _ = make_sparsity_plot(input_filepath = list(PLOT_DATA_OUTPUT_FILEPATHS.values())[3], output_filepath_prefix = plot_output_filepaths[2].split(".")[3], expressive_feature_types = expressive_feature_types[::-1])
+    _ = make_density_plot(input_filepath = PLOT_DATA_OUTPUT_FILEPATHS["density"], output_filepath = plot_output_filepaths[PLOT_TYPES.index("density")])
+    expressive_feature_types = make_summary_plot(input_filepath = PLOT_DATA_OUTPUT_FILEPATHS["summary"], output_filepath_prefix = plot_output_filepaths[PLOT_TYPES.index("summary")].split(".")[0])
+    _ = make_sparsity_plot(input_filepath = PLOT_DATA_OUTPUT_FILEPATHS["sparsity"], output_filepath_prefix = plot_output_filepaths[PLOT_TYPES.index("sparsity")].split(".")[0], expressive_feature_types = expressive_feature_types[::-1])
 
     ##################################################
 
