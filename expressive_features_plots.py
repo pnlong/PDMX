@@ -460,7 +460,7 @@ def make_sparsity_plot(input_filepath: str, output_filepath_prefix: str, express
     is_boxplot = True # if false, a violin plot
     alpha = 0.92
     linewidth = 1
-    fig, axes = plt.subplot_mosaic(mosaic = [["sparsity"]], constrained_layout = True, figsize = (5, 5))
+    fig, axes = plt.subplot_mosaic(mosaic = [["sparsity"]], constrained_layout = True, figsize = (5, 3.3))
     axes["sparsity"].xaxis.grid(True)
     relevant_time_unit = relevant_time_units[0]
     sparsity_values = [[],] * len(expressive_feature_types)

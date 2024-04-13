@@ -242,7 +242,8 @@ def make_tracks_plot(output_filepath: str):
     upper_limit_of_interest = 50
 
     # boxplot
-    axes["box"].boxplot(x = tracks_data, vert = True, showfliers = False)
+    print(f"Number of tracks percentiles: ", *percentile(a = tracks_data, q = range(50, 101, 5)).tolist())
+    axes["box"].boxplot(x = tracks_data, vert = True, showfliers = True)
     # axes["box"].violinplot(dataset = [tracks_data], vert = True, showextrema = False, quantiles = [[0.25, 0.5, 0.75]])
     # axes["box"].set_ylim(bottom = 0, top = upper_limit_of_interest)
     axes["box"].set_xlabel("")
@@ -420,7 +421,7 @@ def make_descriptor_plot(descriptor: str, output_filepath: str, top_n: int = 10)
     
     # create figure
     plot_type = plot_types[0] # path
-    fig, axes = plt.subplot_mosaic(mosaic = [[plot_type]], constrained_layout = True, figsize = (4, 4))
+    fig, axes = plt.subplot_mosaic(mosaic = [[plot_type]], constrained_layout = True, figsize = (5, 3))
 
     # plot information
     no_descriptor = data_by[plot_type][column_name].apply(no_descriptor_determiner)
@@ -430,6 +431,7 @@ def make_descriptor_plot(descriptor: str, output_filepath: str, top_n: int = 10)
     else:
         data = data_by[plot_type][~no_descriptor][column_name].apply(lambda sequence: str(sequence).split(LIST_FEATURE_JOIN_STRING)).explode(ignore_index = True)
     data = data.value_counts(sort = True, ascending = False, dropna = True)
+    print(f"Number of distinct {column_name}: {len(data)}")
     data = data.head(n = top_n) # get top n results
     data = data.apply(log10) # log scale
     axes[plot_type].xaxis.grid(True)
