@@ -142,11 +142,11 @@ def sparsity(expressive_features: pd.DataFrame, music: MusicExpress, stem: str, 
         distance.loc[distance_for_expressive_feature_type.index, expressive_features_plots.SUCCESSIVE_DISTANCE_COLUMNS] = distance_for_expressive_feature_type[expressive_features_plots.SUCCESSIVE_DISTANCE_COLUMNS]
     distance.to_csv(path_or_buf = output_filepath, sep = ",", na_rep = train.NA_VALUE, header = False, index = False, mode = "a") # output
 
-def loss_for_perplexity(model, seq: torch.tensor, mask: torch.tensor, stem: str, loss_for_perplexity_columns: str, output_filepath: str):
+def loss_for_perplexity(model, seq: torch.tensor, mask: torch.tensor, conditional_mask: torch.tensor, stem: str, loss_for_perplexity_columns: str, output_filepath: str):
     """Calculate loss values for perplexity and output to a csv file."""
 
     # get and wrangle losses
-    _, losses_for_perplexity = model(seq = seq, mask = mask, return_list = True, reduce = False, return_output = False)
+    _, losses_for_perplexity = model(seq = seq, mask = mask, return_list = True, reduce = False, return_output = False, conditional_mask = conditional_mask)
     losses_for_perplexity = torch.mean(input = losses_for_perplexity.cpu().squeeze(dim = 0), dim = 0).tolist() # get rid of batch size dimension, then sum across sequence length
 
     # convert to dataframe and output
@@ -169,6 +169,7 @@ def evaluate(
         model: music_x_transformers.MusicXTransformer = None, # for loss for perplexity
         seq: torch.tensor = None, # for loss for perplexity
         mask: torch.tensor = None, # for loss for perplexity
+        conditional_mask: torch.tensor = None, # for loss for perplexity
         loss_for_perplexity_columns: list = None, # for loss for perplexity
         unidimensional_decoding_function: Callable = representation.get_unidimensional_coding_functions(encoding = encode.DEFAULT_ENCODING)[-1],
         ):
@@ -218,9 +219,9 @@ def evaluate(
     sparsity(expressive_features = expressive_features, music = music, stem = stem, output_filepath = output_filepaths[4])
 
     if calculate_loss_for_perplexity:
-        if any((var is None for var in (model, seq, mask, loss_for_perplexity_columns))): # make sure arguments are valid
-            raise ValueError("To calculate loss values for perplexity, valid `model`, `seq`, `mask`, and `loss_for_perplexity_columns` arguments must be supplied.")
-        loss_for_perplexity(model = model, seq = seq, mask = mask, stem = stem, loss_for_perplexity_columns = loss_for_perplexity_columns, output_filepath = output_filepaths[5])
+        if any((var is None for var in (model, seq, mask, conditional_mask, loss_for_perplexity_columns))): # make sure arguments are valid
+            raise ValueError("To calculate loss values for perplexity, valid `model`, `seq`, `mask`, `conditional_mask`, and `loss_for_perplexity_columns` arguments must be supplied.")
+        loss_for_perplexity(model = model, seq = seq, mask = mask, conditional_mask = conditional_mask, stem = stem, loss_for_perplexity_columns = loss_for_perplexity_columns, output_filepath = output_filepaths[5])
 
 ##################################################
 
@@ -358,7 +359,8 @@ if __name__ == "__main__":
         expressive_feature_token = encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING]
         conditional_on_controls = (bool(train_args.get("conditional", False)) or bool(train_args.get("econditional", False)))
         notes_are_controls = bool(train_args.get("econditional", False))
-        event_tokens = (note_token, grace_note_token) if (not notes_are_controls) else (expressive_feature_token,)
+        print(f"Notes are controls: {notes_are_controls}")
+        event_tokens = torch.tensor(data = (note_token, grace_note_token) if (not notes_are_controls) else (expressive_feature_token,), device = device)
         control_tokens = torch.tensor(data = (note_token, grace_note_token) if notes_are_controls else (expressive_feature_token,), device = device)
         is_anticipation = (conditioning == encode.CONDITIONINGS[-1])
         sigma = train_args["sigma"]
@@ -501,18 +503,29 @@ if __name__ == "__main__":
                     else:
 
                         # load in previously generated samples
-                        generated = dataset.pad(data = list(map(np.load, generated_output_filepaths)), front = True)
+                        try:
+                            generated = list(map(np.load, generated_output_filepaths))
+                        except EOFError:
+                            generated = [None] * len(generated_output_filepaths)
+                            for j, generated_output_filepath in enumerate(generated_output_filepaths):
+                                try:
+                                    generated[j] = np.load(file = generated_output_filepath)
+                                except EOFError:
+                                    pass
+                            generated = [generation for generation in generated if generation is not None] # remove None values
+                            if len(generated) == 0:
+                                continue
+                        generated = dataset.pad(data = generated, front = True)
 
                     # add to results
                     def evaluate_helper(j: int):
                         # setup for loss for perplexity calculations
                         seq = batch["seq"][j].unsqueeze(dim = 0).to(device)
                         mask = batch["mask"][j].unsqueeze(dim = 0).to(device)
+                        conditional_mask = torch.ones(size = seq.shape if unidimensional else seq.shape[:-1], dtype = torch.bool, device = device)
                         if not joint:
-                            loss_query = torch.isin(seq[:, 0::model.decoder.net.n_tokens_per_event] if unidimensional else seq[..., 0], test_elements = control_tokens, invert = True) # filter out controls
-                            seq *= loss_query if unidimensional else torch.repeat_interleave(input = loss_query.unsqueeze(dim = -1), repeats = seq.shape[-1], dim = -1)
-                            mask = loss_query * mask
-                            del loss_query
+                            conditional_mask = torch.isin(seq[:, 0::model.decoder.net.n_tokens_per_event] if unidimensional else seq[..., 0], test_elements = event_tokens, invert = False) # filter to just events for conditional masking
+                        conditional_mask = conditional_mask[:, model.decoder.net.n_tokens_per_event:]
                         # evaluate
                         evaluate(data = unpad_prefix(prefix = generated[j], sos_token = sos, pad_value = model.decoder.pad_value, n_tokens_per_event = model.decoder.net.n_tokens_per_event),
                                  encoding = encoding,
@@ -520,7 +533,7 @@ if __name__ == "__main__":
                                  eval_dir = eval_dir,
                                  output_filepaths = output_filepaths[eval_type],
                                  calculate_loss_for_perplexity = True,
-                                 model = model, seq = seq, mask = mask, loss_for_perplexity_columns = LOSS_FOR_PERPLEXITY_COLUMNS,
+                                 model = model, seq = seq, mask = mask, conditional_mask = conditional_mask, loss_for_perplexity_columns = LOSS_FOR_PERPLEXITY_COLUMNS,
                                  unidimensional_decoding_function = unidimensional_decoding_function
                                  )
                     for j in range(len(generated)):

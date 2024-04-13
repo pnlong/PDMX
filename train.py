@@ -153,9 +153,8 @@ def get_accuracies(model_output: torch.tensor, seq: torch.tensor, unidimensional
 def generate_note_expressive_mask(seq: torch.tensor, encoding: dict = representation.get_encoding(), unidimensional: bool = False, n_tokens_per_event: int = 1) -> Dict[str, torch.tensor]:
     """Generate both a note and expressive-feature mask over a sequence, return as a dictionary using MASKS as keys."""
     event_types = seq[:, (n_tokens_per_event + encoding["unidimensional_encoding_order"].index("type"))::n_tokens_per_event] if unidimensional else seq[:, n_tokens_per_event:, encoding["dimensions"].index("type")]
-    ones_mask = torch.ones_like(input = event_types).to(device)
     mask = {
-        MASKS[0]: torch.repeat_interleave(input = ones_mask.type(torch.bool), repeats = n_tokens_per_event, dim = -1), # no mask
+        MASKS[0]: torch.repeat_interleave(input = torch.ones_like(input = event_types, dtype = torch.bool).to(device), repeats = n_tokens_per_event, dim = -1), # no mask
         MASKS[1]: torch.repeat_interleave(input = torch.logical_or(input = (event_types == encoding["type_code_map"]["note"]), other = (event_types == encoding["type_code_map"]["grace-note"])), repeats = n_tokens_per_event, dim = -1), # mask_note is true if the type is a note
         MASKS[2]: torch.repeat_interleave(input = (event_types == encoding["type_code_map"][representation.EXPRESSIVE_FEATURE_TYPE_STRING]), repeats = n_tokens_per_event, dim = -1) # mask_expressive is true if the type is an expressive feature
     }

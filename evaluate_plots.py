@@ -32,6 +32,7 @@ from read_mscz.music import DIVIDE_BY_ZERO_CONSTANT
 
 plt.style.use("default")
 plt.rcParams["font.family"] = "serif"
+plt.rcParams["mathtext.fontset"] = "dejavuserif"
 
 ##################################################
 
@@ -43,6 +44,7 @@ DATA_DIR = "/home/pnlong/musescore/datav"
 MODELS_FILEPATH = f"{DATA_DIR}/models.txt"
 OUTPUT_DIR = DATA_DIR
 LARGE_PLOTS_DPI = int(1.5 * OUTPUT_RESOLUTION_DPI)
+CONFIDENCE_LEVEL_Z_SCORE = 1.96
 
 ##################################################
 
@@ -71,7 +73,7 @@ def combine_data_tables(models: list, output_filepath: str, is_baseline: bool = 
     # create the combined data table
     else:
         first_successful_iteration = True
-        for i, model in enumerate(models):
+        for model in models:
             input_filepath = args.output_dir + "/" + model + "/eval" + ("_baseline" if is_baseline else "") + (f"/{eval_type}" if not ((model == evaluate_baseline.TRUTH_DIR_STEM) or (is_baseline)) else "") + "/" + stem + ".csv"
             if not exists(input_filepath):
                 continue
@@ -108,7 +110,15 @@ def get_histogram_data_table(data: list, bins: list) -> pd.DataFrame:
 
 def make_baseline_table(baseline: pd.DataFrame, output_dir: str) -> None:
     """Make a table summarizing baseline metrics."""
-    baseline = baseline.groupby(by = "model").mean(numeric_only = True).reset_index(drop = False)
+    paper_table = baseline[["model"] + evaluate_baseline.EVAL_METRICS].groupby(by = "model", as_index = True).agg(("mean", "sem"))
+    paper_table_stats = {model: {eval_metric: "" for eval_metric in evaluate_baseline.EVAL_METRICS} for model in paper_table.index}
+    print("BASELINE:")
+    for model in paper_table_stats.keys():
+        for eval_metric in evaluate_baseline.EVAL_METRICS:
+            is_percentage = (eval_metric != evaluate_baseline.EVAL_METRICS[0])
+            paper_table_stats[model][eval_metric] = f"${paper_table[eval_metric].at[model, 'mean'] * (100 if is_percentage else 1):,.2f} \\pm {paper_table[eval_metric].at[model, 'sem'] * (100 if is_percentage else 1):,.2f}$"
+        print(model + " & " + " & ".join(paper_table_stats[model].values()) + " & \\\\")
+    baseline = baseline[["model"] + evaluate_baseline.EVAL_METRICS].groupby(by = "model", as_index = False).mean()
     baseline.to_csv(path_or_buf = f"{output_dir}/{evaluate_baseline.EVAL_STEM}.summary.csv", sep = ",", na_rep = train.NA_VALUE, header = True, index = False, mode = "w")
     return None
 
@@ -147,13 +157,14 @@ def make_n_expressive_features_plot(n_expressive_features: pd.DataFrame, models:
     axes["n"].grid()
 
     # get legend
-    handles, labels = axes["n"].get_legend_handles_labels()
-    by_label = dict(zip(labels, handles))
-    axes["legend"].legend(handles = by_label.values(), labels = list(map(make_model_name_fancy, by_label.keys())), loc = "center", fontsize = "small", title_fontsize = "medium", alignment = "center", ncol = 1, title = "Model", mode = "expand")
-    axes["legend"].axis("off")
+    if len(n_expressive_features) > 0:
+        handles, labels = axes["n"].get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        axes["legend"].legend(handles = by_label.values(), labels = list(map(make_model_name_fancy, by_label.keys())), loc = "center", fontsize = "small", title_fontsize = "medium", alignment = "center", ncol = 1, title = "Model", mode = "expand")
+        axes["legend"].axis("off")
 
     # save image
-    fig.savefig(f"{output_dir}/{evaluate.PLOT_TYPES[1]}.png", dpi = OUTPUT_RESOLUTION_DPI) # save image
+    fig.savefig(f"{output_dir}/{evaluate.PLOT_TYPES[1]}.pdf", dpi = OUTPUT_RESOLUTION_DPI, transparent = True, bbox_inches = "tight") # save image
 
     # clear up some memory
     del n_expressive_features
@@ -206,13 +217,14 @@ def make_density_plot(density: pd.DataFrame, models: list, output_dir: str) -> N
     #     axes[relevant_density_type].set_yticklabels([])
 
     # get legend
-    handles, labels = axes[relevant_density_types[0]].get_legend_handles_labels()
-    by_label = dict(zip(labels, handles))
-    axes["legend"].legend(handles = by_label.values(), labels = list(map(make_model_name_fancy, by_label.keys())), loc = "center", fontsize = "small", title_fontsize = "medium", alignment = "center", ncol = 1, title = "Model", mode = "expand")
-    axes["legend"].axis("off")
+    if len(density) > 0:
+        handles, labels = axes[relevant_density_types[0]].get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        axes["legend"].legend(handles = by_label.values(), labels = list(map(make_model_name_fancy, by_label.keys())), loc = "center", fontsize = "small", title_fontsize = "medium", alignment = "center", ncol = 1, title = "Model", mode = "expand")
+        axes["legend"].axis("off")
 
     # save image
-    fig.savefig(f"{output_dir}/{evaluate.PLOT_TYPES[2]}.png", dpi = OUTPUT_RESOLUTION_DPI) # save image
+    fig.savefig(f"{output_dir}/{evaluate.PLOT_TYPES[2]}.pdf", dpi = OUTPUT_RESOLUTION_DPI, transparent = True, bbox_inches = "tight") # save image
 
     # clear up memory
     del density
@@ -263,13 +275,14 @@ def make_summary_plot(summary: pd.DataFrame, models: list, output_dir: str, appl
             axes[plot_type].set_yticklabels([])
 
     # get legend
-    handles, labels = axes[plot_types[0]].get_legend_handles_labels()
-    by_label = dict(zip(labels, handles))
-    axes["legend"].legend(handles = by_label.values(), labels = list(map(make_model_name_fancy, by_label.keys())), loc = "center", fontsize = "small", title_fontsize = "medium", alignment = "center", ncol = 1, title = "Model", mode = "expand")
-    axes["legend"].axis("off")
+    if len(summary) > 0:
+        handles, labels = axes[plot_types[0]].get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        axes["legend"].legend(handles = by_label.values(), labels = list(map(make_model_name_fancy, by_label.keys())), loc = "center", fontsize = "small", title_fontsize = "medium", alignment = "center", ncol = 1, title = "Model", mode = "expand")
+        axes["legend"].axis("off")
 
     # save image
-    fig.savefig(f"{output_dir}/{evaluate.PLOT_TYPES[3]}.png", dpi = OUTPUT_RESOLUTION_DPI) # save image
+    fig.savefig(f"{output_dir}/{evaluate.PLOT_TYPES[3]}.pdf", dpi = OUTPUT_RESOLUTION_DPI, transparent = True, bbox_inches = "tight") # save image
 
     # return the order from most common to least
     return pd.unique(values = summary[plot_types[0]]["type"]).tolist()
@@ -283,7 +296,7 @@ def make_sparsity_plot(sparsity: pd.DataFrame, models: list, output_dir: str, ex
     relevant_time_units_suffix = [relevant_time_unit + SPARSITY_SUCCESSIVE_SUFFIX for relevant_time_unit in relevant_time_units]
     plot_types = ["total", "mean", "median"]
     plot_type = plot_types[1] # which plot type to display
-    output_filepaths = [f"{output_dir}/{evaluate.PLOT_TYPES[4]}.{suffix}.png" for suffix in ("percentiles", "histograms", "percentiles2")]
+    output_filepaths = [f"{output_dir}/{evaluate.PLOT_TYPES[4]}.{suffix}.pdf" for suffix in ("percentiles", "histograms", "percentiles2")]
 
     # we have distances between successive expressive features in time_steps, beats, seconds, and as a fraction of the length of the song
     # sparsity = sparsity.drop(index = sparsity.index[-1]) # last row is None, since there is no successive expressive features, so drop it
@@ -375,13 +388,14 @@ def make_sparsity_plot(sparsity: pd.DataFrame, models: list, output_dir: str, ex
         axes[expressive_feature_type].grid() # add gridlines
 
     # get legend
-    handles, labels = axes[expressive_feature_types[0]].get_legend_handles_labels()
-    by_label = dict(zip(labels, handles))
-    axes["legend"].legend(handles = by_label.values(), labels = list(map(make_model_name_fancy, by_label.keys())), loc = "center", fontsize = "small", title_fontsize = "medium", alignment = "center", ncol = 1, title = "Model", mode = "expand")
-    axes["legend"].axis("off")
+    if len(sparsity) > 0:
+        handles, labels = axes[expressive_feature_types[0]].get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        axes["legend"].legend(handles = by_label.values(), labels = list(map(make_model_name_fancy, by_label.keys())), loc = "center", fontsize = "small", title_fontsize = "medium", alignment = "center", ncol = 1, title = "Model", mode = "expand")
+        axes["legend"].axis("off")
 
     # save image
-    fig.savefig(output_filepaths[0], dpi = LARGE_PLOTS_DPI) # save image
+    fig.savefig(output_filepaths[0], dpi = LARGE_PLOTS_DPI, transparent = True, bbox_inches = "tight") # save image
 
 
     # create new plot of histograms
@@ -431,13 +445,14 @@ def make_sparsity_plot(sparsity: pd.DataFrame, models: list, output_dir: str, ex
         axes[expressive_feature_type].grid() # add gridlines
     
     # get legend
-    handles, labels = axes[expressive_feature_types[0]].get_legend_handles_labels()
-    by_label = dict(zip(labels, handles))
-    axes["legend"].legend(handles = by_label.values(), labels = list(map(make_model_name_fancy, by_label.keys())), loc = "center", fontsize = "small", title_fontsize = "medium", alignment = "center", ncol = 1, title = "Model", mode = "expand")
-    axes["legend"].axis("off")
+    if len(sparsity) > 0:
+        handles, labels = axes[expressive_feature_types[0]].get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        axes["legend"].legend(handles = by_label.values(), labels = list(map(make_model_name_fancy, by_label.keys())), loc = "center", fontsize = "small", title_fontsize = "medium", alignment = "center", ncol = 1, title = "Model", mode = "expand")
+        axes["legend"].axis("off")
     
     # save image
-    fig.savefig(output_filepaths[1], dpi = LARGE_PLOTS_DPI) # save image
+    fig.savefig(output_filepaths[1], dpi = LARGE_PLOTS_DPI, transparent = True, bbox_inches = "tight") # save image
 
 
     # new plot of percentiles on different facets (models)
@@ -487,13 +502,14 @@ def make_sparsity_plot(sparsity: pd.DataFrame, models: list, output_dir: str, ex
         axes[model].grid() # add gridlines
     
     # add a legend
-    handles, labels = axes[models[0]].get_legend_handles_labels()
-    by_label = dict(zip(labels, handles))
-    axes["legend"].legend(handles = by_label.values(), labels = list(map(lambda expressive_feature_type: utils.split_camel_case(string = expressive_feature_type, sep = " ").title(), by_label.keys())), loc = "center", fontsize = "small", title_fontsize = "medium", alignment = "center", ncol = 1, title = "Expressive Feature", mode = "expand")
-    axes["legend"].axis("off")
+    if len(sparsity) > 0:
+        handles, labels = axes[models[0]].get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        axes["legend"].legend(handles = by_label.values(), labels = list(map(lambda expressive_feature_type: utils.split_camel_case(string = expressive_feature_type, sep = " ").title(), by_label.keys())), loc = "center", fontsize = "small", title_fontsize = "medium", alignment = "center", ncol = 1, title = "Expressive Feature", mode = "expand")
+        axes["legend"].axis("off")
     
     # save image
-    fig.savefig(output_filepaths[2], dpi = LARGE_PLOTS_DPI) # save image
+    fig.savefig(output_filepaths[2], dpi = LARGE_PLOTS_DPI, transparent = True, bbox_inches = "tight") # save image
 
     # clear up some memory
     del sparsity
@@ -509,11 +525,23 @@ def make_perplexity_table(losses_for_perplexity: pd.DataFrame, output_filepath: 
     perplexity_columns = list(map(lambda loss_column: loss_column.replace("loss_", "ppl_"), losses_for_perplexity_columns)) # get the new perplexity column names
     
     # compute perplexity
-    perplexity_function = lambda loss_for_perplexity: math.exp(loss_for_perplexity) # exp(loss)
+    perplexity_function = lambda loss_for_perplexity: math.exp(-math.log(loss_for_perplexity + DIVIDE_BY_ZERO_CONSTANT)) # exp(loss)
     perplexity = losses_for_perplexity.rename(columns = dict(zip(losses_for_perplexity_columns, perplexity_columns))) # rename columns from loss to perplexity
+
+    # get stats
+    paper_table = perplexity[["model", "ppl_total"]].groupby(by = "model", as_index = True).agg(("mean", "sem"))
+    paper_table = paper_table.droplevel(level = 0, axis = 1)
+    paper_table["mean"] = paper_table["mean"].apply(perplexity_function)
+    paper_table["sem"] = paper_table["sem"].apply(perplexity_function)
+    print("PERPLEXITY:")
+    for model in paper_table.index:
+        stats_for_model = f"${paper_table.at[model, 'mean']:,.2f} \\pm {paper_table.at[model, 'sem']:,.2f}$"
+        print(f"{model} & {stats_for_model} \\\\")
+
+    # convert from loss to perplexity
     for perplexity_column in perplexity_columns: # compute perplexity given each loss value
         perplexity[perplexity_column] = perplexity[perplexity_column].apply(perplexity_function)
-
+    
     # summarize per model
     perplexity = perplexity.groupby(by = "model").mean(numeric_only = True).reset_index(drop = False) # summarize per model
     
@@ -567,7 +595,10 @@ if __name__ == "__main__":
     # DISTRIBUTION OF EXPRESSIVE FEATURES
     ##################################################
 
-    for eval_type in tqdm(iterable = evaluate.EVAL_TYPES, desc = "Making Evaluation Plots"):
+    progress_bar = tqdm(iterable = evaluate.EVAL_TYPES, desc = "Making Evaluation Plots")
+    for eval_type in progress_bar:
+
+        progress_bar.set_postfix_str(eval_type)
 
         # make sure plots directory exists
         eval_subdir = f"{eval_dir}/{eval_type}"
