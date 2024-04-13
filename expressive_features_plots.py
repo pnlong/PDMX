@@ -332,7 +332,7 @@ def make_summary_plot(input_filepath: str, output_filepath_prefix: str) -> list:
 
     # data wrangle
     n_expressive_feature_types_to_include = -1 # -1 to account for the all feature types plot
-    n_col = 5
+    n_col = 7
     expressive_features_for_histogram = deepcopy(expressive_features)
     # expressive_features_for_histogram.remove("Lyric")
     plot_types = [ALL_FEATURES_TYPE_NAME] + expressive_features_for_histogram[::-1][:(n_expressive_feature_types_to_include if n_expressive_feature_types_to_include > 0 else len(expressive_features))]
@@ -340,8 +340,8 @@ def make_summary_plot(input_filepath: str, output_filepath_prefix: str) -> list:
     mosaic[-1] += rep(x = "", times = n_col - len(mosaic[-1]))
 
     # create figure
-    plot_size_factor = 3
-    fig, axes = plt.subplot_mosaic(mosaic = mosaic, constrained_layout = True, figsize = (int(n_col * plot_size_factor), int(len(mosaic) * plot_size_factor * 0.7)), empty_sentinel = "")
+    plot_size_factor = 1.8
+    fig, axes = plt.subplot_mosaic(mosaic = mosaic, constrained_layout = True, figsize = (n_col * plot_size_factor * 1.3, len(mosaic) * plot_size_factor), empty_sentinel = "")
     # fig.suptitle("Expressive Features", fontweight = "bold")
 
     # print out table for paper, no longer needed
