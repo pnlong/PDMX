@@ -59,7 +59,7 @@ def parse_args(args = None, namespace = None):
 ##################################################
 
 # main function for getting data
-def get_data(input_path: str, output_path_prefix: str, compressed: bool = False) -> str:
+def get_data(input_path: str, output_path: str, compressed: bool = False) -> str:
     """
     Given the input path, load that MuseScore file and save it in JSON format.
     If the file loads incorrectly, return None; otherwise, return the `output_path`.
@@ -68,8 +68,8 @@ def get_data(input_path: str, output_path_prefix: str, compressed: bool = False)
     ----------
     input_path : str
         Path to the MuseScore file to read.
-    output_path_prefix : str
-        Prefix to the path where the MusicExpress JSON file will be saved.
+    output_path : str
+        Path where the MusicExpress JSON file will be saved.
     compressed : bool
         Whether or not to compress the JSON output.
 
@@ -80,10 +80,13 @@ def get_data(input_path: str, output_path_prefix: str, compressed: bool = False)
     
     """
 
+    # avoid doing if we don't need to
+    if exists(output_path):
+        return output_path
+
     # try to read in musescore object
     try:
         music = read_musescore(path = input_path, timeout = 10)
-        output_path = f"{output_path_prefix}.json"
         music.save_json(path = output_path, compressed = compressed)
         return output_path
     
@@ -145,10 +148,10 @@ if __name__ == "__main__":
 
     # get output filepaths
     if args.nested:
-        get_output_path_prefix = lambda path: f"{DATA_DIR}/{('/'.join(path.split('/')[-3:])).split('.')[0]}"
+        get_output_path = lambda path: f"{DATA_DIR}/{('/'.join(path.split('/')[-3:])).split('.')[0]}.json"
     else:
-        get_output_path_prefix = lambda path: f"{DATA_DIR}/{basename(path).split('.')[0]}"
-    output_path_prefixes = tuple(map(get_output_path_prefix, input_paths))
+        get_output_path = lambda path: f"{DATA_DIR}/{basename(path).split('.')[0]}.json"
+    output_paths = tuple(map(get_output_path, input_paths))
 
     ##################################################
 
@@ -169,7 +172,7 @@ if __name__ == "__main__":
         output_paths = pool.starmap(
             func = get_data,
             iterable = tqdm(
-                iterable = zip(input_paths, output_path_prefixes),
+                iterable = zip(input_paths, output_paths),
                 desc = f"Creating {DATASET_NAME}",
                 total = len(input_paths)),
             chunksize = chunk_size)
