@@ -8,9 +8,6 @@
 # Classes
 # -------
 # - Music
-# Variables
-# ---------
-# - DEFAULT_RESOLUTION
 
 # ./music.py
 
