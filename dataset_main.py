@@ -98,7 +98,10 @@ def get_data(input_path: str, output_path: str, compressed: bool = False) -> str
 # function to help with copying metadata files
 def get_metadata(input_path: str) -> str:
     """Copy over a metadata file, returning the copied filepath."""
-    output_path = f"{METADATA_DIR}/{basename(dirname(input_path))}/{basename(input_path)}" # get output filepath
+    output_dir = f"{METADATA_DIR}/{basename(dirname(input_path))}"
+    if not exists(output_dir):
+        mkdir(output_dir)
+    output_path = f"{output_dir}/{basename(input_path)}" # get output filepath
     copy(src = input_path, dst = output_path) # copy over file
     return output_path
 
