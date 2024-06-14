@@ -100,7 +100,10 @@ def get_metadata(input_path: str) -> str:
     """Copy over a metadata file, returning the copied filepath."""
     output_dir = f"{METADATA_DIR}" + (f"/{basename(dirname(input_path))}" if args.nested else "")
     if not exists(output_dir):
-        mkdir(output_dir)
+        try:
+            mkdir(output_dir)
+        except (FileExistsError):
+            pass
     output_path = f"{output_dir}/{basename(input_path)}" # get output filepath
     copy(src = input_path, dst = output_path) # copy over file
     return output_path
