@@ -36,6 +36,7 @@ from utils import write_to_file
 
 # CONSTANTS
 ##################################################
+
 INPUT_DIR = "/data2/pnlong/musescore"
 METADATA_MAPPING = f"{INPUT_DIR}/metadata_to_data.csv"
 OUTPUT_DIR = f"{INPUT_DIR}/expressive_features"
@@ -46,6 +47,9 @@ OUTPUT_COLUMNS_BY_PATH = ["path", "metadata", "version", "is_public_domain", "is
 ERROR_COLUMNS = ["path", "error_type", "error_message"]
 N_EXPRESSIVE_FEATURES_TO_STORE_THRESHOLD = 2
 LIST_FEATURE_JOIN_STRING = "-"
+
+PUBLIC_LICENSES = ("https://creativecommons.org/publicdomain/mark/1.0/", "https://creativecommons.org/publicdomain/zero/1.0/", "https://creativecommons.org/licenses/by/4.0/")
+
 ##################################################
 
 
@@ -123,7 +127,9 @@ def extract_expressive_features(path: str, path_output_prefix: str):
         try:
             with open(metadata_path, "r") as metadata_file:
                 metadata_for_path = json.load(fp = metadata_file)
-                is_public_domain = bool(metadata_for_path["data"].get("is_public_domain", False))
+                license_string = metadata_for_path["data"].get("license_string", "")
+                is_public_domain = any(((license in license_string) for license in PUBLIC_LICENSES))
+                # is_public_domain = bool(metadata_for_path["data"].get("is_public_domain", False))
                 genres = list(map(lambda genre: str(genre["name"]), metadata_for_path["data"].get("genres", [])))
                 complexity = int(metadata_for_path["data"].get("complexity", None))
                 if "score" in metadata_for_path["data"].keys():

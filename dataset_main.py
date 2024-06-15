@@ -22,6 +22,7 @@ import argparse
 import logging
 from read_mscz.read_mscz import read_musescore
 from train import NA_VALUE
+import json
 
 ##################################################
 
@@ -212,3 +213,35 @@ if __name__ == "__main__":
     dataset.to_csv(path_or_buf = OUTPUT_PATH, sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w")
 
     ##################################################
+
+
+# CHECK PUBLIC DOMAIN
+##################################################
+
+def check_public_domain() -> pd.DataFrame:
+
+    # load in dataset
+    dataset_dir = f"{OUTPUT_DIR}/{DATASET_NAME}"
+    data = pd.read_csv(filepath_or_buffer = f"{dataset_dir}/{DATASET_NAME}.csv", sep = ",", header = 0, index_col = False)
+    get_absolute_path = lambda path: None if (path is None) else f"{dataset_dir}{path[1:]}" # path starts with a ".", replace with the full directory
+    data["path"] = map(get_absolute_path, data["path"])
+    data["metadata"] = map(get_absolute_path, data["metadata"])
+
+    # extract license strings from metadata filepath
+    def extract(metadata_path: str) -> str:
+        with open(metadata_path, "r") as metadata_file:
+            metadata = json.load(fp = metadata_file)
+        return metadata["data"].get("license_string", "")
+    license_strings = pd.Series(list(map(extract, data["metadata"])))
+
+    # extract info
+    licenses = pd.DataFrame(license_strings.value_counts())
+    licenses["percent"] = 100 * (licenses["count"] / sum(licenses["count"]))
+    licenses["name"] = map(lambda license: license[(license.rindex("</i>") + 5):].replace("</a>", "").strip(), licenses.index)
+    licenses["link"] = map(lambda license: license[(license.index("href") + 6):(license.index("target") - 2)] if ("href" in license) else None, licenses.index)
+    licenses = licenses[["name", "link", "count", "percent"]]
+
+    # return the dataframe
+    return licenses
+
+##################################################
