@@ -702,10 +702,12 @@ if __name__ == "__main__":
         pd.DataFrame(columns = DENSITY_COLUMNS).to_csv(path_or_buf = PLOT_DATA_OUTPUT_FILEPATHS["density"], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # density
         pd.DataFrame(columns = FEATURE_TYPES_SUMMARY_COLUMNS).to_csv(path_or_buf = PLOT_DATA_OUTPUT_FILEPATHS["summary"], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # features summary
         pd.DataFrame(columns = SPARSITY_COLUMNS).to_csv(path_or_buf = PLOT_DATA_OUTPUT_FILEPATHS["sparsity"], sep = ",", na_rep = NA_VALUE, header = True, index = False, mode = "w") # sparsity
-        remove(PLOT_DATA_OUTPUT_FILEPATHS["sparsity"].split(".")[0] + "_percentiles.pickle") # remove pickled percentiles file
+        sparsity_pickled_percentiles_path = PLOT_DATA_OUTPUT_FILEPATHS["sparsity"].split(".")[0] + "_percentiles.pickle"
+        if exists(sparsity_pickled_percentiles_path):
+            remove(sparsity_pickled_percentiles_path) # remove pickled percentiles file
 
         # parse through data with multiprocessing
-        logging.info(f"N_PATHS = {len(data)}") # print number of paths to process
+        logging.info(f"Number of Paths = {len(data)}") # print number of paths to process
         chunk_size = 1
         start_time = perf_counter() # start the timer
         with multiprocessing.Pool(processes = args.jobs) as pool:
