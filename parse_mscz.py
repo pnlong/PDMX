@@ -48,7 +48,11 @@ ERROR_COLUMNS = ["path", "error_type", "error_message"]
 N_EXPRESSIVE_FEATURES_TO_STORE_THRESHOLD = 2
 LIST_FEATURE_JOIN_STRING = "-"
 
-PUBLIC_LICENSES = ("https://creativecommons.org/publicdomain/mark/1.0/", "https://creativecommons.org/publicdomain/zero/1.0/", "https://creativecommons.org/licenses/by/4.0/")
+# public domain licenses for extracting from metadata
+PUBLIC_LICENSES = (
+    "https://creativecommons.org/publicdomain/mark/1.0/",
+    "https://creativecommons.org/publicdomain/zero/1.0/",
+    )
 
 ##################################################
 
