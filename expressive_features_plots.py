@@ -707,7 +707,7 @@ if __name__ == "__main__":
             remove(sparsity_pickled_percentiles_path) # remove pickled percentiles file
 
         # parse through data with multiprocessing
-        logging.info(f"Number of Paths = {len(data)}") # print number of paths to process
+        logging.info(f"N_PATHS = {len(data)}") # print number of paths to process
         chunk_size = 1
         start_time = perf_counter() # start the timer
         with multiprocessing.Pool(processes = args.jobs) as pool:
