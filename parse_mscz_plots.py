@@ -11,7 +11,7 @@
 ##################################################
 
 import pandas as pd
-from numpy import percentile, log10, arange
+from numpy import percentile, log10, arange, histogram
 from math import floor, ceil
 import matplotlib.pyplot as plt
 import matplotlib
@@ -239,23 +239,35 @@ def make_tracks_plot(output_filepath: str):
     fig.suptitle("Number of Tracks per MuseScore File", fontweight = "bold")
 
     tracks_data = data_by["path"][data_by["path"]["is_valid"]]["n_tracks"].tolist() # data_by["track"][data_by["track"]["is_valid"]].groupby(by = "path").size().tolist()
-    upper_limit_of_interest = 50
+    lower_limit_of_interest, upper_limit_of_interest = 1, 10
 
     # boxplot
-    print(f"Number of tracks percentiles: ", *percentile(a = tracks_data, q = range(50, 101, 5)).tolist())
+    # print(f"Number of tracks percentiles: ", *percentile(a = tracks_data, q = range(50, 101, 5)).tolist())
     axes["box"].boxplot(x = tracks_data, vert = True, showfliers = True)
     # axes["box"].violinplot(dataset = [tracks_data], vert = True, showextrema = False, quantiles = [[0.25, 0.5, 0.75]])
-    # axes["box"].set_ylim(bottom = 0, top = upper_limit_of_interest)
+    axes["box"].set_ylim(bottom = lower_limit_of_interest, top = upper_limit_of_interest)
     axes["box"].set_xlabel("")
     axes["box"].xaxis.set_ticks(ticks = [], labels = [])
     axes["box"].set_ylabel("Number of Tracks")
 
     # histogram
-    binwidth = 5
-    axes["hist"].hist(x = tracks_data, bins = range(0, int(max(tracks_data)) + binwidth, binwidth), color = GREY) # , color = COLORS[0], edgecolor = "0"
-    axes["hist"].set_xlim(left = 0, right = upper_limit_of_interest)
-    axes["hist"].set_xlabel("Number of Tracks")
+    binwidth = 1
+    # axes["hist"].hist(x = tracks_data, bins = range(0, int(max(tracks_data)) + binwidth, binwidth), color = GREY) 
+    total_file_count = len(tracks_data)
+    counts, bins = histogram(a = tracks_data, bins = list(range(0, int(max(tracks_data)) + binwidth, binwidth)))
+    percents = [100 * (n / total_file_count) for n in counts]
+    axes_hist_percent = axes["hist"].twinx()
+    axes["hist"].bar(x = bins[:-1], height = counts, align = "edge", color = GREY) # , color = COLORS[0], edgecolor = "0"
+    axes["hist"].set_yticks(axes["hist"].get_yticks())
+    axes["hist"].set_yticklabels([f"{int(n):,}" for n in axes["hist"].get_yticks()])
     axes["hist"].set_ylabel("Count")
+    axes_hist_percent.bar(x = bins[:-1], height = percents, align = "edge", color = GREY)
+    axes_hist_percent.set_yticks(axes_hist_percent.get_yticks())
+    axes_hist_percent.set_yticklabels([f"{int(percent):,}" for percent in axes_hist_percent.get_yticks()])
+    axes_hist_percent.set_ylabel("Percent (%)")
+    axes["hist"].grid(True)
+    axes["hist"].set_xlabel("Number of Tracks")
+    axes["hist"].set_xlim(left = lower_limit_of_interest, right = upper_limit_of_interest)
 
     # save image
     fig.savefig(output_filepath, dpi = OUTPUT_RESOLUTION_DPI, transparent = True, bbox_inches = "tight") # save image
@@ -431,7 +443,7 @@ def make_descriptor_plot(descriptor: str, output_filepath: str, top_n: int = 10)
     else:
         data = data_by[plot_type][~no_descriptor][column_name].apply(lambda sequence: str(sequence).split(LIST_FEATURE_JOIN_STRING)).explode(ignore_index = True)
     data = data.value_counts(sort = True, ascending = False, dropna = True)
-    print(f"Number of distinct {column_name}: {len(data)}")
+    # print(f"Number of distinct {column_name}: {len(data)}")
     data = data.head(n = top_n) # get top n results
     data = data.apply(log10) # log scale
     axes[plot_type].xaxis.grid(True)
