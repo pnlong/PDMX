@@ -22,7 +22,7 @@ from itertools import groupby
 from warnings import warn
 
 # general
-from read_mscz.classes import *
+from .classes import *
 from utils import unique
 import representation
 
