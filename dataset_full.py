@@ -14,6 +14,7 @@ import glob
 from os.path import isfile, exists, basename
 import random
 import pandas as pd
+import numpy as np
 from typing import List
 from tqdm import tqdm
 import multiprocessing
@@ -21,6 +22,8 @@ import argparse
 import logging
 from re import sub
 import json
+import math
+import muspy
 from read_mscz.read_mscz import read_musescore, get_musescore_version
 from read_mscz.music import MusicExpress
 from utils import write_to_file
@@ -402,7 +405,7 @@ def get_full_dataset(path: str) -> None:
         "song_length.bars" :        len(music.barlines),
         "song_length.beats" :       len(music.beats),
         "n_notes" :                 n_notes,
-        "notes_per_bar" :           n_notes / len(music.barlines)
+        "notes_per_bar" :           n_notes / len(music.barlines),
         "n_annotations" :           n_annotations,
         "has_annotations" :         bool(n_annotations),
         "n_lyrics" :                n_lyrics,
