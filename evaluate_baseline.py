@@ -212,7 +212,7 @@ def scale_consistency(music: MusicExpress) -> float:
     return max_in_scale_rate
 
 
-def groove_consistency(music: MusicExpress, measure_resolution: int) -> float:
+def groove_consistency(music: MusicExpress) -> float:
     """Return the groove consistency.
     Copied from https://salu133445.github.io/muspy/_modules/muspy/metrics/metrics.html#groove_consistency
 
@@ -252,6 +252,7 @@ def groove_consistency(music: MusicExpress, measure_resolution: int) -> float:
 
     """
 
+    measure_resolution = 4 * music.resolution
     length = max(max([note.time for note in track.notes] + [0]) for track in music.tracks)
     if measure_resolution < 1:
         raise ValueError("Measure resolution must be a positive integer.")
@@ -296,7 +297,7 @@ def evaluate(data: Union[np.array, torch.tensor], encoding: dict, stem: str, eva
             "stem": stem,
             EVAL_METRICS[0]: pitch_class_entropy(music = music),
             EVAL_METRICS[1]: scale_consistency(music = music),
-            EVAL_METRICS[2]: groove_consistency(music = music, measure_resolution = 4 * music.resolution)
+            EVAL_METRICS[2]: groove_consistency(music = music)
         }
 
 ##################################################

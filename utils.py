@@ -141,6 +141,7 @@ def write_to_file(info: dict, output_filepath: str, columns: list = None):
     if columns is not None:
 
         # reorder columns if possible
+        columns = list(columns)
         info = {column: info[column] for column in columns}
 
         # write columns if they are not there yet

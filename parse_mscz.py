@@ -49,7 +49,7 @@ N_EXPRESSIVE_FEATURES_TO_STORE_THRESHOLD = 2
 LIST_FEATURE_JOIN_STRING = "-"
 
 # public domain licenses for extracting from metadata
-PUBLIC_LICENSES = (
+PUBLIC_LICENSE_URLS = (
     "https://creativecommons.org/publicdomain/mark/1.0/",
     "https://creativecommons.org/publicdomain/zero/1.0/",
     )
@@ -122,17 +122,14 @@ def extract_expressive_features(path: str, path_output_prefix: str):
     # path2 = "/data2/zachary/musescore/test_data/b/b/QmbbxbpgJHyNRzjkbyxdoV5saQ9HY38MauKMd5CijTPFiF.mscz"
 
     # finish output dictionary
-    try:
-        metadata_path = METADATA[path]
-    except KeyError:
-        metadata_path = None
+    metadata_path = METADATA.get(path, None)
     is_public_domain, genres, complexity, tags, is_user_pro = False, [], None, [], False # set defaults
     if metadata_path:
         try:
             with open(metadata_path, "r") as metadata_file:
                 metadata_for_path = json.load(fp = metadata_file)
-                license_string = metadata_for_path["data"].get("license_string", "")
-                is_public_domain = any(((license in license_string) for license in PUBLIC_LICENSES))
+                license_url = metadata_for_path["data"].get("license_url", "")
+                is_public_domain = (license_url in PUBLIC_LICENSE_URLS)
                 # is_public_domain = bool(metadata_for_path["data"].get("is_public_domain", False))
                 genres = list(map(lambda genre: str(genre["name"]), metadata_for_path["data"].get("genres", [])))
                 complexity = int(metadata_for_path["data"].get("complexity", None))

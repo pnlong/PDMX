@@ -23,6 +23,7 @@ import logging
 MSCZ_DIR = "/data2/zachary/musescore"
 ORIGINAL_FILEPATH = f"{MSCZ_DIR}/metadata2path.json"
 OUTPUT_FILEPATH = "/data2/pnlong/musescore/metadata_to_data.csv"
+MAPPINGS_COLUMNS = ["metadata", "data", "metadata_path", "data_path"]
 ##################################################
 
 
@@ -44,8 +45,7 @@ if __name__ == "__main__":
             mappings = json.load(fp = file)
         mappings = pd.DataFrame.from_dict(data = mappings, orient = "index").reset_index(drop = False).rename(columns = {"index": "metadata", 0: "data_path"})
         mappings["data"] = mappings["data_path"].apply(lambda data_path: data_path.split("/")[-1].split(".")[0])
-        mappings_columns = ["metadata", "data", "metadata_path", "data_path"]
-        mappings = mappings[mappings_columns[:2] + mappings_columns[3:]]
+        mappings = mappings[MAPPINGS_COLUMNS[:2] + MAPPINGS_COLUMNS[3:]]
 
         ##################################################
 
@@ -54,7 +54,7 @@ if __name__ == "__main__":
         ##################################################
 
         # create remappings dataframe
-        remappings = pd.DataFrame(columns = mappings_columns) # create dataframe
+        remappings = pd.DataFrame(columns = MAPPINGS_COLUMNS) # create dataframe
         remappings.to_csv(path_or_buf = OUTPUT_FILEPATH, sep = ",", na_rep = "NA", header = True, index = False, mode = "w")
 
         def find_metadata_path(i: int):
@@ -73,7 +73,7 @@ if __name__ == "__main__":
             current.insert(2, metadata_path)# add metadatapath to current
 
             # output current
-            remappings_current = pd.DataFrame(data = [dict(zip(mappings_columns, current))], columns = mappings_columns)
+            remappings_current = pd.DataFrame(data = [dict(zip(MAPPINGS_COLUMNS, current))], columns = MAPPINGS_COLUMNS)
             remappings_current.to_csv(path_or_buf = OUTPUT_FILEPATH, sep = ",", na_rep = "NA", header = False, index = False, mode = "a")
 
     ##################################################

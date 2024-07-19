@@ -398,7 +398,8 @@ def extract_data(
         use_absolute_time: bool = False,
         include_annotation_class_name: bool = False
     ) -> np.array:
-    """Return a MusicExpress object as a data sequence.
+    """
+    Return a MusicExpress object as a data sequence.
     Each row of the output is a note specified as follows.
         (event_type, beat, position, value, duration (in seconds or beats depending on `use_absolute_time`), program, velocity (if `include_velocity`), time, time (in seconds), annotation_class_name (if `include_annotation_class_name`))
     """
