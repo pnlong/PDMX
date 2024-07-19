@@ -11,24 +11,18 @@
 ##################################################
 
 import glob
-from os.path import isfile, exists, basename, dirname
+from os.path import isfile, exists, basename
 import random
-import subprocess
 import pandas as pd
 from typing import List
 from tqdm import tqdm
 import multiprocessing
 import argparse
 import logging
-from copy import deepcopy
 from re import sub
 import json
-import pickle
 from read_mscz.read_mscz import read_musescore, get_musescore_version
-from read_mscz.classes import Lyric
 from read_mscz.music import MusicExpress
-import representation
-from encode import extract_data, get_system_level_expressive_features
 from utils import write_to_file
 
 ##################################################
