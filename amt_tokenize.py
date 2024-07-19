@@ -589,7 +589,7 @@ if __name__ == "__main__":
 
     # print statistics
     total_time = strftime("%H:%M:%S", gmtime(total_time)) # convert into pretty string
-	seq_count, rest_count, too_short, too_long, too_manyinstr, discarded_seqs, truncations, n_events = (sum(statistic) for statistic in zip(*results))
+    seq_count, rest_count, too_short, too_long, too_manyinstr, discarded_seqs, truncations, n_events = (sum(statistic) for statistic in zip(*results))
     rest_ratio = round(100 * float(rest_count) / (seq_count * M), 2)
     trunc_ratio = round(100 * float(truncations) / (seq_count * M), 2)    
     logging.info("Tokenization complete. Total time: {total_time}.")
