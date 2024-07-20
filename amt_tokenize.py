@@ -400,7 +400,7 @@ def tokenize(
                     concatenated_tokens = concatenated_tokens[(EVENT_SIZE * M):]
 
                     # relativize time to the context
-                    seq = ops.translate(tokens = seq, seconds = -ops.min_time(tokens = seq, seconds = False), seconds = False)
+                    seq = ops.translate(tokens = seq, dt = -ops.min_time(tokens = seq, seconds = False), seconds = False)
                     assert ops.min_time(tokens = seq, seconds = False) == 0 # make sure times are valid
                     if (ops.max_time(tokens = seq, seconds = False) >= MAX_TIME):
                         stats[3] += 1
