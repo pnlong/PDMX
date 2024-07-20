@@ -20,16 +20,13 @@ import logging
 from time import perf_counter, strftime, gmtime
 import multiprocessing
 import random
-from copy import copy
 import subprocess
 from typing import Tuple, List
 import random
 
 import utils
-import representation
-from encode import extract_data
 from read_mscz.read_mscz import read_musescore
-from read_mscz.classes import *
+from read_mscz.music import MusicExpress
 
 from amt_config import *
 from amt_vocab import *
@@ -49,6 +46,7 @@ PARTITIONS = {"train": 0.8, "valid": 0.1, "test": 0.1} # training partitions
 DEFAULT_AUGMENT_FACTOR = 1 # data augmentation, default is no augment
 N_SUBGROUPS = 20 # number of subgroups to split the data into
 
+COMPOUND_WORD_DIMENSIONS = ("time", "duration", "pitch", "instrument", "velocity") # dimensions for AMT compound word
 DRUM_INSTRUMENT_CODE = 128 # drum instrument code for AMT
 
 ##################################################
@@ -56,6 +54,47 @@ DRUM_INSTRUMENT_CODE = 128 # drum instrument code for AMT
 
 # HELPER FUNCTIONS
 ##################################################
+
+def music_to_compound(music: MusicExpress) -> np.array:
+    """
+    Scrape notes (and grace notes) from a Music object and
+    return a 2D array in the style of AMT's intermediate compound word representation
+    """
+
+    # create empty notes array
+    notes = np.zeros(shape = (0, COMPOUND_SIZE), dtype = int)
+
+    # get dimension indicies
+    time_dim, duration_dim, pitch_dim, instrument_dim, velocity_dim = range(COMPOUND_SIZE)
+
+    # function for yielding time values valid under AMT scheme
+    time_conversion_function = lambda time: round((TIME_RESOLUTION / music.resolution) * time)
+
+    # loop through tracks
+    for track in music.tracks:
+
+        # create empty array for notes from this track
+        notes_track = np.zeros(shape = (len(track.notes), COMPOUND_SIZE), dtype = int)
+        program = int(track.program) # ensure the program value is an integer
+
+        # loop through each note in this track
+        for i, note in enumerate(track.notes):
+            notes_track[i, time_dim] = time_conversion_function(time = note.time) # time
+            notes_track[i, duration_dim] = time_conversion_function(time = note.duration) # duration
+            notes_track[i, pitch_dim] = int(note.pitch) # pitch
+            notes_track[i, instrument_dim] = program # instrument
+            notes_track[i, velocity_dim] = int(note.velocity) # velocity
+
+        # quirky case when track is a drum track
+        if track.is_drum:
+            notes_track[:, instrument_dim] = utils.rep(x = DRUM_INSTRUMENT_CODE, times = len(notes_track)) # set instrument code if this is a drum track
+
+        # add this track's notes to the main array
+        notes = np.concatenate(objs = (notes, notes_track), axis = 0)
+    
+    # return scraped notes, ordered by time
+    notes = notes[notes[:, time_dim].argsort()]
+    return notes
 
 def compound_to_events(tokens: list, stats: bool = False) -> list:
     """
@@ -197,8 +236,6 @@ def tokenize(
     path_output: str,
     subgroup: int,
     augment_factor: int = DEFAULT_AUGMENT_FACTOR,
-    use_implied_duration: bool = True,
-    use_absolute_time: bool = False,
     debug: bool = False
     ) -> Tuple[int, int, int, int, int, int, int, int]:
     """Extract relevant information from .mscz files, output as tokens
@@ -213,10 +250,6 @@ def tokenize(
         Index of this function call (for formatting progress bars).
     augment_factor : int
         Factor by which to augment the data.
-    use_implied_duration : bool
-        When a note or annotation does not explicitly have an explicitly defined duration, do we infer its duration?
-    use_absolute_time : bool
-        Should time be measured in seconds (absolute time) or time steps (metrical time)?
     debug: bool
         Do we output statistics on files that were improperly processed?
 
@@ -245,12 +278,6 @@ def tokenize(
     # set random seed
     np.random.seed(0) # random seed
 
-    # deal with intermediate representation, "compound" word
-    time_dim_name = "time" + (".s" if use_absolute_time else "")
-    compound_word_dimensions = (time_dim_name, "duration", "value", "instrument", "velocity") # dimensions for AMT compound word
-    time_dim, duration_dim, instrument_dim = compound_word_dimensions.index(time_dim_name), compound_word_dimensions.index("duration"), compound_word_dimensions.index("instrument")
-    column_reordering = [representation.DIMENSIONS.index(dimension) for dimension in compound_word_dimensions]
-
 	##################################################
 
 
@@ -277,9 +304,6 @@ def tokenize(
                 stats[3] += 1 # this file is inexpressible
                 continue # exit here
 
-            # start timer
-            start_time = perf_counter()
-
             ##################################################
 
 
@@ -290,38 +314,12 @@ def tokenize(
             # music.infer_velocity = True
             # music.realize_expressive_features()
 
-            tokens = np.empty(shape = (0, COMPOUND_SIZE), dtype = np.object_)
-            for track in music.tracks:
-
-                # do not record if track is drum or is an unknown program
-                if track.program not in representation.KNOWN_PROGRAMS:
-                    continue
-        
-                # create MusicExpress object with just one track
-                track_music = copy(x = music)
-                track_music.tracks = [track,]
-                data = extract_data(music = track_music, use_implied_duration = use_implied_duration, include_velocity = False, use_absolute_time = use_absolute_time)
-
-                # wrangle data
-                data = data[data[:, 0] != representation.EXPRESSIVE_FEATURE_TYPE_STRING] # we only want notes
-                data = data[:, column_reordering] # reorder columns to AMT compound word
-                time_conversion_function = (lambda time: round(TIME_RESOLUTION * time)) if use_absolute_time else (lambda time: round((TIME_RESOLUTION / music.resolution) * time))
-                data[:, time_dim] = list(map(time_conversion_function, data[:, time_dim]))
-                data[:, duration_dim] = list(map(time_conversion_function, data[:, duration_dim]))
-                if track.is_drum:
-                    data[:, instrument_dim] = utils.rep(x = DRUM_INSTRUMENT_CODE, times = len(data)) # set instrument code if this is a drum track
-        
-                # concatenate to overall tokens list
-                tokens = np.concatenate((tokens, data), axis = 0)
-
-                # update number of events
-                n_events += len(data)
-
-            # order tokens by time
-            tokens = tokens[tokens[:, time_dim].argsort()]
+            # extract notes from music object
+            tokens = music_to_compound(music = music)
     
             # flatten tokens from 2d to 1d
             n = len(tokens) # save number of tokens
+            n_events += n
             tokens = np.ravel(tokens).tolist()
 
             ##################################################
@@ -442,11 +440,6 @@ def tokenize(
             }
             utils.write_to_file(info = current_output, output_filepath = MAPPING_OUTPUT_FILEPATH, columns = current_output.keys())
 
-            # get time elapsed
-            end_time = perf_counter()
-            total_time = end_time - start_time
-            utils.write_to_file(info = {"time": total_time}, output_filepath = TIMING_OUTPUT_FILEPATH)
-
             ##################################################
 
     ##################################################
@@ -477,9 +470,6 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("-i", "--input_dir", type = str, default = INPUT_DIR, help = "Directory containing all data tables needed as input")
     parser.add_argument("-o", "--output_dir", type = str, default = OUTPUT_DIR, help = "Output directory")
     parser.add_argument("-ns", "--n_subgroups", type = int, default = N_SUBGROUPS, help = "Number of subgroups to split the data into.")
-    parser.add_argument("-ed", "--explicit_duration", action = "store_true", help = "Whether or not to calculate the 'implied duration' of features without an explicitly-defined duration.")
-    # parser.add_argument("-v", "--velocity", action = "store_true", help = "Whether or not to include a velocity field that reflects expressive features.")
-    parser.add_argument("-a", "--absolute_time", action = "store_true", help = "Whether or not to use absolute (seconds) or metrical (beats) time.")
     parser.add_argument("--augment", type = int, default = DEFAULT_AUGMENT_FACTOR, help = "Augmentation factor for the data.")
     parser.add_argument("-v", "--ratio_valid", type = float, default = PARTITIONS["valid"], help = "Ratio of validation files.")
     parser.add_argument("-t", "--ratio_test", type = float, default = PARTITIONS["test"], help = "Ratio of test files.")
@@ -503,13 +493,12 @@ if __name__ == "__main__":
     random.seed(args.seed) # set random seed
 
     # make output_dir if it doesn't yet exist
-    if not exists(args.output_dir):
+    if (not exists(args.output_dir)):
         makedirs(args.output_dir)
 
     # some constants
     METADATA_MAPPING_FILEPATH = f"{args.input_dir}/metadata_to_data.csv"
     prefix = basename(args.output_dir)
-    TIMING_OUTPUT_FILEPATH = f"{args.output_dir}/{prefix}.timing.txt"
     MAPPING_OUTPUT_FILEPATH = f"{args.output_dir}/{prefix}.csv"
 
     # for getting metadata
@@ -564,8 +553,6 @@ if __name__ == "__main__":
     get_output_path_from_subgroup = lambda subgroup: f"{args.output_dir}/tokenized-events.{subgroup}.txt" # returns output path given the subgroup
     paths_output = list(map(get_output_path_from_subgroup, subgroups)) # output paths
     augment_factors = [args.augment if (subgroup in subgroups_train) else 1 for subgroup in subgroups]
-    use_implied_durations = utils.rep(x = not bool(args.explicit_duration), times = len(subgroups))
-    use_absolute_times = utils.rep(x = args.absolute_time, times = len(subgroups))
 
     ##################################################
 
@@ -580,9 +567,7 @@ if __name__ == "__main__":
                                iterable = zip(paths_by_subgroup, # paths_input
                                               paths_output, # path_output
                                               subgroups, # subgroup
-                                              augment_factors, # augment_factor
-                                              use_implied_durations, # use_implied_duration
-                                              use_absolute_times), # use_absolute_time
+                                              augment_factors), # augment_factor
                                chunksize = chunk_size)
     end_time = perf_counter() # stop the timer
     total_time = end_time - start_time # compute total time elapsed

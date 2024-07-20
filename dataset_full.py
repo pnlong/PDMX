@@ -25,6 +25,7 @@ from re import sub
 import json
 import math
 import muspy
+
 from read_mscz.read_mscz import read_musescore, get_musescore_version
 from read_mscz.music import MusicExpress
 from utils import write_to_file
