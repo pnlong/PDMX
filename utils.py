@@ -128,11 +128,17 @@ def load_csv(filepath: str, skiprows: int = 1):
     """Load data from a CSV file."""
     return np.loadtxt(fname = filepath, dtype = int, delimiter = ",", skiprows = skiprows)
 
+# make sure a string is valid for a csv file
+def validate_string(string: str, sep: str = ",") -> str:
+    """
+    Ensure a string is valid to be in a csv file, or any file delimetered by `sep`.
+    """
+    return string.replace(sep, "")
 
 # create a csv row
 def create_csv_row(info: list, sep: str = ",") -> str:
     """Create a csv row from a list."""
-    return sep.join((str(item) if item != None else NA_STRING for item in info)) + "\n"
+    return sep.join((validate_string(string = str(item), sep = sep) if (item is not None) or (len(str(item)) == 0) else NA_STRING for item in info)) + "\n"
 
 # write a list to a file
 def write_to_file(info: dict, output_filepath: str, columns: list = None):

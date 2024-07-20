@@ -214,13 +214,6 @@ def groove_consistency(music: MusicExpress) -> float:
 # HELPER FUNCTIONS
 ##################################################
 
-# make sure a string is valid for a csv file
-def validate_string(string: str, sep: str = ",") -> str:
-    """
-    Ensure a string is valid to be in a csv file, or any file delimetered by `sep`.
-    """
-    return string.replace(sep, "")
-
 # help parse a list feature from a metadata file
 extract_letters = lambda item: sub(pattern = "[^a-z]", repl = "", string = item.lower()) # extract letters from a string, convert to lower case
 is_string_occupied = lambda item: (len(item) > 0) and (item != "none") # is a string not empty
@@ -368,28 +361,28 @@ def get_full_dataset(path: str) -> None:
         results["n_comments"] = int(metadata["data"].get("count_comments", 0))
         results["n_favorites"] = int(metadata["data"].get("count_favorites", 0))
         results["n_views"] = int(metadata["data"].get("count_views", 0))
-        results["genres"] = validate_string(string = get_list_feature_string(list_feature = list(map(lambda genre: str(genre.get("name", "")), metadata["data"].get("genres", [])))))
-        results["groups"] = validate_string(string = get_list_feature_string(list_feature = list(map(lambda group: str(group.get("title", "")), metadata["data"].get("groups", [])))))
-        results["license_url"] = validate_string(string = metadata["data"].get("license_url", DEFAULT_LICENSE_URL))
+        results["genres"] = get_list_feature_string(list_feature = list(map(lambda genre: str(genre.get("name", "")), metadata["data"].get("genres", []))))
+        results["groups"] = get_list_feature_string(list_feature = list(map(lambda group: str(group.get("title", "")), metadata["data"].get("groups", []))))
+        results["license_url"] = metadata["data"].get("license_url", DEFAULT_LICENSE_URL)
         if ("paywall" in metadata["data"].keys()) and (metadata["data"]["paywall"] is not None):
             results["has_paywall"] = bool(metadata["data"]["paywall"].get("has_instant_paywall", False))
         if ("score" in metadata["data"].keys()) and (metadata["data"]["score"] is not None):
-            results["artist_name"] = validate_string(string = metadata["data"]["score"].get("artist_name", None))
-            results["composer_name"] = validate_string(string = metadata["data"]["score"].get("composer_name", None))
+            results["artist_name"] = metadata["data"]["score"].get("artist_name", None)
+            results["composer_name"] = metadata["data"]["score"].get("composer_name", None)
             results["has_custom_audio"] = bool(metadata["data"]["score"].get("has_custom_audio", False))
             results["has_custom_video"] = bool(metadata["data"]["score"].get("has_custom_video", False))
             results["is_draft"] = bool(metadata["data"]["score"].get("is_draft", False))
             results["is_official"] = bool(metadata["data"]["score"].get("is_official", False))
             results["is_original"] = bool(metadata["data"]["score"].get("is_original", False))
-            results["license"] = validate_string(string = metadata["data"]["score"].get("license", DEFAULT_LICENSE))
-            results["publisher"] = validate_string(string = metadata["data"]["score"].get("publisher", None))
+            results["license"] = metadata["data"]["score"].get("license", DEFAULT_LICENSE)
+            results["publisher"] = metadata["data"]["score"].get("publisher", None)
             if ("rating" in metadata["data"]["score"].keys()) and (metadata["data"]["score"]["rating"] is not None):
                 results["n_ratings"] = int(metadata["data"]["score"]["rating"].get("count", 0))
                 results["rating"] = int(metadata["data"]["score"]["rating"].get("rating", 0))
-            results["song_name"] = validate_string(string = metadata["data"]["score"].get("song_name", None))
-            results["subtitle"] = validate_string(string = metadata["data"]["score"].get("subtitle", None))
-            results["tags"] = validate_string(string = get_list_feature_string(list_feature = list(map(str, metadata["data"]["score"].get("tags", [])))))
-            results["title"] = validate_string(string = metadata["data"]["score"].get("title", None))
+            results["song_name"] = metadata["data"]["score"].get("song_name", None)
+            results["subtitle"] = metadata["data"]["score"].get("subtitle", None)
+            results["tags"] = get_list_feature_string(list_feature = list(map(str, metadata["data"]["score"].get("tags", []))))
+            results["title"] = metadata["data"]["score"].get("title", None)
             if ("user" in metadata["data"]["score"].keys()) and (metadata["data"]["score"]["user"] is not None):
                 results["is_user_pro"] = bool(metadata["data"]["score"]["user"].get("is_pro", False))
                 results["is_user_publisher"] = bool(metadata["data"]["score"]["user"].get("is_publisher", False))
