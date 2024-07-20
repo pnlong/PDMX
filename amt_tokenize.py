@@ -13,8 +13,8 @@
 import argparse
 import pandas as pd
 import numpy as np
-from os.path import exists, basename, dirname
-from os import remove, makedirs
+from os.path import exists, basename
+from os import makedirs
 from tqdm import tqdm
 import logging
 from time import perf_counter, strftime, gmtime
@@ -28,7 +28,7 @@ import random
 import utils
 import representation
 from encode import extract_data
-from read_mscz.read_mscz import read_musescore, get_musescore_version
+from read_mscz.read_mscz import read_musescore
 from read_mscz.classes import *
 
 from amt_config import *
@@ -43,7 +43,7 @@ import amt_ops as ops
 
 INPUT_DIR = "/data2/pnlong/musescore"
 MSCZ_FILEPATHS = f"{INPUT_DIR}/relevant_mscz_files.txt"
-OUTPUT_DIR = "/data2/pnlong/musescore/data"
+OUTPUT_DIR = "/data2/pnlong/musescore/amt"
 
 PARTITIONS = {"train": 0.8, "valid": 0.1, "test": 0.1} # training partitions
 DEFAULT_AUGMENT_FACTOR = 1 # data augmentation, default is no augment
@@ -527,8 +527,8 @@ if __name__ == "__main__":
 
     # create list of paths if does not exist
     if not exists(args.paths):
-        data = pd.read_csv(filepath_or_buffer = f"{args.input_dir}/expressive_features/expressive_features.csv", sep = ",", header = 0, index_col = False) # load in data frame
-        data = data[data["in_dataset"]] # filter
+        data = pd.read_csv(filepath_or_buffer = f"{args.input_dir}/dataset/dataset.full.csv", sep = ",", header = 0, index_col = False) # load in data frame
+        # data = data[data["in_dataset"]] # filter # no filter as of now
         paths = pd.unique(values = data["path"]).tolist()
         with open(args.paths, "w") as file:
             file.write("\n".join(paths))

@@ -12,6 +12,7 @@
 
 import glob
 from os.path import isfile, exists, basename
+from os import makedirs
 import random
 import pandas as pd
 import numpy as np
@@ -461,6 +462,8 @@ if __name__ == "__main__":
     args = parse_args()
 
     # constant filepaths
+    if (not exists(args.output_dir)):
+        makedirs(args.output_dir)
     OUTPUT_FILEPATH_ALL = f"{args.output_dir}/all_files.csv"
     OUTPUT_FILEPATH_FULL = f"{args.output_dir}/{basename(args.output_dir)}.full.csv"
 
