@@ -28,7 +28,7 @@ TIME_RESOLUTION = 100              # 10ms time resolution = 100 bins/second
 
 MAX_PITCH = 128                    # 128 MIDI pitches
 MAX_INSTR = 129                    # 129 MIDI instruments (128 + drums)
-MAX_NOTE = MAX_PITCH * MAX_INSTR     # note = pitch x instrument
+MAX_NOTE = MAX_PITCH * MAX_INSTR   # note = pitch x instrument
 
 MAX_INTERARRIVAL_IN_SECONDS = 10   # maximum interarrival time (for MIDI-like encoding)
 

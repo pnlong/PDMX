@@ -41,6 +41,7 @@ INPUT_DIR = "/data2/pnlong/musescore"
 METADATA_MAPPING = f"{INPUT_DIR}/metadata_to_data.csv"
 OUTPUT_DIR = f"{INPUT_DIR}/dataset"
 LIST_FEATURE_JOIN_STRING = "-"
+MMT_STATISTIC_COLUMNS = ["pitch_class_entropy", "scale_consistency", "groove_consistency"] # names of the MMT-style statistics
 
 # public domain licenses for extracting from metadata
 PUBLIC_LICENSE_URLS = (
@@ -378,7 +379,7 @@ def get_full_dataset(path: str) -> None:
             results["publisher"] = metadata["data"]["score"].get("publisher", None)
             if ("rating" in metadata["data"]["score"].keys()) and (metadata["data"]["score"]["rating"] is not None):
                 results["n_ratings"] = int(metadata["data"]["score"]["rating"].get("count", 0))
-                results["rating"] = int(metadata["data"]["score"]["rating"].get("rating", 0))
+                results["rating"] = float(metadata["data"]["score"]["rating"].get("rating", 0))
             results["song_name"] = metadata["data"]["score"].get("song_name", None)
             results["subtitle"] = metadata["data"]["score"].get("subtitle", None)
             results["tags"] = get_list_feature_string(list_feature = list(map(str, metadata["data"]["score"].get("tags", []))))
@@ -422,11 +423,7 @@ def get_full_dataset(path: str) -> None:
     ##################################################
 
     # extract MMT-style statistics
-    results.update({
-        "pitch_class_entropy" :     pitch_class_entropy(music = music),
-        "scale_consistency" :       scale_consistency(music = music),
-        "groove_consistency" :      groove_consistency(music = music),
-    })
+    results.update(dict(zip(MMT_STATISTIC_COLUMNS, (pitch_class_entropy(music = music), scale_consistency(music = music), groove_consistency(music = music)))))
 
     # output results
     write_to_file(info = results, columns = list(results.keys()), output_filepath = OUTPUT_FILEPATH_FULL)

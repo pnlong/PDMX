@@ -44,10 +44,11 @@ OUTPUT_DIR = "/data2/pnlong/musescore/amt"
 
 PARTITIONS = {"train": 0.8, "valid": 0.1, "test": 0.1} # training partitions
 DEFAULT_AUGMENT_FACTOR = 1 # data augmentation, default is no augment
-N_SUBGROUPS = 20 # number of subgroups to split the data into
+N_SUBGROUPS = 10 # number of subgroups to split the data into
 
 COMPOUND_WORD_DIMENSIONS = ("time", "duration", "pitch", "instrument", "velocity") # dimensions for AMT compound word
 DRUM_INSTRUMENT_CODE = 128 # drum instrument code for AMT
+DEFAULT_PROGRAM = 0 # default program is 0, piano
 
 ##################################################
 
@@ -76,21 +77,23 @@ def music_to_compound(music: MusicExpress) -> np.array:
         # create empty array for notes from this track
         notes_track = np.zeros(shape = (len(track.notes), COMPOUND_SIZE), dtype = int)
         program = int(track.program) # ensure the program value is an integer
+        if track.is_drum: # quirky case when track is drum track
+            program = DRUM_INSTRUMENT_CODE
+        elif (not track.is_drum) and ((program < -1) or (program >= MAX_INSTR)): # unknown program
+            program = DEFAULT_PROGRAM
 
         # loop through each note in this track
         for i, note in enumerate(track.notes):
-            notes_track[i, time_dim] = time_conversion_function(time = note.time) # time
-            notes_track[i, duration_dim] = time_conversion_function(time = note.duration) # duration
-            notes_track[i, pitch_dim] = int(note.pitch) # pitch
-            notes_track[i, instrument_dim] = program # instrument
-            notes_track[i, velocity_dim] = int(note.velocity) # velocity
-
-        # quirky case when track is a drum track
-        if track.is_drum:
-            notes_track[:, instrument_dim] = utils.rep(x = DRUM_INSTRUMENT_CODE, times = len(notes_track)) # set instrument code if this is a drum track
+            notes_track[i] = [
+                time_conversion_function(time = note.time), # time
+                time_conversion_function(time = note.duration), # duration
+                int(note.pitch), # pitch
+                program, # instrument
+                int(note.velocity), # velocity
+            ]
 
         # add this track's notes to the main array
-        notes = np.concatenate(objs = (notes, notes_track), axis = 0)
+        notes = np.concatenate((notes, notes_track), axis = 0)
     
     # return scraped notes, ordered by time
     notes = notes[notes[:, time_dim].argsort()]
@@ -286,7 +289,7 @@ def tokenize(
 	
     with open(path_output, "a") as outfile:
         concatenated_tokens = []
-        for path in tqdm(iterable = paths_input, desc = f"#{subgroup}", position = subgroup + 1, leave = True):
+        for path in tqdm(iterable = paths_input, desc = f"#{subgroup}", position = subgroup, leave = True):
 
             # LOAD IN MSCZ FILE
             ##################################################
@@ -516,7 +519,8 @@ if __name__ == "__main__":
 
     # create list of paths if does not exist
     if not exists(args.paths):
-        data = pd.read_csv(filepath_or_buffer = f"{args.input_dir}/dataset/dataset.full.csv", sep = ",", header = 0, index_col = False) # load in data frame
+        # print_bad_line = lambda line: print(line.split(","))
+        data = pd.read_csv(filepath_or_buffer = f"{args.input_dir}/dataset/dataset.full.csv", sep = ",", header = 0, index_col = False) # load in data frame, on_bad_lines = print_bad_line, engine = "python"
         # data = data[data["in_dataset"]] # filter # no filter as of now
         paths = pd.unique(values = data["path"]).tolist()
         with open(args.paths, "w") as file:
@@ -574,11 +578,12 @@ if __name__ == "__main__":
 
     # print statistics
     total_time = strftime("%H:%M:%S", gmtime(total_time)) # convert into pretty string
-    seq_count, rest_count, too_short, too_long, too_manyinstr, discarded_seqs, truncations, n_events = (sum(statistic) for statistic in zip(*results))
-    rest_ratio = round(100 * float(rest_count) / (seq_count * M), 2)
-    trunc_ratio = round(100 * float(truncations) / (seq_count * M), 2)    
-    logging.info("Tokenization complete. Total time: {total_time}.")
-    logging.info(f"  - Processed {seq_count} training sequences")
+    seqcount, rest_count, too_short, too_long, too_manyinstr, discarded_seqs, truncations, n_events = (sum(statistic) for statistic in zip(*results))
+    rest_ratio = round(100 * float(rest_count) / (seqcount * M), 2) if seqcount > 0 else 0
+    trunc_ratio = round(100 * float(truncations) / (seqcount * M), 2) if seqcount > 0 else 0
+    print("\n" + "".join("=" for _ in range(60)) + "\n")
+    logging.info(f"Tokenization complete. Total time: {total_time}.")
+    logging.info(f"  - Processed {seqcount} training sequences")
     logging.info(f"  - Processed {n_events} events")
     logging.info(f"  - Inserted {rest_count} REST tokens ({rest_ratio}% of events)")
     logging.info(f"  - Discarded {too_short + too_long} event sequences")
@@ -592,8 +597,10 @@ if __name__ == "__main__":
     # split into partition files
     def partition(subgroups: set, partition_name: str):
         path_output_ordered = f"{args.output_dir}/{partition_name}.ordered.txt"
-        subprocess.run(args = ["cat"] + list(map(get_output_path_from_subgroup, subgroups)) + [">", path_output_ordered], check = True) # combine partition into a single file
-        subprocess.run(args = ["shuf", path_output_ordered, ">", f"{args.output_dir}/{partition_name}.txt"], check = True) # shuffle said file
+        with open(path_output_ordered, "w") as outfile_ordered:
+            subprocess.run(args = ["cat"] + list(map(get_output_path_from_subgroup, subgroups)), stdout = outfile_ordered, check = True) # combine partition into a single file
+        with open(f"{args.output_dir}/{partition_name}.txt", "w") as outfile:
+            subprocess.run(args = ["shuf", path_output_ordered], stdout = outfile, check = True) # shuffle said file
         subprocess.run(args = ["rm", path_output_ordered], check = True) # remove the ordered file
     partition(subgroups = subgroups_valid, partition_name = "valid")
     partition(subgroups = subgroups_test, partition_name = "test")

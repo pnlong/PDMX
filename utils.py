@@ -14,8 +14,8 @@ import pathlib
 import warnings
 from os.path import exists
 from typing import Union, List, Tuple, Collection
-
 import numpy as np
+from re import sub
 
 ##################################################
 
@@ -50,7 +50,9 @@ def unique(l: Union[List, Tuple]) -> list:
 
 # get the product of a list
 def product(l: Collection) -> float:
+    """Returns the product of the elements in a list."""
     return np.prod(a = np.array(object = l), axis = 0)
+
 ##################################################
 
 
@@ -129,16 +131,21 @@ def load_csv(filepath: str, skiprows: int = 1):
     return np.loadtxt(fname = filepath, dtype = int, delimiter = ",", skiprows = skiprows)
 
 # make sure a string is valid for a csv file
-def validate_string(string: str, sep: str = ",") -> str:
+def validate_string_for_csv(string: str, sep: str = ",") -> str:
     """
     Ensure a string is valid to be in a csv file, or any file delimetered by `sep`.
+    Remove any newline characters as well as the delimeter itself. Get rid of wierd characters too.
     """
-    return string.replace(sep, "")
+    string = sub(pattern = "\n", repl = "", string = string) # get rid of newlines
+    string = sub(pattern = sep, repl = "", string = string) # get rid of delimiters
+    string = sub(pattern = r'[^ \w0-9,.?!/;:()&_+="\'\\<>\[\]\{\}-]', repl = "", string = string) # get wierd of funky characters
+    return string
 
 # create a csv row
+item_is_NA = lambda item: (item is None) or (len(str(item)) == 0) # boolean to ensure an item is not NA
 def create_csv_row(info: list, sep: str = ",") -> str:
     """Create a csv row from a list."""
-    return sep.join((validate_string(string = str(item), sep = sep) if (item is not None) and (len(str(item)) > 0) else NA_STRING for item in info)) + "\n"
+    return sep.join((validate_string_for_csv(string = str(item), sep = sep) if not item_is_NA(item = item) else NA_STRING for item in info)) + "\n"
 
 # write a list to a file
 def write_to_file(info: dict, output_filepath: str, columns: list = None):
