@@ -65,9 +65,6 @@ def music_to_compound(music: MusicExpress) -> np.array:
     # create empty notes array
     notes = np.zeros(shape = (0, COMPOUND_SIZE), dtype = int)
 
-    # get dimension indicies
-    time_dim, duration_dim, pitch_dim, instrument_dim, velocity_dim = range(COMPOUND_SIZE)
-
     # function for yielding time values valid under AMT scheme
     time_conversion_function = lambda time: round((TIME_RESOLUTION / music.resolution) * time)
 
@@ -84,19 +81,15 @@ def music_to_compound(music: MusicExpress) -> np.array:
 
         # loop through each note in this track
         for i, note in enumerate(track.notes):
-            notes_track[i] = [
-                time_conversion_function(time = note.time), # time
-                time_conversion_function(time = note.duration), # duration
-                int(note.pitch), # pitch
-                program, # instrument
-                int(note.velocity), # velocity
-            ]
+            time, duration = time_conversion_function(time = note.time), time_conversion_function(time = note.duration)
+            pitch = int(note.pitch) if (0 <= note.pitch < MAX_PITCH) else -1
+            notes_track[i] = [time, duration, pitch, program, int(note.velocity)]
 
         # add this track's notes to the main array
         notes = np.concatenate((notes, notes_track), axis = 0)
     
     # return scraped notes, ordered by time
-    notes = notes[notes[:, time_dim].argsort()]
+    notes = notes[notes[:, COMPOUND_WORD_DIMENSIONS.index("time")].argsort()]
     return notes
 
 def compound_to_events(tokens: list, stats: bool = False) -> list:

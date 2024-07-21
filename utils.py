@@ -138,7 +138,8 @@ def validate_string_for_csv(string: str, sep: str = ",") -> str:
     """
     string = sub(pattern = "\n", repl = "", string = string) # get rid of newlines
     string = sub(pattern = sep, repl = "", string = string) # get rid of delimiters
-    string = sub(pattern = r'[^ \w0-9,.?!/;:()&_+="\'\\<>\[\]\{\}-]', repl = "", string = string) # get wierd of funky characters
+    string = sub(pattern = r'[^ \w0-9,.?!/;:()&_+=\'\\<>\[\]\{\}-]', repl = "", string = string) # get wierd of funky characters
+    string = " ".join(string.split()) # get rid of wierd whitespace
     return string
 
 # create a csv row

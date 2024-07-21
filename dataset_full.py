@@ -16,7 +16,7 @@ from os import makedirs
 import random
 import pandas as pd
 import numpy as np
-from typing import List
+from typing import List, Union
 from tqdm import tqdm
 import multiprocessing
 import argparse
@@ -28,7 +28,7 @@ import muspy
 
 from read_mscz.read_mscz import read_musescore, get_musescore_version
 from read_mscz.music import MusicExpress
-from utils import write_to_file
+from utils import write_to_file, rep
 
 ##################################################
 
@@ -492,7 +492,7 @@ if __name__ == "__main__":
     ##################################################
 
     # use multiprocessing
-    logging.info(f"N_PATHS = {len(paths)}") # print number of paths to process
+    logging.info(f"N_PATHS = {len(paths):,}") # print number of paths to process
     chunk_size = 1
     with multiprocessing.Pool(processes = args.jobs) as pool:
         results = list(tqdm(iterable = pool.imap_unordered(func = get_full_dataset,
@@ -502,6 +502,39 @@ if __name__ == "__main__":
                             total = len(paths)))
     
     ##################################################
+
+##################################################
+
+
+# FUNCTION TO HELP INVESTIGATE DIFFERENCES IN DATA QUALITY
+##################################################
+
+if False:
+
+    import pandas as pd
+    from typing import Union, List
+    from utils import rep
+    MMT_STATISTIC_COLUMNS = ["pitch_class_entropy", "scale_consistency", "groove_consistency"]
+    dataset = pd.read_csv(filepath_or_buffer = "/data2/pnlong/musescore/dataset/dataset.full.csv", sep = ",", header = 0, index_col = False)
+    def group_dataset_by(by: Union[str, List[str]]) -> pd.DataFrame:
+        """
+        Function to help facilitate testing differences in data quality by various facets
+        """
+
+        df = dataset.copy()
+
+        # only select relevant columns
+        if isinstance(by, str):
+            by = [by]
+        df = df[by + MMT_STATISTIC_COLUMNS]
+        n = len(df)
+
+        # perform groupby
+        agg_dict = dict(zip(MMT_STATISTIC_COLUMNS, rep(x = ["size", "mean", "std", "median", "max", "min"], times = len(MMT_STATISTIC_COLUMNS))))
+        df = df.groupby(by = by).agg(agg_dict)
+
+        # return df
+        return df
 
 ##################################################
 
