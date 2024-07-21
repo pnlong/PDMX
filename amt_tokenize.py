@@ -82,11 +82,16 @@ def music_to_compound(music: MusicExpress) -> np.array:
         # loop through each note in this track
         for i, note in enumerate(track.notes):
             pitch = int(note.pitch)
-            if not (0 <= note.pitch < MAX_PITCH):
+            if not (0 <= pitch < MAX_PITCH):
                 continue
             else:
-                time, duration = time_conversion_function(time = note.time), time_conversion_function(time = note.duration)
-                notes_track[i] = [time, duration, pitch, program, int(note.velocity)]
+                notes_track[i] = [
+                    time_conversion_function(time = note.time),
+                    time_conversion_function(time = note.duration),
+                    pitch,
+                    program,
+                    int(note.velocity),
+                    ]
 
         # add this track's notes to the main array
         notes = np.concatenate((notes, notes_track), axis = 0)
