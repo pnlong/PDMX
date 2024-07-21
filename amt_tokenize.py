@@ -532,12 +532,6 @@ if __name__ == "__main__":
         paths = [path.strip() for path in file.readlines()]
     # paths = random.sample(population = paths, k = int(0.1 * len(paths))) # for debugging, to work with a smaller sample of files
 
-    # see if I've already completed some paths
-    if exists(MAPPING_OUTPUT_FILEPATH):
-        completed_paths = set(pd.read_csv(filepath_or_buffer = MAPPING_OUTPUT_FILEPATH, sep = ",", header = 0, index_col = False)["musescore"].tolist())
-        paths = list(path for path in tqdm(iterable = paths, desc = "Determining Already-Completed Paths") if path not in completed_paths)
-        paths = random.sample(population = paths, k = len(paths)) # shuffle paths
-
     # group each path into a subgroup
     subgroups = list(range(args.n_subgroups))
     paths_by_subgroup = [[] for _ in subgroups]
