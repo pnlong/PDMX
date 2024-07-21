@@ -76,14 +76,17 @@ def music_to_compound(music: MusicExpress) -> np.array:
         program = int(track.program) # ensure the program value is an integer
         if track.is_drum: # quirky case when track is drum track
             program = DRUM_INSTRUMENT_CODE
-        elif (not track.is_drum) and ((program < -1) or (program >= MAX_INSTR)): # unknown program
+        elif (not track.is_drum) and (not (0 <= program < MAX_INSTR)): # unknown program
             program = DEFAULT_PROGRAM
 
         # loop through each note in this track
         for i, note in enumerate(track.notes):
-            time, duration = time_conversion_function(time = note.time), time_conversion_function(time = note.duration)
-            pitch = int(note.pitch) if (0 <= note.pitch < MAX_PITCH) else -1
-            notes_track[i] = [time, duration, pitch, program, int(note.velocity)]
+            pitch = int(note.pitch)
+            if not (0 <= note.pitch < MAX_PITCH):
+                continue
+            else:
+                time, duration = time_conversion_function(time = note.time), time_conversion_function(time = note.duration)
+                notes_track[i] = [time, duration, pitch, program, int(note.velocity)]
 
         # add this track's notes to the main array
         notes = np.concatenate((notes, notes_track), axis = 0)
