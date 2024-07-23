@@ -97,6 +97,7 @@ def visualize_grouping(df: pd.DataFrame, statistic: str = DEFAULT_STATISTIC, out
     # make plots
     for column in MMT_STATISTIC_COLUMNS:
         axes[column].bar(x = df.index, height = df[column][statistic])
+        axes[column].set_xticks(sorted(pd.unique(df.index)))
         axes[column].set_xlabel(" ".join(facet_name.split("_")).title())
         axes[column].set_ylabel(" ".join(column.split("_")).title())
         axes[column].grid()
