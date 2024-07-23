@@ -82,7 +82,7 @@ def visualize_grouping(df: pd.DataFrame, statistic: str = DEFAULT_STATISTIC, out
 
     # infer output_filepath if necessary
     if (output_filepath is None):
-        output_filepath = f"{getcwd()}/plots/{facet_name}.{statistic}.pdf"
+        output_filepath = f"{getcwd()}/plots/{facet_name.replace(", ", "-")}.{statistic}.pdf"
     if (not exists(dirname(output_filepath))): # make sure output directory exists
         makedirs(dirname(output_filepath))
 
@@ -143,7 +143,7 @@ if __name__ == "__main__":
     df = group_dataset_by(by = args.by)
 
     # visualize
-    output_filepath = f"{output_dir}/plots/{df.index.name}.{args.statistic}.pdf"
+    output_filepath = f"{output_dir}/plots/{df.index.name.replace(", ", "-")}.{args.statistic}.pdf"
     visualize_grouping(df = df, statistic = args.statistic, output_filepath = output_filepath)
 
 ##################################################
