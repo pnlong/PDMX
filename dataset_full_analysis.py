@@ -101,6 +101,12 @@ def visualize_grouping(df: pd.DataFrame, statistic: str = DEFAULT_STATISTIC, out
         axes[column].set_ylabel(" ".join(column.split("_")).title())
         axes[column].grid()
 
+    # rotate if necessary
+    if (facet_name.count(", ") > 0):
+        for column in MMT_STATISTIC_COLUMNS:
+            axes[column].set_xticks(axes[column].get_xticks())
+            axes[column].set_xticklabels(axes[column].get_xticklabels(), rotation = 50, ha = "right")
+
     # save image
     fig.savefig(output_filepath, dpi = 200, transparent = True, bbox_inches = "tight")
     print(f"Saved figure to {output_filepath}.")
