@@ -96,10 +96,13 @@ def visualize_grouping(df: pd.DataFrame, statistic: str = DEFAULT_STATISTIC, out
 
     # make plots
     for column in MMT_STATISTIC_COLUMNS:
+        min, max = df[column][statistic]
+        buffer = 0.2 * (max - min)
         axes[column].barh(y = df.index, width = df[column][statistic])
         axes[column].set_yticks(sorted(pd.unique(df.index)))
         axes[column].set_ylabel(" ".join(facet_name.split("_")).title())
         axes[column].set_xlabel(" ".join(column.split("_")).title())
+        axes[column].set_xlim(left = min - buffer, right = max + buffer)
         axes[column].grid()
 
     # rotate y-axis ticks if necessary
