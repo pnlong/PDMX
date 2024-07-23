@@ -92,12 +92,12 @@ def visualize_grouping(df: pd.DataFrame, statistic: str = DEFAULT_STATISTIC, out
 
     # create plot
     fig, axes = plt.subplot_mosaic(mosaic = [MMT_STATISTIC_COLUMNS], constrained_layout = True, figsize = (12, 6))
-    fig.suptitle(" ".join(facet_name.split("_")).title(), fontweight = "bold")
+    fig.suptitle(statistic.title(), fontweight = "bold")
 
     # make plots
     for column in MMT_STATISTIC_COLUMNS:
         axes[column].bar(x = df.index, height = df[column][statistic])
-        axes[column].set_xlabel("Facet")
+        axes[column].set_xlabel(" ".join(facet_name.split("_")).title())
         axes[column].set_ylabel(" ".join(column.split("_")).title())
         axes[column].grid()
 
