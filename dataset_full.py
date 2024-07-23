@@ -439,7 +439,7 @@ def get_full_dataset(path: str) -> None:
 
 def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
-    parser = argparse.ArgumentParser(prog = "Parse MuseScore", description = "Extract expressive features from MuseScore files.")
+    parser = argparse.ArgumentParser(prog = "Parse MuseScore", description = "Extract information about and from MuseScore files.")
     parser.add_argument("-m", "--metadata_mapping", type = str, default = METADATA_MAPPING, help = "Absolute filepath to metadata-to-data table")
     parser.add_argument("-o", "--output_dir", type = str, default = OUTPUT_DIR, help = "Output directory")
     parser.add_argument("-j", "--jobs", type = int, default = int(multiprocessing.cpu_count() / 4), help = "Number of Jobs")
@@ -502,39 +502,6 @@ if __name__ == "__main__":
                             total = len(paths)))
     
     ##################################################
-
-##################################################
-
-
-# FUNCTION TO HELP INVESTIGATE DIFFERENCES IN DATA QUALITY
-##################################################
-
-if False:
-
-    import pandas as pd
-    from typing import Union, List
-    from utils import rep
-    MMT_STATISTIC_COLUMNS = ["pitch_class_entropy", "scale_consistency", "groove_consistency"]
-    dataset = pd.read_csv(filepath_or_buffer = "/data2/pnlong/musescore/dataset/dataset.full.csv", sep = ",", header = 0, index_col = False)
-    def group_dataset_by(by: Union[str, List[str]]) -> pd.DataFrame:
-        """
-        Function to help facilitate testing differences in data quality by various facets
-        """
-
-        df = dataset.copy()
-
-        # only select relevant columns
-        if isinstance(by, str):
-            by = [by]
-        df = df[by + MMT_STATISTIC_COLUMNS]
-        n = len(df)
-
-        # perform groupby
-        agg_dict = dict(zip(MMT_STATISTIC_COLUMNS, rep(x = ["size", "mean", "std", "median", "max", "min"], times = len(MMT_STATISTIC_COLUMNS))))
-        df = df.groupby(by = by).agg(agg_dict)
-
-        # return df
-        return df
 
 ##################################################
 
