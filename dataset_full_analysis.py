@@ -91,22 +91,22 @@ def visualize_grouping(df: pd.DataFrame, statistic: str = DEFAULT_STATISTIC, out
         raise ValueError(f"Invalid `statistic` argument. Valid options include: [{', '.join(STATISTICS_TO_CALCULATE)}]")
 
     # create plot
-    fig, axes = plt.subplot_mosaic(mosaic = [MMT_STATISTIC_COLUMNS], constrained_layout = True, figsize = (12, 6))
+    fig, axes = plt.subplot_mosaic(mosaic = [MMT_STATISTIC_COLUMNS], constrained_layout = True, figsize = (12, 4))
     fig.suptitle(statistic.title(), fontweight = "bold")
 
     # make plots
     for column in MMT_STATISTIC_COLUMNS:
-        axes[column].bar(x = df.index, height = df[column][statistic])
-        axes[column].set_xticks(sorted(pd.unique(df.index)))
-        axes[column].set_xlabel(" ".join(facet_name.split("_")).title())
-        axes[column].set_ylabel(" ".join(column.split("_")).title())
+        axes[column].barh(y = df.index, width = df[column][statistic])
+        axes[column].set_yticks(sorted(pd.unique(df.index)))
+        axes[column].set_ylabel(" ".join(facet_name.split("_")).title())
+        axes[column].set_xlabel(" ".join(column.split("_")).title())
         axes[column].grid()
 
-    # rotate if necessary
-    if (facet_name.count(", ") > 0):
-        for column in MMT_STATISTIC_COLUMNS:
-            axes[column].set_xticks(axes[column].get_xticks())
-            axes[column].set_xticklabels(axes[column].get_xticklabels(), rotation = 50, ha = "right")
+    # rotate y-axis ticks if necessary
+    # if (facet_name.count(", ") > 0):
+    #     for column in MMT_STATISTIC_COLUMNS:
+    #         axes[column].set_yticks(axes[column].get_xticks())
+    #         axes[column].set_yticklabels(axes[column].get_xticklabels(), rotation = 20, ha = "right")
 
     # save image
     fig.savefig(output_filepath, dpi = 200, transparent = True, bbox_inches = "tight")
