@@ -103,6 +103,7 @@ def visualize_grouping(df: pd.DataFrame, statistic: str = DEFAULT_STATISTIC, out
 
     # save image
     fig.savefig(output_filepath, dpi = 200, transparent = True, bbox_inches = "tight")
+    print(f"Saved figure to {output_filepath}.")
 
 ##################################################
 
@@ -136,7 +137,7 @@ if __name__ == "__main__":
     dataset = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)
 
     # some filterings of the dataset
-    dataset["rating"] = map(round, dataset["rating"])
+    dataset["rating"] = list(map(round, dataset["rating"]))
 
     # group dataset by arguments
     df = group_dataset_by(by = args.by)
