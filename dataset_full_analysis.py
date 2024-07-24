@@ -48,7 +48,7 @@ def group_dataset_by(by: Union[str, List[str]]) -> pd.DataFrame:
     df = df[by + MMT_STATISTIC_COLUMNS]
 
     # perform groupby
-    agg_dict = dict(zip(MMT_STATISTIC_COLUMNS, rep(x = ["mean", "std"], times = len(MMT_STATISTIC_COLUMNS))))
+    agg_dict = dict(zip(MMT_STATISTIC_COLUMNS, rep(x = ["mean", "sem"], times = len(MMT_STATISTIC_COLUMNS))))
     df = df.groupby(by = by).agg(agg_dict)
 
     # sort indicies
@@ -98,7 +98,7 @@ def visualize_grouping(df: pd.DataFrame, output_filepath: str = None):
 
         # plot
         axes[column].barh(y = df.index, width = df[column]["mean"], color = "blue")
-        axes[column].errorbar(x = df[column]["mean"], y = df.index, xerr = df[column]["std"], fmt = "o", color = "red")
+        axes[column].errorbar(x = df[column]["mean"], y = df.index, xerr = df[column]["sem"], fmt = "o", color = "red")
 
         # only show ticks with values in dataset
         axes[column].set_yticks(sorted(pd.unique(df.index)))
@@ -108,7 +108,7 @@ def visualize_grouping(df: pd.DataFrame, output_filepath: str = None):
         axes[column].set_xlabel(column_fancy)
 
         # add margin
-        min_val, max_val = min(df[column]["mean"] - df[column]["std"]), max(df[column]["mean"] + df[column]["std"])
+        min_val, max_val = min(df[column]["mean"] - df[column]["sem"]), max(df[column]["mean"] + df[column]["sem"])
         margin = margin_proportion * (max_val - min_val)
         axes[column].set_xlim(left = min_val - margin, right = max_val + margin)
 
