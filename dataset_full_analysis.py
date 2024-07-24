@@ -47,9 +47,14 @@ def group_dataset_by(by: Union[str, List[str]]) -> pd.DataFrame:
         by = [by]
     df = df[by + MMT_STATISTIC_COLUMNS]
 
+    # get sizes by group
+    sizes = df.groupby(by = by).size().to_frame(name = "n")
+    sizes["fraction"] = sizes["n"] / sum(sizes["n"])
+
     # perform groupby
     agg_dict = dict(zip(MMT_STATISTIC_COLUMNS, rep(x = ["mean", "sem"], times = len(MMT_STATISTIC_COLUMNS))))
     df = df.groupby(by = by).agg(agg_dict)
+    df[sizes.columns] = sizes
 
     # sort indicies
     df = df.sort_index(ascending = True)
