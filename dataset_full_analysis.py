@@ -26,8 +26,6 @@ from dataset_full import MMT_STATISTIC_COLUMNS, OUTPUT_DIR
 # CONSTANTS
 ##################################################
 
-STATISTICS_TO_CALCULATE = ["size", "mean", "std", "median", "max", "min"]
-DEFAULT_STATISTIC = STATISTICS_TO_CALCULATE[1]
 
 ##################################################
 
@@ -50,7 +48,7 @@ def group_dataset_by(by: Union[str, List[str]]) -> pd.DataFrame:
     df = df[by + MMT_STATISTIC_COLUMNS]
 
     # perform groupby
-    agg_dict = dict(zip(MMT_STATISTIC_COLUMNS, rep(x = STATISTICS_TO_CALCULATE, times = len(MMT_STATISTIC_COLUMNS))))
+    agg_dict = dict(zip(MMT_STATISTIC_COLUMNS, rep(x = ["mean", "std"], times = len(MMT_STATISTIC_COLUMNS))))
     df = df.groupby(by = by).agg(agg_dict)
 
     # sort indicies
@@ -72,7 +70,7 @@ def group_dataset_by(by: Union[str, List[str]]) -> pd.DataFrame:
 ##################################################
 
 # given a dataframe of the dataset grouped by some facet, visualize it
-def visualize_grouping(df: pd.DataFrame, statistic: str = DEFAULT_STATISTIC, output_filepath: str = None):
+def visualize_grouping(df: pd.DataFrame, output_filepath: str = None):
     """
     Given a dataframe that has been grouped by some facet, visualize it.
     """
@@ -82,27 +80,40 @@ def visualize_grouping(df: pd.DataFrame, statistic: str = DEFAULT_STATISTIC, out
 
     # infer output_filepath if necessary
     if (output_filepath is None):
-        output_filepath = f"{getcwd()}/plots/{facet_name.replace(', ', '-')}.{statistic}.pdf"
+        output_filepath = f"{getcwd()}/plots/{facet_name.replace(', ', '-')}.pdf"
     if (not exists(dirname(output_filepath))): # make sure output directory exists
         makedirs(dirname(output_filepath))
 
-    # ensure statistic is valid
-    if statistic not in STATISTICS_TO_CALCULATE:
-        raise ValueError(f"Invalid `statistic` argument. Valid options include: [{', '.join(STATISTICS_TO_CALCULATE)}]")
-
     # create plot
     fig, axes = plt.subplot_mosaic(mosaic = [MMT_STATISTIC_COLUMNS], constrained_layout = True, figsize = (12, 4))
-    fig.suptitle(statistic.title(), fontweight = "bold")
+    facet_name_fancy = " ".join(facet_name.split("_")).title()
+    fig.suptitle(facet_name_fancy, fontweight = "bold")
 
     # make plots
+    margin_proportion = 0.2 # what fraction of the range do we extend on both sides
     for column in MMT_STATISTIC_COLUMNS:
-        min_val, max_val = min(df[column][statistic]), max(df[column][statistic])
-        buffer = 0.2 * (max_val - min_val)
-        axes[column].barh(y = df.index, width = df[column][statistic])
+
+        # stylize the name of the MMT statistic
+        column_fancy = " ".join(column.split("_")).title()
+
+        # plot
+        axes[column].barh(y = df.index, width = df[column]["mean"], color = "blue")
+        axes[column].errorbar(x = df[column]["mean"], y = df.index, xerr = df[column]["std"], fmt = "o", color = "red")
+
+        # only show ticks with values in dataset
         axes[column].set_yticks(sorted(pd.unique(df.index)))
-        axes[column].set_ylabel(" ".join(facet_name.split("_")).title())
-        axes[column].set_xlabel(" ".join(column.split("_")).title())
-        axes[column].set_xlim(left = min_val - buffer, right = max_val + buffer)
+
+        # y and x axis labels
+        axes[column].set_ylabel(facet_name_fancy)
+        axes[column].set_xlabel(column_fancy)
+
+        # add margin
+        min_val, max_val = min(df[column]["mean"] - df[column]["std"]), max(df[column]["mean"] + df[column]["std"])
+        margin = margin_proportion * (max_val - min_val)
+        axes[column].set_xlim(left = min_val - margin, right = max_val + margin)
+
+        # add grid and title
+        axes[column].set_title(column_fancy)
         axes[column].grid()
 
     # rotate y-axis ticks if necessary
@@ -125,7 +136,6 @@ def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(prog = "Parse MuseScore", description = "Analyze full dataset for music-quality differences within variables.")
     parser.add_argument("-d", "--dataset_filepath", type = str, default = f"{OUTPUT_DIR}/dataset.full.csv", help = "Filepath to full dataset.")
-    parser.add_argument("-s", "--statistic", type = str, default = DEFAULT_STATISTIC, help = "Relevant statistic to display in plots.")
     parser.add_argument("-b", "--by", action = "store", type = str, nargs = "+", help = "Variable(s) on which to facet.")
     return parser.parse_args(args = args, namespace = namespace)
 
@@ -151,9 +161,10 @@ if __name__ == "__main__":
 
     # group dataset by arguments
     df = group_dataset_by(by = args.by)
+    print(df.to_string())
 
     # visualize
-    output_filepath = f"{output_dir}/plots/{df.index.name.replace(', ', '-')}.{args.statistic}.pdf"
-    visualize_grouping(df = df, statistic = args.statistic, output_filepath = output_filepath)
+    output_filepath = f"{output_dir}/plots/{df.index.name.replace(', ', '-')}.pdf"
+    visualize_grouping(df = df, output_filepath = output_filepath)
 
 ##################################################
