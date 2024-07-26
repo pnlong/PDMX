@@ -8,6 +8,7 @@ data:
   plaintext: True
   enforce_eos: False
 model:
+  type: gpt2
   hidden_dim: 1024
   num_heads: 16
   num_layers: 24
@@ -18,16 +19,13 @@ model:
   gradient_checkpointing: true
 trainer:
   mp: p=f32,c=bfloat16
-  learning_rate: 3E-4
-  weight_decay: 0.1
   model_axis_size: 1
   per_device_parallelism: 16
+  train_batch_size: 32
   num_train_steps: 100000
-
   checkpointer:
     base_path: /home/pnlong/musescore/amt/checkpoints/
     save_interval: 30m
-
   axis_resources:
     batch: "data"
     vocab: "model"
@@ -35,3 +33,8 @@ trainer:
     heads: "model"
   parameter_axis_resources:
     embed: "data"
+  wandb:
+    project: "PD^2"
+optimizer:
+  learning_rate: 3E-4
+  weight_decay: 0.1

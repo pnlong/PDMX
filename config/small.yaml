@@ -8,6 +8,7 @@ data:
   plaintext: True
   enforce_eos: False
 model:
+  type: gpt2
   hidden_dim: 768
   num_heads: 12
   num_layers: 12
@@ -17,16 +18,13 @@ model:
   resid_pdrop: 0.1
 trainer:
   mp: p=f32,c=bfloat16
-  learning_rate: 6E-4
-  weight_decay: 0.1
   model_axis_size: 1
   per_device_parallelism: 2
+  train_batch_size: 32
   num_train_steps: 100000
-
   checkpointer:
     base_path: /home/pnlong/musescore/amt/checkpoints/
     save_interval: 30m
-
   axis_resources:
     batch: "data"
     vocab: "model"
@@ -34,3 +32,9 @@ trainer:
     heads: "model"
   parameter_axis_resources:
     embed: "data"
+  wandb:
+    project: "PD^2"
+optimizer:
+  learning_rate: 6E-4
+  weight_decay: 0.1
+  
