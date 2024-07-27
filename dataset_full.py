@@ -51,6 +51,9 @@ PUBLIC_LICENSE_URLS = (
 DEFAULT_LICENSE = "publicdomain"
 DEFAULT_LICENSE_URL = PUBLIC_LICENSE_URLS[0]
 
+# for multiprocessing
+CHUNK_SIZE = 1
+
 ##################################################
 
 
@@ -493,11 +496,10 @@ if __name__ == "__main__":
 
     # use multiprocessing
     logging.info(f"N_PATHS = {len(paths):,}") # print number of paths to process
-    chunk_size = 1
     with multiprocessing.Pool(processes = args.jobs) as pool:
         results = list(tqdm(iterable = pool.imap_unordered(func = get_full_dataset,
                                                            iterable = paths,
-                                                           chunksize = chunk_size),
+                                                           chunksize = CHUNK_SIZE),
                             desc = "Determining Full Dataset",
                             total = len(paths)))
     

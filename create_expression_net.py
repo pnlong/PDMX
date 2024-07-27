@@ -4,7 +4,7 @@
 
 # Make the main dataset for the paper.
 
-# python /home/pnlong/model_musescore/dataset_main.py
+# python /home/pnlong/model_musescore/create_expression_net.py
 
 
 # IMPORTS

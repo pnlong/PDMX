@@ -27,6 +27,7 @@ import random
 import utils
 from read_mscz.read_mscz import read_musescore
 from read_mscz.music import MusicExpress
+from dataset_full import CHUNK_SIZE
 
 from amt_config import *
 from amt_vocab import *
@@ -39,7 +40,8 @@ import amt_ops as ops
 ##################################################
 
 INPUT_DIR = "/data2/pnlong/musescore"
-MSCZ_FILEPATHS = f"{INPUT_DIR}/relevant_mscz_files.txt"
+DATASET_DIR_NAME = "dataset"
+MSCZ_FILEPATHS = f"{INPUT_DIR}/{DATASET_DIR_NAME}/paths.relevant.txt"
 OUTPUT_DIR = "/data2/pnlong/musescore/amt"
 
 PARTITIONS = {"train": 0.8, "valid": 0.1, "test": 0.1} # training partitions
@@ -288,7 +290,7 @@ def tokenize(
     # ITERATE THROUGH INPUT FILES
 	##################################################
 	
-    with open(path_output, "a") as outfile:
+    with open(path_output, "a") as output_file:
         concatenated_tokens = []
         for path in tqdm(iterable = paths_input, desc = f"#{subgroup}", position = subgroup, leave = True):
 
@@ -414,7 +416,7 @@ def tokenize(
                     seq.insert(0, z)
 
                     # write to file
-                    outfile.write(" ".join(map(str, seq)) + "\n")
+                    output_file.write(" ".join(map(str, seq)) + "\n")
                     seqcount += 1
 
                     # grab the current augmentation controls if we didn't already
@@ -521,7 +523,7 @@ if __name__ == "__main__":
     # create list of paths if does not exist
     if not exists(args.paths):
         # print_bad_line = lambda line: print(line.split(","))
-        data = pd.read_csv(filepath_or_buffer = f"{args.input_dir}/dataset/dataset.full.csv", sep = ",", header = 0, index_col = False) # load in data frame, on_bad_lines = print_bad_line, engine = "python"
+        data = pd.read_csv(filepath_or_buffer = f"{args.input_dir}/{DATASET_DIR_NAME}/dataset.full.csv", sep = ",", header = 0, index_col = False) # load in data frame, on_bad_lines = print_bad_line, engine = "python"
         # data = data[data["in_dataset"]] # filter # no filter as of now
         paths = pd.unique(values = data["path"]).tolist()
         with open(args.paths, "w") as file:
@@ -559,7 +561,6 @@ if __name__ == "__main__":
     ##################################################
 
     # perform multiprocessing
-    chunk_size = 1
     start_time = perf_counter() # start the timer
     with multiprocessing.Pool(processes = args.jobs) as pool:
         results = pool.starmap(func = tokenize,
@@ -567,7 +568,7 @@ if __name__ == "__main__":
                                               paths_output, # path_output
                                               subgroups, # subgroup
                                               augment_factors), # augment_factor
-                               chunksize = chunk_size)
+                               chunksize = CHUNK_SIZE)
     end_time = perf_counter() # stop the timer
     total_time = end_time - start_time # compute total time elapsed
 
@@ -592,10 +593,10 @@ if __name__ == "__main__":
     # split into partition files
     def partition(subgroups: set, partition_name: str):
         path_output_ordered = f"{args.output_dir}/{partition_name}.ordered.txt"
-        with open(path_output_ordered, "w") as outfile_ordered:
-            subprocess.run(args = ["cat"] + list(map(get_output_path_from_subgroup, subgroups)), stdout = outfile_ordered, check = True) # combine partition into a single file
-        with open(f"{args.output_dir}/{partition_name}.txt", "w") as outfile:
-            subprocess.run(args = ["shuf", path_output_ordered], stdout = outfile, check = True) # shuffle said file
+        with open(path_output_ordered, "w") as output_file_ordered:
+            subprocess.run(args = ["cat"] + list(map(get_output_path_from_subgroup, subgroups)), stdout = output_file_ordered, check = True) # combine partition into a single file
+        with open(f"{args.output_dir}/{partition_name}.txt", "w") as output_file:
+            subprocess.run(args = ["shuf", path_output_ordered], stdout = output_file, check = True) # shuffle said file
         subprocess.run(args = ["rm", path_output_ordered], check = True) # remove the ordered file
     partition(subgroups = subgroups_valid, partition_name = "valid")
     partition(subgroups = subgroups_test, partition_name = "test")
