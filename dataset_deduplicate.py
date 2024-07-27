@@ -160,6 +160,7 @@ if __name__ == "__main__":
     logging.basicConfig(level = logging.INFO, format = "%(message)s")
 
     # load in dataset
+    logging.info("Loading in Dataset.")
     dataset = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)
 
     ##################################################
@@ -183,7 +184,7 @@ if __name__ == "__main__":
     # https://github.com/UKPLab/sentence-transformers
 
     # update on progress
-    logging.info(f"Computing Similarities Between Song titles.")
+    logging.info("Computing Similarities Between Song Titles.")
 
     # load in Sentence-BERT model
     device = f"cuda:{abs(args.gpu)}" if (torch.cuda.is_available() and args.gpu != -1) else "cpu" # set up device for embeddings
@@ -200,7 +201,7 @@ if __name__ == "__main__":
     del descriptors # free up memory
 
     # calculate similarity matrix
-    similarities = model.similarity(embeddings1 = embeddings, embeddings2 = embeddings)
+    similarities = model.similarity(embeddings, embeddings)
     similarities = (similarities >= args.similarity_threshold).cpu().numpy() # convert to booleans, where two songs are 'duplicates' if true
     del model, device, embeddings # free up memory
 
