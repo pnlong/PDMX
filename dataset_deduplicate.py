@@ -16,6 +16,7 @@ import argparse
 import pandas as pd
 import numpy as np
 from re import sub
+import os
 from os.path import dirname
 from tqdm import tqdm
 import multiprocessing
@@ -26,6 +27,8 @@ import logging
 from sentence_transformers import SentenceTransformer
 
 from dataset_full import OUTPUT_DIR, CHUNK_SIZE
+
+os.environ["TOKENIZERS_PARALLELISM"] = "true"
 
 ##################################################
 
@@ -184,7 +187,7 @@ if __name__ == "__main__":
     # https://github.com/UKPLab/sentence-transformers
 
     # update on progress
-    logging.info("Computing Similarities Between Song Titles.")
+    logging.info("Computing Vector Embeddings of Song Titles.")
 
     # load in Sentence-BERT model
     device = f"cuda:{abs(args.gpu)}" if (torch.cuda.is_available() and args.gpu != -1) else "cpu" # set up device for embeddings
@@ -200,10 +203,10 @@ if __name__ == "__main__":
                               device = device)
     del descriptors # free up memory
 
-    # calculate similarity matrix
-    similarities = model.similarity(embeddings, embeddings)
-    similarities = (similarities >= args.similarity_threshold).cpu().numpy() # convert to booleans, where two songs are 'duplicates' if true
-    del model, device, embeddings # free up memory
+    # calculate similarities
+    similarities = model.similarity(embeddings, embeddings).cpu().numpy()
+    similarities = (similarities >= args.threshold)
+    del embeddings, model, device
 
     ##################################################
 
@@ -211,25 +214,58 @@ if __name__ == "__main__":
     # GROUP TOGETHER SIMILAR SONG NAMES INTO A DICTIONARY
     ##################################################
 
+    # # for calculating cosine similarity, calculate the magnitude of each song title vector embedding; use multiprocessing because why not
+    # with multiprocessing.Pool(processes = args.jobs) as pool:
+    #     magnitudes = list(pool.map(func = np.linalg.norm, iterable = embeddings, chunksize = CHUNK_SIZE))
+
     # stores lists of indicies, where each list represents a song
     songs = []
-
-    # group duplicates together
     songs_already_grouped = set() # store indicies of songs that have already been placed in a group
+    
+    # group duplicates together
     for i in tqdm(iterable = dataset.index, desc = "Grouping Duplicates Together", total = len(dataset)):
 
         # don't deal with songs that have already been grouped
         if i in songs_already_grouped:
             continue
 
+        # # helper function for calculating similarity
+        # def similarity_fn(j: int) -> bool:
+        #     """
+        #     Helper function for calculating similarity between vector embeddings `i` and `j`.
+        #     Uses cosine similarity. Returns a boolean representing whether the vectors are 'duplicates'.
+        #     """
+
+        #     # avoid unnecessary calculations if possible
+        #     if j in songs_already_grouped:
+        #         return False
+
+        #     # calculate similarity
+        #     cosine_similarity = np.dot(embeddings[i], embeddings[j]) / (magnitudes[i] * magnitudes[j]) # calculate cosine similarity
+        #     similarity = (cosine_similarity + 1) / 2 # normalize such that similarity is between 0 and 1
+        #     return (similarity >= args.similarity_threshold) # convert to a boolean value
+
+        # # calculate similarities (boolean values representing whether or not two songs are considered duplicates)
+        # with multiprocessing.Pool(processes = args.jobs) as pool:
+        #     similarities = list(pool.map(func = similarity_fn,
+        #                                  iterable = range(len(embeddings)),
+        #                                  chunksize = CHUNK_SIZE))
+
+        # # old similarity calculations
+        # dot_products = np.matmul(embeddings, embeddings[i]) # need dot products for cosine similarity
+        # cosine_similarities = dot_products / (magnitudes * magnitudes[i]) # calculate cosine similarity
+        # similarities = (cosine_similarities + 1) / 2 # normalize such that similarities are between 0 and 1
+        # similarities = (similarities >= args.similarity_threshold) # turn into booleans, True when two songs are duplicate
+        # song = np.where(similarities)[0] # get indicies of duplicates for the `i`th song
+
         # otherwise, create a song group
         song = np.where(similarities[i])[0] # get indicies of duplicates for the `i`th song
-        song = list(filter(lambda index: index not in songs_already_grouped, song)) # remove indicies that have already been grouped with another song
+        song = list(filter(lambda index: index not in songs_already_grouped, song)) # remove indicies that have already been grouped with another song; not needed anymore, as this is done in similarity function calculations
         songs.append(song) # add song group to songs
-        songs_already_grouped.update(song) # all these indicies have already been grouped
+        songs_already_grouped.update(song) # all these indicies have already been grouped        
 
     # free up memory
-    del similarities
+    del similarities, songs_already_grouped
 
     ##################################################
 
