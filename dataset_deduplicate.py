@@ -129,7 +129,6 @@ def choose_best_song_from_indicies(indicies: List[int]) -> int:
     # return the best index
     return best_index
 
-
 ##################################################
 
 
@@ -199,11 +198,11 @@ if __name__ == "__main__":
                                     device = device,
                                     similarity_fn_name = "cosine")
 
-        # update on progress
-        logging.info("Computing Vector Embeddings of Song Titles.")
-
         # do we need to generate the embeddings here?
         if (not exists(output_filepath_embeddings)) or args.reset:
+
+            # update on progress
+            logging.info("Computing Vector Embeddings.")
 
             # generate descriptors
             with multiprocessing.Pool(processes = args.jobs) as pool:
@@ -222,6 +221,9 @@ if __name__ == "__main__":
 
         # can we load them instead
         else :
+
+            # update on progress
+            logging.info("Loading Vector Embeddings.")
 
             # read in embeddings and turn into numpy array
             embeddings = np.array(pd.read_csv(filepath_or_buffer = output_filepath_embeddings, sep = ",", header = None, index_col = False))
@@ -247,7 +249,7 @@ if __name__ == "__main__":
         # can we load them in instead
         else:
 
-            # update users
+            # update on progress
             logging.info("Loading Embedding Magnitudes.")
 
             # read in magnitudes and turn into numpy array
@@ -271,7 +273,7 @@ if __name__ == "__main__":
 
         # compute similarities matrix line by line
         with open(output_filepath_similarities, "w") as similarities_matrix_file:
-            for i in tqdm(iterable = range(len(dataset) - 1), desc = "Computing Similarities Between Song Titles", total = len(dataset)):
+            for i in tqdm(iterable = range(len(dataset) - 1), desc = "Computing Similarity Matrix", total = len(dataset)):
 
                 # calculate similarities (boolean values representing whether or not two songs are considered duplicates)
                 with multiprocessing.Pool(processes = args.jobs) as pool:
@@ -290,7 +292,7 @@ if __name__ == "__main__":
         ##################################################
 
         # give progress update
-        logging.info("Similarities Between Song Titles Already Computed.")
+        logging.info("Similarity Matrix Already Computed.")
 
         ##################################################
 
