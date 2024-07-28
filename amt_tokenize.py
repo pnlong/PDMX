@@ -479,7 +479,7 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("--augment", type = int, default = DEFAULT_AUGMENT_FACTOR, help = "Augmentation factor for the data.")
     parser.add_argument("-v", "--ratio_valid", type = float, default = PARTITIONS["valid"], help = "Ratio of validation files.")
     parser.add_argument("-t", "--ratio_test", type = float, default = PARTITIONS["test"], help = "Ratio of test files.")
-    parser.add_argument("-s", "--seed", default = 0, help = "Random Seed.")
+    parser.add_argument("-s", "--seed", type = int, default = 0, help = "Random Seed.")
     parser.add_argument("-j", "--jobs", type = int, default = int(multiprocessing.cpu_count() / 4), help = "Number of Jobs")
     return parser.parse_args(args = args, namespace = namespace)
 

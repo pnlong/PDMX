@@ -17,7 +17,7 @@ import pandas as pd
 import numpy as np
 from re import sub
 import os
-from os.path import dirname
+from os.path import dirname, exists
 from tqdm import tqdm
 import multiprocessing
 from typing import List
@@ -137,9 +137,10 @@ def choose_best_song_from_indicies(indicies: List[int]) -> int:
 
 def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
-    parser = argparse.ArgumentParser(prog = "Parse MuseScore", description = "Analyze full dataset for music-quality differences within variables.")
-    parser.add_argument("-d", "--dataset_filepath", type = str, default = f"{OUTPUT_DIR}/dataset.full.csv", help = "Filepath to full dataset")
+    parser = argparse.ArgumentParser(prog = "Deduplicate", description = "Deduplicate songs in full dataset.")
+    parser.add_argument("-d", "--dataset_filepath", default = f"{OUTPUT_DIR}/dataset.full.csv", type = str, help = "Filepath to full dataset")
     parser.add_argument("-s", "--similarity_threshold", default = SIMILARITY_THRESHOLD, type = float, help = "Similarity Threshold")
+    parser.add_argument("-r", "--reset", action = "store_true", help = "Whether or not to recreate intermediate data tables")
     parser.add_argument("-bs", "--batch_size", default = DEFAULT_BATCH_SIZE, type = int, help = "Batch size")
     parser.add_argument("-g", "--gpu", default = -1, type = int, help = "GPU number")
     parser.add_argument("-j", "--jobs", default = int(multiprocessing.cpu_count() / 4), type = int, help = "Number of Jobs")
@@ -159,6 +160,12 @@ if __name__ == "__main__":
     # parse arguments
     args = parse_args()
 
+    # directory to output files
+    output_dir = dirname(args.dataset_filepath)
+    extra_output_dir = f"{output_dir}/deduplicate_intermediate_data"
+    if not exists(extra_output_dir):
+        os.mkdir(extra_output_dir)
+
     # set up logging
     logging.basicConfig(level = logging.INFO, format = "%(message)s")
 
@@ -169,25 +176,10 @@ if __name__ == "__main__":
     ##################################################
 
 
-    # GENERATE DESCRIPTORS
-    ##################################################
-
-    # use multiprocessing
-    with multiprocessing.Pool(processes = args.jobs) as pool:
-        descriptors = list(tqdm(iterable = pool.map(func = get_song_descriptor_from_index, iterable = dataset.index, chunksize = CHUNK_SIZE),
-                                desc = "Generating Song Descriptors",
-                                total = len(dataset)))
-    
-    ##################################################
-
-
     # USE EMBEDDING MODEL TO ENCODE SONG DESCRIPTORS FOR SIMILARITY CALCULATIONS
     ##################################################
     # we use Sentence-BERT to embed song titles as vectors
     # https://github.com/UKPLab/sentence-transformers
-
-    # update on progress
-    logging.info("Computing Vector Embeddings of Song Titles.")
 
     # load in Sentence-BERT model
     device = f"cuda:{abs(args.gpu)}" if (torch.cuda.is_available() and args.gpu != -1) else "cpu" # set up device for embeddings
@@ -195,18 +187,68 @@ if __name__ == "__main__":
                                 device = device,
                                 similarity_fn_name = "cosine")
 
-    # retrieve embeddings for each song descriptor
-    embeddings = model.encode(sentences = descriptors,
-                              batch_size = args.batch_size,
-                              show_progress_bar = True,
-                              output_value = "sentence_embedding",
-                              device = device)
-    del descriptors # free up memory
+    # update on progress
+    logging.info("Computing Vector Embeddings of Song Titles.")
 
-    # calculate similarities
-    similarities = model.similarity(embeddings, embeddings).cpu().numpy()
+    # path to output embeddings to
+    output_filepath_embeddings = f"{extra_output_dir}/embeddings.csv"
+
+    # can we load in already generated embeddings?
+    if exists(output_filepath_embeddings) and (not args.reset):
+
+        # read in embeddings and turn into numpy array
+        embeddings = np.array(pd.read_csv(filepath_or_buffer = output_filepath_embeddings, sep = ",", header = None, index_col = False))
+
+    # we must make them here
+    else:
+
+        # generate descriptors
+        with multiprocessing.Pool(processes = args.jobs) as pool:
+            descriptors = list(tqdm(iterable = pool.map(func = get_song_descriptor_from_index, iterable = dataset.index, chunksize = CHUNK_SIZE),
+                                    desc = "Generating Song Descriptors",
+                                    total = len(dataset)))
+
+        # retrieve embeddings for each song descriptor
+        embeddings = model.encode(sentences = descriptors,
+                                batch_size = args.batch_size,
+                                show_progress_bar = True,
+                                output_value = "sentence_embedding",
+                                device = device)
+        del descriptors # free up memory
+
+        # write embeddings to file
+        pd.DataFrame(data = embeddings).to_csv(path_or_buf = output_filepath_embeddings, sep = ",", header = False, index = False, mode = "w")
+
+    ##################################################
+
+
+    # CALCULATE SIMILARITY MATRIX
+    ##################################################
+
+    # path to output similarity matrix to
+    output_filepath_similarities = f"{extra_output_dir}/similarities.csv"
+
+    # update on progress
+    logging.info("Computing Similarities Between Song Titles.")
+
+    # can we load in already generated similarities?
+    if exists(output_filepath_similarities) and (not args.reset):
+
+        # read in similarities and turn into numpy array
+        similarities = np.array(pd.read_csv(filepath_or_buffer = output_filepath_similarities, sep = ",", header = None, index_col = False))
+
+    # we must make them here
+    else:
+
+        # calculate similarities
+        similarities = model.similarity(embeddings, embeddings).cpu().numpy()
+        del embeddings, model, device
+
+        # write similarities to file
+        pd.DataFrame(data = similarities).to_csv(path_or_buf = output_filepath_similarities, sep = ",", header = False, index = False, mode = "w")
+
+    # convert similarities into a boolean matrix
     similarities = (similarities >= args.threshold)
-    del embeddings, model, device
 
     ##################################################
 
@@ -281,7 +323,7 @@ if __name__ == "__main__":
 
     # get and output deduplicated paths
     paths = dataset.loc[deduplicated_indicies, "path"] # obtain the filepath of each top choice per song
-    output_filepath = f"{dirname(args.dataset_filepath)}/paths.deduplicated.txt" # get output filepath
+    output_filepath = f"{output_dir}/paths.deduplicated.txt" # get output filepath
     with open(output_filepath, "w") as output_file:
         output_file.write("\n".join(paths))
 
