@@ -284,15 +284,19 @@ if __name__ == "__main__":
         songs.append(song) # add song group to songs
         songs_already_grouped.update(song) # all these indicies have already been grouped
 
+    # free up memory
+    del similarities, song
+
     # account for the last song, i.e. if it hasn't been grouped yet
     last_song_index = len(dataset) - 1
     if last_song_index not in songs_already_grouped:
         song = [last_song_index]
         songs.append(song)
         songs_already_grouped.update(song)
+    del last_song_index, song # free up memory
 
     # free up memory
-    del songs_already_grouped, similarities, song, last_song_index
+    del songs_already_grouped
 
     ##################################################
 
@@ -305,6 +309,8 @@ if __name__ == "__main__":
         deduplicated_indicies = list(tqdm(iterable = pool.map(func = choose_best_song_from_indicies, iterable = songs, chunksize = CHUNK_SIZE),
                                           desc = "Choosing the Best Version of Each Song",
                                           total = len(songs)))
+        
+    logging.info(f"Removed {len(dataset) - len(songs)} duplicates ({100 * (len(songs) / len(dataset)):.2f}% removed).")
 
     # get and output deduplicated paths
     paths = dataset.loc[deduplicated_indicies, "path"] # obtain the filepath of each top choice per song
