@@ -276,7 +276,7 @@ if __name__ == "__main__":
         similarities = (similarities + 1) / 2 # normalize
 
         # create a song group
-        song = torch.where(similarities >= args.threshold)[0] + (i + 1) # get indicies of duplicates for the `i`th song, add `i` + 1 to account for the fact the matrix is a triangle
+        song = torch.where(similarities >= args.similarity_threshold)[0] + (i + 1) # get indicies of duplicates for the `i`th song, add `i` + 1 to account for the fact the matrix is a triangle
         song = list(filter(lambda index: index not in songs_already_grouped, song.tolist())) # remove indicies that have already been grouped with another song; not needed anymore, as this is done in similarity function calculations
         song.append(i) # a song is similar to itself
 
