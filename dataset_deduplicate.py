@@ -204,10 +204,10 @@ if __name__ == "__main__":
 
         # generate embeddings for each song descriptor
         embeddings = model.encode(sentences = descriptors,
-                                batch_size = args.batch_size,
-                                show_progress_bar = True,
-                                output_value = "sentence_embedding",
-                                device = device)
+                                  batch_size = args.batch_size,
+                                  show_progress_bar = True,
+                                  output_value = "sentence_embedding",
+                                  device = device)
         del descriptors, model # free up memory
 
         # write embeddings to file for future use
@@ -221,9 +221,6 @@ if __name__ == "__main__":
 
         # read in embeddings and turn into numpy array
         embeddings = pd.read_csv(filepath_or_buffer = output_filepath_embeddings, sep = ",", header = None, index_col = False).values
-
-    # move embeddings to gpu for fast matrix operations
-    embeddings = torch.from_numpy(embeddings).to(device) # convert to torch and put on gpu
 
     ##################################################
 
@@ -250,10 +247,7 @@ if __name__ == "__main__":
         logging.info("Loading Embedding Magnitudes.")
 
         # read in magnitudes and turn into numpy array
-        magnitudes = pd.read_csv(filepath_or_buffer = output_filepath_magnitudes, sep = ",", header = None, index_col = False)[0].values
-
-    # move embeddings to gpu for fast matrix operations
-    magnitudes = torch.from_numpy(magnitudes).to(device) # convert to torch and put on gpu
+        magnitudes = pd.read_csv(filepath_or_buffer = output_filepath_magnitudes, sep = ",", header = None, index_col = False)[0].values    
 
     ##################################################
 
@@ -261,6 +255,10 @@ if __name__ == "__main__":
     # GROUP TOGETHER SIMILAR SONG NAMES INTO A DICTIONARY
     ##################################################
 
+    # move stuff to gpu for fast matrix operations
+    embeddings = torch.from_numpy(embeddings).to(device)
+    magnitudes = torch.from_numpy(magnitudes).to(device)
+    
     # stores lists of indicies, where each list represents a song
     songs = []
     songs_already_grouped = set() # store indicies of songs that have already been placed in a group
