@@ -314,8 +314,7 @@ if __name__ == "__main__":
 
     # get and output deduplicated paths
     paths = dataset.loc[deduplicated_indicies, "path"] # obtain the filepath of each top choice per song
-    with open(output_filepath, "w") as output_file:
-        output_file.write("\n".join(paths))
+    paths.to_csv(path_or_buf = output_filepath, sep = ",", header = False, index = False, mode = "w") # write to file
 
     ##################################################
 
