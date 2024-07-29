@@ -166,10 +166,12 @@ if __name__ == "__main__":
     if not exists(extra_output_dir):
         os.mkdir(extra_output_dir)
 
+    # get device for gpu calculations
+    device = f"cuda:{abs(args.gpu)}" if (torch.cuda.is_available() and args.gpu != -1) else "cpu"
+
     # output filepaths
     output_filepath_embeddings = f"{extra_output_dir}/embeddings.csv"
     output_filepath_magnitudes = f"{extra_output_dir}/magnitudes.csv"
-    output_filepath_similarities = f"{extra_output_dir}/similarities.csv"
     output_filepath = f"{output_dir}/paths.deduplicated.txt"
 
     # set up logging
@@ -182,119 +184,76 @@ if __name__ == "__main__":
     ##################################################
 
 
-    # DO WE NEED TO CALCULATE SIMILARITIES, OR ARE THEY ALREADY CALCUALTED?
+    # USE EMBEDDING MODEL TO ENCODE SONG DESCRIPTORS
     ##################################################
+    # we use Sentence-BERT to embed song titles as vectors
+    # https://github.com/UKPLab/sentence-transformers
 
-    if (not exists(output_filepath_similarities)) or args.reset:
+    # do we need to generate the embeddings here?
+    if (not exists(output_filepath_embeddings)) or args.reset:
 
-        # USE EMBEDDING MODEL TO ENCODE SONG DESCRIPTORS
-        ##################################################
-        # we use Sentence-BERT to embed song titles as vectors
-        # https://github.com/UKPLab/sentence-transformers
+        # update on progress
+        logging.info("Computing Vector Embeddings.")
 
         # load in Sentence-BERT model
-        device = f"cuda:{abs(args.gpu)}" if (torch.cuda.is_available() and args.gpu != -1) else "cpu" # set up device for embeddings
-        model = SentenceTransformer(model_name_or_path = "all-MiniLM-L6-v2",
-                                    device = device,
-                                    similarity_fn_name = "cosine")
+        model = SentenceTransformer(model_name_or_path = "all-MiniLM-L6-v2", device = device)
 
-        # do we need to generate the embeddings here?
-        if (not exists(output_filepath_embeddings)) or args.reset:
+        # generate descriptors from which embeddings will be created
+        with multiprocessing.Pool(processes = args.jobs) as pool:
+            descriptors = list(pool.map(func = get_song_descriptor_from_index, iterable = dataset.index, chunksize = CHUNK_SIZE))
 
-            # update on progress
-            logging.info("Computing Vector Embeddings.")
+        # generate embeddings for each song descriptor
+        embeddings = model.encode(sentences = descriptors,
+                                batch_size = args.batch_size,
+                                show_progress_bar = True,
+                                output_value = "sentence_embedding",
+                                device = device)
+        del descriptors, model # free up memory
 
-            # generate descriptors
-            with multiprocessing.Pool(processes = args.jobs) as pool:
-                descriptors = list(pool.map(func = get_song_descriptor_from_index, iterable = dataset.index, chunksize = CHUNK_SIZE))
+        # write embeddings to file for future use
+        pd.DataFrame(data = embeddings).to_csv(path_or_buf = output_filepath_embeddings, sep = ",", header = False, index = False, mode = "w")
 
-            # retrieve embeddings for each song descriptor
-            embeddings = model.encode(sentences = descriptors,
-                                    batch_size = args.batch_size,
-                                    show_progress_bar = True,
-                                    output_value = "sentence_embedding",
-                                    device = device)
-            del descriptors, model, device # free up memory
+    # can we load them instead
+    else :
 
-            # write embeddings to file for future use
-            pd.DataFrame(data = embeddings).to_csv(path_or_buf = output_filepath_embeddings, sep = ",", header = False, index = False, mode = "w")
+        # update on progress
+        logging.info("Loading Vector Embeddings.")
 
-        # can we load them instead
-        else :
+        # read in embeddings and turn into numpy array
+        embeddings = pd.read_csv(filepath_or_buffer = output_filepath_embeddings, sep = ",", header = None, index_col = False).values
 
-            # update on progress
-            logging.info("Loading Vector Embeddings.")
+    # move embeddings to gpu for fast matrix operations
+    embeddings = torch.from_numpy(embeddings).to(device) # convert to torch and put on gpu
 
-            # read in embeddings and turn into numpy array
-            embeddings = np.array(pd.read_csv(filepath_or_buffer = output_filepath_embeddings, sep = ",", header = None, index_col = False))
-
-        ##################################################
+    ##################################################
 
 
-        # CALCULATE MAGNITUDES OF EMBEDDINGS
-        ##################################################
+    # CALCULATE MAGNITUDES OF EMBEDDINGS
+    ##################################################
 
-        # do we need to calculate embeddings
-        if (not exists(output_filepath_magnitudes)) or args.reset:
+    # do we need to calculate embeddings
+    if (not exists(output_filepath_magnitudes)) or args.reset:
 
-            # for calculating cosine similarity, calculate the magnitude of each song title vector embedding
-            with multiprocessing.Pool(processes = args.jobs) as pool:
-                magnitudes = np.array(list(tqdm(iterable = pool.map(func = np.linalg.norm, iterable = embeddings, chunksize = CHUNK_SIZE),
-                                                desc = "Computing Embedding Magnitudes",
-                                                total = len(embeddings))))
-            
-            # write magnitudes to file for future use
-            pd.DataFrame(data = magnitudes).to_csv(path_or_buf = output_filepath_magnitudes, sep = ",", header = False, index = False, mode = "w")
+        # for calculating cosine similarity, calculate the magnitude of each song title vector embedding
+        with multiprocessing.Pool(processes = args.jobs) as pool:
+            magnitudes = np.array(list(tqdm(iterable = pool.map(func = np.linalg.norm, iterable = embeddings, chunksize = CHUNK_SIZE),
+                                            desc = "Computing Embedding Magnitudes",
+                                            total = len(embeddings))))
+        
+        # write magnitudes to file for future use
+        pd.DataFrame(data = magnitudes).to_csv(path_or_buf = output_filepath_magnitudes, sep = ",", header = False, index = False, mode = "w")
 
-        # can we load them in instead
-        else:
-
-            # update on progress
-            logging.info("Loading Embedding Magnitudes.")
-
-            # read in magnitudes and turn into numpy array
-            magnitudes = np.array(pd.read_csv(filepath_or_buffer = output_filepath_magnitudes, sep = ",", header = None, index_col = False))
-
-        ##################################################
-
-
-        # CALCULATE SIMILARITY MATRIX
-        ##################################################
-
-        # helper function for calculating similarity
-        def similarity_fn(i: int, j: int) -> float:
-            """
-            Helper function for calculating similarity between vector embeddings `i` and `j`.
-            Uses cosine similarity, but normalizes after.
-            """
-            similarity = np.dot(embeddings[i], embeddings[j]) / (magnitudes[i] * magnitudes[j]) # calculate cosine similarity
-            similarity = (similarity + 1) / 2 # normalize such that similarity is between 0 and 1
-            return similarity
-
-        # compute similarities matrix line by line
-        with open(output_filepath_similarities, "w") as similarities_matrix_file:
-            for i in tqdm(iterable = range(len(dataset) - 1), desc = "Computing Similarity Matrix", total = len(dataset)):
-
-                # calculate similarities (boolean values representing whether or not two songs are considered duplicates)
-                with multiprocessing.Pool(processes = args.jobs) as pool:
-                    similarities = list(pool.starmap(func = similarity_fn,
-                                                    iterable = zip(rep(x = i, times = len(dataset) - i - 1), range(i + 1, len(dataset))),
-                                                    chunksize = CHUNK_SIZE))
-
-                # output similarities to file
-                similarities_matrix_file.write(",".join(map(str, similarities)) + "\n")
-
-        ##################################################
-
+    # can we load them in instead
     else:
 
-        # INFORM THAT SIMILARITIES MATRIX IS ALREADY COMPUTED
-        ##################################################
+        # update on progress
+        logging.info("Loading Embedding Magnitudes.")
 
-        # give progress update
-        logging.info("Similarity Matrix Already Computed.")
+        # read in magnitudes and turn into numpy array
+        magnitudes = pd.read_csv(filepath_or_buffer = output_filepath_magnitudes, sep = ",", header = None, index_col = False)[0].values
 
-        ##################################################
+    # move embeddings to gpu for fast matrix operations
+    magnitudes = torch.from_numpy(magnitudes).to(device) # convert to torch and put on gpu
 
     ##################################################
 
@@ -307,24 +266,25 @@ if __name__ == "__main__":
     songs_already_grouped = set() # store indicies of songs that have already been placed in a group
     
     # group duplicates together, reading in similarities line by line
-    with open(output_filepath_similarities, "r") as similarities_matrix_file:
-        for i, line in tqdm(iterable = enumerate(similarities_matrix_file), desc = "Grouping Duplicates Together", total = len(dataset)):
+    for i in tqdm(iterable = range(len(dataset) - 1), desc = "Grouping Duplicates Together", total = len(dataset) - 1):
 
-            # don't deal with songs that have already been grouped
-            if i in songs_already_grouped:
-                continue
+        # don't deal with songs that have already been grouped
+        if i in songs_already_grouped:
+            continue
 
-            # read in line of similarities matrix, converting to floats
-            similarities = np.array(list(map(float, line.split(","))))
+        # calculate similarities
+        similarities = torch.matmul(input = embeddings[(i + 1):], other = embeddings[i]) # calculate dot products (numerator of cosine similarity)
+        similarities = similarities / (magnitudes[(i + 1):] * magnitudes[i]) # calculate cosine similarities
+        similarities = (similarities + 1) / 2 # normalize
 
-            # create a song group
-            song = np.where(similarities >= args.threshold)[0] + (i + 1) # get indicies of duplicates for the `i`th song, add `i` + 1 to account for the fact the matrix is a triangle
-            song = list(filter(lambda index: index not in songs_already_grouped, song)) # remove indicies that have already been grouped with another song; not needed anymore, as this is done in similarity function calculations
-            song.append(i) # a song is similar to itself
+        # create a song group
+        song = torch.where(similarities >= args.threshold)[0] + (i + 1) # get indicies of duplicates for the `i`th song, add `i` + 1 to account for the fact the matrix is a triangle
+        song = list(filter(lambda index: index not in songs_already_grouped, song.tolist())) # remove indicies that have already been grouped with another song; not needed anymore, as this is done in similarity function calculations
+        song.append(i) # a song is similar to itself
 
-            # add song group to lists
-            songs.append(song) # add song group to songs
-            songs_already_grouped.update(song) # all these indicies have already been grouped
+        # add song group to lists
+        songs.append(song) # add song group to songs
+        songs_already_grouped.update(song) # all these indicies have already been grouped
 
     # account for the last song, i.e. if it hasn't been grouped yet
     last_song_index = len(dataset) - 1
@@ -334,7 +294,7 @@ if __name__ == "__main__":
         songs_already_grouped.update(song)
 
     # free up memory
-    del songs_already_grouped
+    del songs_already_grouped, similarities, song, last_song_index
 
     ##################################################
 
