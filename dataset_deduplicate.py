@@ -228,7 +228,7 @@ if __name__ == "__main__":
     # CALCULATE MAGNITUDES OF EMBEDDINGS
     ##################################################
 
-    # do we need to calculate embeddings
+    # do we need to generate the magnitudes here?
     if (not exists(output_filepath_magnitudes)) or args.reset:
 
         # for calculating cosine similarity, calculate the magnitude of each song title vector embedding
@@ -240,7 +240,7 @@ if __name__ == "__main__":
         # write magnitudes to file for future use
         pd.DataFrame(data = magnitudes).to_csv(path_or_buf = output_filepath_magnitudes, sep = ",", header = False, index = False, mode = "w")
 
-    # can we load them in instead
+    # can we load them instead
     else:
 
         # update on progress
