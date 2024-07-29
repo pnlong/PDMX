@@ -310,7 +310,7 @@ if __name__ == "__main__":
                                           desc = "Choosing the Best Version of Each Song",
                                           total = len(songs)))
         
-    logging.info(f"Removed {len(dataset) - len(songs)} duplicates ({100 * (len(songs) / len(dataset)):.2f}% removed).")
+    logging.info(f"Removed {len(dataset) - len(songs):,} duplicates ({100 * (len(songs) / len(dataset)):.2f}% removed).")
 
     # get and output deduplicated paths
     paths = dataset.loc[deduplicated_indicies, "path"] # obtain the filepath of each top choice per song
