@@ -353,57 +353,52 @@ if __name__ == "__main__":
     del songs_already_grouped
 
     ##################################################
+    
 
-
-    # USE MULTIPROCESSING
+    # ASSEMBLE DEDUPLICATED DATASET
     ##################################################
 
+    # get deduplicated indicies
     with multiprocessing.Pool(processes = args.jobs) as pool:
-
-        # ASSEMBLE DEDUPLICATED DATASET
-        ##################################################
-
-        # get deduplicated indicies
         deduplicated_indicies = list(tqdm(iterable = pool.map(func = choose_best_song_from_indicies, iterable = songs, chunksize = CHUNK_SIZE),
                                           desc = "Choosing the Best Version of Each Song",
                                           total = len(songs)))
 
-        # dictionary mapping each path to its best version
-        path_to_best_path = dict()
-        for best_path, duplicate_path_indicies in tqdm(iterable = zip(dataset.loc[deduplicated_indicies, "path"], songs),
-                                                       desc = "Associating Each Song with its Best Version",
-                                                       total = len(songs)):
-            path_to_best_path.update({dataset.at[i, "path"]: best_path for i in duplicate_path_indicies})
-        dataset["best_path"] = list(map(lambda path: path_to_best_path.get(path, None), dataset["path"]))
-        dataset["is_best_path"] = (dataset["path"] == dataset["best_path"])
+    # dictionary mapping each path to its best version
+    path_to_best_path = dict()
+    for best_path, duplicate_path_indicies in tqdm(iterable = zip(dataset.loc[deduplicated_indicies, "path"], songs),
+                                                    desc = "Associating Each Song with its Best Version",
+                                                    total = len(songs)):
+        path_to_best_path.update({dataset.at[i, "path"]: best_path for i in duplicate_path_indicies})
+    dataset["best_path"] = list(map(lambda path: path_to_best_path.get(path, None), dataset["path"]))
+    dataset["is_best_path"] = (dataset["path"] == dataset["best_path"])
 
-        # free up memory
-        del deduplicated_indicies, path_to_best_path
+    # free up memory
+    del deduplicated_indicies, path_to_best_path
 
-        ##################################################
+    ##################################################
 
 
-        # FOR EACH BEST PATH, THOUGH THE TITLE IS THE SAME, THERE COULD BE DIFFERENT ARRANGEMENTS
-        ##################################################
+    # FOR EACH BEST PATH, THOUGH THE TITLE IS THE SAME, THERE COULD BE DIFFERENT ARRANGEMENTS
+    ##################################################
 
-        # set default values and a list of dataframes for each best path
-        dataset["best_arrangement"] = dataset["path"]
-        dataset["is_best_arrangement"] = True
-        dataset["is_unique_arrangement"] = True
-                
-        # find unique arrangements
+    # set default values and a list of dataframes for each best path
+    dataset["best_arrangement"] = dataset["path"]
+    dataset["is_best_arrangement"] = True
+    dataset["is_unique_arrangement"] = True
+            
+    # find unique arrangements
+    with multiprocessing.Pool(processes = args.jobs) as pool:
         best_path_groups = list(tqdm(iterable = pool.map(func = choose_unique_arrangements_from_indicies, iterable = songs, chunksize = CHUNK_SIZE),
                                      desc = "Finding Unique Arrangements within Each Best Version",
                                      total = len(songs)))
-        dataset = pd.concat(objs = best_path_groups, axis = 0, ignore_index = False) # regroup groups into dataframe
-        
-        # free up memory
-        del best_path_groups
-
-        ##################################################
+    dataset = pd.concat(objs = best_path_groups, axis = 0, ignore_index = False) # regroup groups into dataframe
     
-    ##################################################
+    # free up memory
+    del songs, best_path_groups
 
+    ##################################################
+    
 
     # OUTPUT STATISTICS
     ##################################################
