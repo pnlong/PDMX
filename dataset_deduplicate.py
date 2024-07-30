@@ -47,7 +47,7 @@ DESCRIPTOR_COLUMNS = ["song_name", "title", "subtitle", "artist_name", "composer
 BEST_VERSION_METRIC_COLUMNS = ["rating", "n_ratings", "n_notes", "n_tokens"]
 
 # column names to include in the output
-OUTPUT_COLUMNS = ["best_path", "path"] + DESCRIPTOR_COLUMNS + BEST_VERSION_METRIC_COLUMNS
+OUTPUT_COLUMNS = ["best_path", "is_best_path", "path"] + DESCRIPTOR_COLUMNS + BEST_VERSION_METRIC_COLUMNS
 
 # minimum similarity (0 to 1) between two song titles for them to be considered duplicates
 SIMILARITY_THRESHOLD = 0.999
@@ -318,12 +318,13 @@ if __name__ == "__main__":
 
     # associate every path with the path to the best version of that song
     path_to_best_path = dict()
-    for best_path, duplicate_paths in zip(dataset.loc[deduplicated_indicies, "path"], songs):
-        path_to_best_path.update({path: best_path for path in duplicate_paths})
+    for best_path, duplicate_path_indicies in zip(dataset.loc[deduplicated_indicies, "path"], songs):
+        path_to_best_path.update({dataset.at[i, "path"]: best_path for i in duplicate_path_indicies})
 
     # get and output deduplicated paths
-    dataset = dataset[OUTPUT_COLUMNS[1:]]
     dataset[OUTPUT_COLUMNS[0]] = list(map(lambda path: path_to_best_path.get(path, None), dataset["path"])) # associate each path with the 'best' version of that song
+    dataset[OUTPUT_COLUMNS[1]] = (dataset[OUTPUT_COLUMNS[0]] == dataset["path"])
+    dataset = dataset[OUTPUT_COLUMNS]
     dataset.to_csv(path_or_buf = output_filepath, sep = ",", header = True, index = False, mode = "w") # write to file
 
     ##################################################
