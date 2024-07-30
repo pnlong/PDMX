@@ -47,7 +47,7 @@ DESCRIPTOR_COLUMNS = ["song_name", "title", "subtitle", "artist_name", "composer
 BEST_VERSION_METRIC_COLUMNS = ["rating", "n_ratings", "n_notes", "n_tokens"]
 
 # column names to include in the output
-OUTPUT_COLUMNS = ["best_path", "is_best_path", "path"] + DESCRIPTOR_COLUMNS + BEST_VERSION_METRIC_COLUMNS
+OUTPUT_COLUMNS = ["best_path", "is_best_path", "path"] + DESCRIPTOR_COLUMNS + BEST_VERSION_METRIC_COLUMNS + ["n_tracks", "tracks"]
 
 # minimum similarity (0 to 1) between two song titles for them to be considered duplicates
 SIMILARITY_THRESHOLD = 0.999

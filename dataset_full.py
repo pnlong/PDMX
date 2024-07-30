@@ -406,6 +406,7 @@ def get_full_dataset(path: str) -> None:
     # add findings to results
     results.update({
         "n_tracks" :                len(music.tracks),
+        "tracks" :                  LIST_FEATURE_JOIN_STRING.join(map(str, sorted(map(lambda track: track.program, music.tracks)))),
         "song_length" :             music.song_length,
         "song_length.seconds" :     music.metrical_time_to_absolute_time(time_steps = music.song_length),
         "song_length.bars" :        len(music.barlines),
