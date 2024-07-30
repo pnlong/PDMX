@@ -420,7 +420,7 @@ if __name__ == "__main__":
 
     # update on how many unique arrangments
     n_best_paths = sum(dataset["is_best_path"])
-    n_arrangements = sum(dataset["is_best_arrangment"])
+    n_arrangements = sum(dataset["is_best_arrangement"])
     n_unique_arrangements = sum(dataset["is_unique_arrangement"])
     print("".join(("=" for _ in range(30))))
     logging.info(f"{n_best_paths:,} unique songs ({100 * (n_best_paths / len(dataset)):.2f}% of all songs); {len(dataset) - n_best_paths:,} duplicates.")
