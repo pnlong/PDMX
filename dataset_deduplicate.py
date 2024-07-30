@@ -318,9 +318,8 @@ if __name__ == "__main__":
 
     # associate every path with the path to the best version of that song
     path_to_best_path = dict()
-    for i, deduplicated_index in enumerate(deduplicated_indicies):
-        best_path = dataset.at[deduplicated_index, "path"]
-        path_to_best_path.update({dataset.at[j, "path"]: best_path for j in songs[i]})
+    for best_path, duplicate_paths in zip(dataset.loc[deduplicated_indicies, "path"], songs):
+        path_to_best_path.update({path: best_path for path in duplicate_paths})
 
     # get and output deduplicated paths
     dataset = dataset[OUTPUT_COLUMNS[1:]]
