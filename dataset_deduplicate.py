@@ -52,6 +52,7 @@ OUTPUT_COLUMNS = ["path", "best_path", "is_best_path", "best_arrangement", "is_b
 SIMILARITY_THRESHOLD = 0.999
 
 # fraction difference in number of tokens necessary for two songs when those songs have the same instrumentation to be considered 'unique' arrangements
+UNIQUENESS_DIFFERENTIATION_COLUMN = "n_tokens"
 UNIQUENESS_THRESHOLD = 0.05
 
 ##################################################
@@ -160,11 +161,11 @@ def choose_unique_arrangements(duplicates: pd.DataFrame) -> pd.DataFrame:
             duplicates.loc[not_best_arrangement_indicies, "is_best_arrangement"] = False # these indicies are not the best arrangment with this instrumentation
             
             # find unique arrangements within this instrumentation; group songs with similar number of tokens together
-            duplicates_instrumentation = duplicates_instrumentation.sort_values(by = BEST_VERSION_METRIC_COLUMNS[-2:], axis = 0, ascending = False, na_position = "last", ignore_index = False)
+            duplicates_instrumentation = duplicates_instrumentation.sort_values(by = UNIQUENESS_DIFFERENTIATION_COLUMN, axis = 0, ascending = False, na_position = "last", ignore_index = False)
             groups = [[duplicates_instrumentation.index[0]]]
             for i in range(1, len(duplicates_instrumentation)):
                 i_previous, i_current = duplicates_instrumentation.index[(i - 1):(i + 1)]
-                value_previous, value_current = duplicates_instrumentation.loc[[i_previous, i_current], "n_tokens"]
+                value_previous, value_current = duplicates_instrumentation.loc[[i_previous, i_current], UNIQUENESS_DIFFERENTIATION_COLUMN]
                 if abs((2 * (value_current - value_previous)) / (value_current + value_previous)) <= UNIQUENESS_THRESHOLD:
                     groups[-1].append(i_current)
                 else:
