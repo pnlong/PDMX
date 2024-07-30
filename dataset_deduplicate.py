@@ -359,16 +359,13 @@ if __name__ == "__main__":
     ##################################################
 
     # get deduplicated indicies
+    logging.info("Choosing the Best Version of Each Song.") # update
     with multiprocessing.Pool(processes = args.jobs) as pool:
-        deduplicated_indicies = list(tqdm(iterable = pool.map(func = choose_best_song_from_indicies, iterable = songs, chunksize = CHUNK_SIZE),
-                                          desc = "Choosing the Best Version of Each Song",
-                                          total = len(songs)))
+        deduplicated_indicies = list(pool.map(func = choose_best_song_from_indicies, iterable = songs, chunksize = CHUNK_SIZE))
 
     # dictionary mapping each path to its best version
     path_to_best_path = dict()
-    for best_path, duplicate_path_indicies in tqdm(iterable = zip(dataset.loc[deduplicated_indicies, "path"], songs),
-                                                    desc = "Associating Each Song with its Best Version",
-                                                    total = len(songs)):
+    for best_path, duplicate_path_indicies in zip(dataset.loc[deduplicated_indicies, "path"], songs):
         path_to_best_path.update({dataset.at[i, "path"]: best_path for i in duplicate_path_indicies})
     dataset["best_path"] = list(map(lambda path: path_to_best_path.get(path, None), dataset["path"]))
     dataset["is_best_path"] = (dataset["path"] == dataset["best_path"])
@@ -388,10 +385,9 @@ if __name__ == "__main__":
     dataset["is_unique_arrangement"] = True
             
     # find unique arrangements
+    logging.info("Finding Unique Arrangements within Each Best Version.") # update
     with multiprocessing.Pool(processes = args.jobs) as pool:
-        best_path_groups = list(tqdm(iterable = pool.map(func = choose_unique_arrangements_from_indicies, iterable = songs, chunksize = CHUNK_SIZE),
-                                     desc = "Finding Unique Arrangements within Each Best Version",
-                                     total = len(songs)))
+        best_path_groups = list(pool.map(func = choose_unique_arrangements_from_indicies, iterable = songs, chunksize = CHUNK_SIZE))
     dataset = pd.concat(objs = best_path_groups, axis = 0, ignore_index = False) # regroup groups into dataframe
     
     # free up memory
@@ -407,7 +403,7 @@ if __name__ == "__main__":
     n_best_paths = sum(dataset["is_best_path"])
     n_arrangements = sum(dataset["is_best_arrangement"])
     n_unique_arrangements = sum(dataset["is_unique_arrangement"])
-    print("".join(("=" for _ in range(50))))
+    print("".join(("=" for _ in range(100))))
     logging.info(f"{len(dataset):,} total songs.")
     logging.info(f"{n_best_paths:,} unique songs, excluding different instrumentations ({100 * (n_best_paths / len(dataset)):.2f}% of all songs); {len(dataset) - n_best_paths:,} duplicates.")
     logging.info(f"{n_arrangements:,} unique songs, including different instrumentations ({100 * (n_arrangements / len(dataset)):.2f}% of all songs); {len(dataset) - n_arrangements:,} duplicates.")
