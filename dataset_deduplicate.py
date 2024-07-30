@@ -370,7 +370,9 @@ if __name__ == "__main__":
 
         # dictionary mapping each path to its best version
         path_to_best_path = dict()
-        for best_path, duplicate_path_indicies in tqdm(iterable = zip(dataset.loc[deduplicated_indicies, "path"], songs), desc = "Associating Each Song with its Best Version", total = len(songs)):
+        for best_path, duplicate_path_indicies in tqdm(iterable = zip(dataset.loc[deduplicated_indicies, "path"], songs),
+                                                       desc = "Associating Each Song with its Best Version",
+                                                       total = len(songs)):
             path_to_best_path.update({dataset.at[i, "path"]: best_path for i in duplicate_path_indicies})
         dataset["best_path"] = list(map(lambda path: path_to_best_path.get(path, None), dataset["path"]))
         dataset["is_best_path"] = (dataset["path"] == dataset["best_path"])
@@ -410,7 +412,7 @@ if __name__ == "__main__":
     n_best_paths = sum(dataset["is_best_path"])
     n_arrangements = sum(dataset["is_best_arrangement"])
     n_unique_arrangements = sum(dataset["is_unique_arrangement"])
-    print("".join(("=" for _ in range(30))))
+    print("".join(("=" for _ in range(50))))
     logging.info(f"{n_best_paths:,} unique songs ({100 * (n_best_paths / len(dataset)):.2f}% of all songs); {len(dataset) - n_best_paths:,} duplicates.")
     logging.info(f"{n_arrangements:,} unique songs (including different instrumentations) ({100 * (n_arrangements / len(dataset)):.2f}% of all songs); {len(dataset) - n_arrangements:,} duplicates.")
     logging.info(f"{n_unique_arrangements:,} unique arrangements ({100 * (n_unique_arrangements / len(dataset)):.2f}% of all songs); {len(dataset) - n_unique_arrangements:,} duplicates.")
