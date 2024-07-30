@@ -358,11 +358,6 @@ if __name__ == "__main__":
     # USE MULTIPROCESSING
     ##################################################
 
-    # helper function
-    def get_best_path_group_indicies(best_path: str) -> None:
-        """Get indicies of the group of songs belong to `best_path`."""
-        return dataset[dataset["best_path"] == best_path].index.to_list()
-
     with multiprocessing.Pool(processes = args.jobs) as pool:
 
         # ASSEMBLE DEDUPLICATED DATASET
@@ -393,12 +388,9 @@ if __name__ == "__main__":
         dataset["best_arrangement"] = dataset["path"]
         dataset["is_best_arrangement"] = True
         dataset["is_unique_arrangement"] = True
-        best_paths = pd.unique(values = dataset["best_path"])
         
         # group by best path
-        best_path_groups = list(tqdm(iterable = pool.map(func = get_best_path_group_indicies, iterable = best_paths, chunksize = CHUNK_SIZE),
-                                     desc = "Grouping Dataset by Each Best Version",
-                                     total = len(best_paths)))  
+        best_path_groups = [dataset[dataset["best_path"] == best_path].index.to_list() for best_path in pd.unique(values = dataset["best_path"])]
         
         # find unique arrangements
         best_path_groups = list(tqdm(iterable = pool.map(func = choose_unique_arrangements_from_indicies, iterable = best_path_groups, chunksize = CHUNK_SIZE),
@@ -409,7 +401,7 @@ if __name__ == "__main__":
         dataset = pd.concat(objs = best_path_groups, axis = 0, ignore_index = False)
         
         # free up memory
-        del best_path_groups, best_paths
+        del best_path_groups
 
         ##################################################
     
