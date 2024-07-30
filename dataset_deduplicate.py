@@ -355,68 +355,69 @@ if __name__ == "__main__":
     ##################################################
 
 
-    # ASSEMBLE DEDUPLICATED DATASET
+    # USE MULTIPROCESSING
     ##################################################
 
-    # use multiprocessing to get deduplicated indicies
+    # helper function
+    def get_best_path_group_indicies(best_path: str) -> None:
+        """Get indicies of the group of songs belong to `best_path`."""
+        return dataset[dataset["best_path"] == best_path].index.to_list()
+
     with multiprocessing.Pool(processes = args.jobs) as pool:
+
+        # ASSEMBLE DEDUPLICATED DATASET
+        ##################################################
+
+        # get deduplicated indicies
         deduplicated_indicies = list(tqdm(iterable = pool.map(func = choose_best_song_from_indicies, iterable = songs, chunksize = CHUNK_SIZE),
                                           desc = "Choosing the Best Version of Each Song",
                                           total = len(songs)))
 
-    # set default values
-    dataset["best_path"] = dataset["path"]
-    dataset["is_best_path"] = True
-    def set_best_path(best_path: str, duplicate_path_indicies: List[int]) -> None:
-        """Update values regarding 'best' paths in the dataset."""
-        if len(duplicate_path_indicies) > 1: # if there are no duplicates, we can stick with the defaults
-            for i in duplicate_path_indicies:
-                dataset.at[i, "best_path"] = best_path # set best path
-                if dataset.at[i, "path"] != best_path: # is this the best path?
-                    dataset.at[i, "is_best_path"] = False
+        # dictionary mapping each path to its best version
+        path_to_best_path = dict()
+        for best_path, duplicate_path_indicies in tqdm(iterable = zip(dataset.loc[deduplicated_indicies, "path"], songs), desc = "Associating Each Song with its Best Version", total = len(songs)):
+            path_to_best_path.update({dataset.at[i, "path"]: best_path for i in duplicate_path_indicies})
+        dataset["best_path"] = list(map(lambda path: path_to_best_path.get(path, None), dataset["path"]))
+        dataset["is_best_path"] = (dataset["path"] == dataset["best_path"])
 
-    # associate every path with the path to the best version of that song
-    with multiprocessing.Pool(processes = args.jobs) as pool:
-        _ = list(tqdm(iterable = pool.starmap(func = set_best_path,
-                                              iterable = zip(dataset.loc[deduplicated_indicies, "path"], songs),
-                                              chunksize = CHUNK_SIZE),
-                      desc = "Associating Each Song with its Best Version",
-                      total = len(songs)))        
+        # free up memory
+        del deduplicated_indicies, path_to_best_path
 
-    # free up memory
-    del deduplicated_indicies
-
-    ##################################################
+        ##################################################
 
 
-    # FOR EACH BEST PATH, THOUGH THE TITLE IS THE SAME, THERE COULD BE DIFFERENT ARRANGEMENTS
-    ##################################################
+        # FOR EACH BEST PATH, THOUGH THE TITLE IS THE SAME, THERE COULD BE DIFFERENT ARRANGEMENTS
+        ##################################################
 
-    # set default values and a list of dataframes for each best path
-    dataset["best_arrangement"] = dataset["path"]
-    dataset["is_best_arrangement"] = True
-    dataset["is_unique_arrangement"] = True
-    best_paths = pd.unique(values = dataset["best_path"])
-    def get_best_path_group_indicies(best_path: str) -> None:
-        """Get indicies of the group of songs belong to `best_path`."""
-        return dataset[dataset["path"] == best_path].index.to_list()
-
-    # use multiprocessing to find unique arrangements
-    with multiprocessing.Pool(processes = args.jobs) as pool:
+        # set default values and a list of dataframes for each best path
+        dataset["best_arrangement"] = dataset["path"]
+        dataset["is_best_arrangement"] = True
+        dataset["is_unique_arrangement"] = True
+        best_paths = pd.unique(values = dataset["best_path"])
+        
         # group by best path
         best_path_groups = list(tqdm(iterable = pool.map(func = get_best_path_group_indicies, iterable = best_paths, chunksize = CHUNK_SIZE),
                                      desc = "Grouping Dataset by Each Best Version",
                                      total = len(best_paths)))  
-        # use multiprocessing to find different arrangements
+        
+        # find unique arrangements
         best_path_groups = list(tqdm(iterable = pool.map(func = choose_unique_arrangements_from_indicies, iterable = best_path_groups, chunksize = CHUNK_SIZE),
                                      desc = "Finding Unique Arrangements within Each Best Version",
                                      total = len(best_path_groups)))
         
-    # regroup groups into dataframe
-    dataset = pd.concat(objs = best_path_groups, axis = 0, ignore_index = False)
+        # regroup groups into dataframe
+        dataset = pd.concat(objs = best_path_groups, axis = 0, ignore_index = False)
+        
+        # free up memory
+        del best_path_groups, best_paths
+
+        ##################################################
     
-    # free up memory
-    del best_path_groups, best_paths
+    ##################################################
+
+
+    # OUTPUT STATISTICS
+    ##################################################
 
     # update on how many unique arrangments
     n_best_paths = sum(dataset["is_best_path"])
