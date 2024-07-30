@@ -362,7 +362,7 @@ if __name__ == "__main__":
                                           total = len(songs)))
         
     # update on how many and what percentage of songs were removed
-    logging.info(f"{len(songs):,} unique songs ({100 * (len(songs) / len(dataset)):.2f}% of files); {len(dataset) - len(songs):,} duplicates.")
+    logging.info(f"{len(songs):,} unique songs ({100 * (len(songs) / len(dataset)):.2f}% of all songs); {len(dataset) - len(songs):,} duplicates.")
 
     # associate every path with the path to the best version of that song
     path_to_best_path = dict()
@@ -401,8 +401,8 @@ if __name__ == "__main__":
     # update on how many unique arrangments
     n_arrangements = sum(dataset["is_best_arrangment"])
     n_unique_arrangements = sum(dataset["is_unique_arrangement"])
-    logging.info(f"{n_arrangements:,} unique songs (including different instrumentations) ({100 * (n_arrangements / len(dataset)):.2f}% of files); {len(dataset) - n_arrangements:,} duplicates.")
-    logging.info(f"{n_unique_arrangements:,} unique arrangements ({100 * (n_unique_arrangements / len(dataset)):.2f}% of files); {len(dataset) - n_unique_arrangements:,} duplicates.")
+    logging.info(f"{n_arrangements:,} unique songs (including different instrumentations) ({100 * (n_arrangements / len(dataset)):.2f}% of all songs); {len(dataset) - n_arrangements:,} duplicates.")
+    logging.info(f"{n_unique_arrangements:,} unique arrangements ({100 * (n_unique_arrangements / len(dataset)):.2f}% of all songs); {len(dataset) - n_unique_arrangements:,} duplicates.")
     del n_arrangements, n_unique_arrangements # free up memory
 
     # write to file
