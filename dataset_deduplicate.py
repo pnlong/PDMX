@@ -380,7 +380,7 @@ if __name__ == "__main__":
         _ = list(tqdm(iterable = pool.starmap(func = set_best_path,
                                               iterable = zip(dataset.loc[deduplicated_indicies, "path"], songs),
                                               chunksize = CHUNK_SIZE),
-                      desc = "Associating Each Song With its Best Version",
+                      desc = "Associating Each Song with its Best Version",
                       total = len(songs)))        
 
     # free up memory
@@ -405,11 +405,11 @@ if __name__ == "__main__":
     with multiprocessing.Pool(processes = args.jobs) as pool:
         # group by best path
         best_path_groups = list(tqdm(iterable = pool.map(func = get_best_path_group_indicies, iterable = best_paths, chunksize = CHUNK_SIZE),
-                                     desc = "Grouping Dataset by Each 'Best' Path",
+                                     desc = "Grouping Dataset by Each Best Version",
                                      total = len(best_paths)))  
         # use multiprocessing to find different arrangements
         best_path_groups = list(tqdm(iterable = pool.map(func = choose_unique_arrangements_from_indicies, iterable = best_path_groups, chunksize = CHUNK_SIZE),
-                                     desc = "Finding Unique Arrangements",
+                                     desc = "Finding Unique Arrangements within Each Best Version",
                                      total = len(best_path_groups)))
         
     # regroup groups into dataframe
@@ -422,6 +422,7 @@ if __name__ == "__main__":
     n_best_paths = sum(dataset["is_best_path"])
     n_arrangements = sum(dataset["is_best_arrangment"])
     n_unique_arrangements = sum(dataset["is_unique_arrangement"])
+    print("".join(("=" for _ in range(30))))
     logging.info(f"{n_best_paths:,} unique songs ({100 * (n_best_paths / len(dataset)):.2f}% of all songs); {len(dataset) - n_best_paths:,} duplicates.")
     logging.info(f"{n_arrangements:,} unique songs (including different instrumentations) ({100 * (n_arrangements / len(dataset)):.2f}% of all songs); {len(dataset) - n_arrangements:,} duplicates.")
     logging.info(f"{n_unique_arrangements:,} unique arrangements ({100 * (n_unique_arrangements / len(dataset)):.2f}% of all songs); {len(dataset) - n_unique_arrangements:,} duplicates.")
