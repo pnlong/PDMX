@@ -388,17 +388,12 @@ if __name__ == "__main__":
         dataset["best_arrangement"] = dataset["path"]
         dataset["is_best_arrangement"] = True
         dataset["is_unique_arrangement"] = True
-        
-        # group by best path
-        best_path_groups = [dataset[dataset["best_path"] == best_path].index.to_list() for best_path in pd.unique(values = dataset["best_path"])]
-        
+                
         # find unique arrangements
-        best_path_groups = list(tqdm(iterable = pool.map(func = choose_unique_arrangements_from_indicies, iterable = best_path_groups, chunksize = CHUNK_SIZE),
+        best_path_groups = list(tqdm(iterable = pool.map(func = choose_unique_arrangements_from_indicies, iterable = songs, chunksize = CHUNK_SIZE),
                                      desc = "Finding Unique Arrangements within Each Best Version",
-                                     total = len(best_path_groups)))
-        
-        # regroup groups into dataframe
-        dataset = pd.concat(objs = best_path_groups, axis = 0, ignore_index = False)
+                                     total = len(songs)))
+        dataset = pd.concat(objs = best_path_groups, axis = 0, ignore_index = False) # regroup groups into dataframe
         
         # free up memory
         del best_path_groups
