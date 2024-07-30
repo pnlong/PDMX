@@ -380,7 +380,7 @@ if __name__ == "__main__":
         _ = list(tqdm(iterable = pool.starmap(func = set_best_path,
                                               iterable = zip(dataset.loc[deduplicated_indicies, "path"], songs),
                                               chunksize = CHUNK_SIZE),
-                      desc = "Associating Each Song With the Best Version",
+                      desc = "Associating Each Song With its Best Version",
                       total = len(songs)))        
 
     # free up memory
