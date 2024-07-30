@@ -408,8 +408,9 @@ if __name__ == "__main__":
     n_arrangements = sum(dataset["is_best_arrangement"])
     n_unique_arrangements = sum(dataset["is_unique_arrangement"])
     print("".join(("=" for _ in range(50))))
-    logging.info(f"{n_best_paths:,} unique songs ({100 * (n_best_paths / len(dataset)):.2f}% of all songs); {len(dataset) - n_best_paths:,} duplicates.")
-    logging.info(f"{n_arrangements:,} unique songs (including different instrumentations) ({100 * (n_arrangements / len(dataset)):.2f}% of all songs); {len(dataset) - n_arrangements:,} duplicates.")
+    logging.info(f"{len(dataset):,} total songs.")
+    logging.info(f"{n_best_paths:,} unique songs, excluding different instrumentations ({100 * (n_best_paths / len(dataset)):.2f}% of all songs); {len(dataset) - n_best_paths:,} duplicates.")
+    logging.info(f"{n_arrangements:,} unique songs, including different instrumentations ({100 * (n_arrangements / len(dataset)):.2f}% of all songs); {len(dataset) - n_arrangements:,} duplicates.")
     logging.info(f"{n_unique_arrangements:,} unique arrangements ({100 * (n_unique_arrangements / len(dataset)):.2f}% of all songs); {len(dataset) - n_unique_arrangements:,} duplicates.")
     del n_best_paths, n_arrangements, n_unique_arrangements # free up memory
 
