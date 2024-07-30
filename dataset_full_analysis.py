@@ -26,6 +26,7 @@ from dataset_full import MMT_STATISTIC_COLUMNS, OUTPUT_DIR
 # CONSTANTS
 ##################################################
 
+PLOTS_DIR_NAME = "plots"
 
 ##################################################
 
@@ -84,9 +85,9 @@ def visualize_grouping(df: pd.DataFrame, output_filepath: str = None):
     facet_name = df.index.name
 
     # infer output_filepath if necessary
-    if (output_filepath is None):
+    if output_filepath is None:
         output_filepath = f"{getcwd()}/plots/{facet_name.replace(', ', '-')}.pdf"
-    if (not exists(dirname(output_filepath))): # make sure output directory exists
+    if not exists(dirname(output_filepath)): # make sure output directory exists
         makedirs(dirname(output_filepath))
 
     # create plot
@@ -169,7 +170,7 @@ if __name__ == "__main__":
     print(df.to_string())
 
     # visualize
-    output_filepath = f"{output_dir}/plots/{df.index.name.replace(', ', '-')}.pdf"
+    output_filepath = f"{output_dir}/{PLOTS_DIR_NAME}/{df.index.name.replace(', ', '-')}.pdf"
     visualize_grouping(df = df, output_filepath = output_filepath)
 
 ##################################################

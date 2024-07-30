@@ -15,6 +15,7 @@
 import argparse
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 from re import sub
 import os
 from os.path import dirname, exists
@@ -27,6 +28,7 @@ import logging
 from sentence_transformers import SentenceTransformer
 
 from dataset_full import OUTPUT_DIR, CHUNK_SIZE
+from dataset_full_analysis import PLOTS_DIR_NAME
 
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
 
@@ -227,6 +229,7 @@ if __name__ == "__main__":
     output_filepath_embeddings = f"{extra_output_dir}/embeddings.csv"
     output_filepath_magnitudes = f"{extra_output_dir}/magnitudes.csv"
     output_filepath = f"{args.dataset_filepath.split('.')[0]}.deduplicated.csv"
+    output_filepath_plot = f"{output_dir}/{PLOTS_DIR_NAME}/.pdf"
 
     # set up logging
     logging.basicConfig(level = logging.INFO, format = "%(message)s")
@@ -403,17 +406,55 @@ if __name__ == "__main__":
     n_best_paths = sum(dataset["is_best_path"])
     n_arrangements = sum(dataset["is_best_arrangement"])
     n_unique_arrangements = sum(dataset["is_unique_arrangement"])
-    print("".join(("=" for _ in range(100))))
+    bar_width = 100
+    print("".join(("=" for _ in range(bar_width))))
     logging.info(f"{len(dataset):,} total songs.")
     logging.info(f"{n_best_paths:,} unique songs, excluding different instrumentations ({100 * (n_best_paths / len(dataset)):.2f}% of all songs); {len(dataset) - n_best_paths:,} duplicates.")
     logging.info(f"{n_arrangements:,} unique songs, including different instrumentations ({100 * (n_arrangements / len(dataset)):.2f}% of all songs); {len(dataset) - n_arrangements:,} duplicates.")
     logging.info(f"{n_unique_arrangements:,} unique arrangements ({100 * (n_unique_arrangements / len(dataset)):.2f}% of all songs); {len(dataset) - n_unique_arrangements:,} duplicates.")
+    print("".join(("=" for _ in range(bar_width))))
     del n_best_paths, n_arrangements, n_unique_arrangements # free up memory
 
     # write to file
     dataset = dataset[OUTPUT_COLUMNS] # reorder columns, only select columns we like
     dataset = dataset.sort_index(axis = 0, ascending = True, na_position = "last", ignore_index = False) # sort indicies so they align with indicies in original dataset
     dataset.to_csv(path_or_buf = output_filepath, sep = ",", header = True, index = False, mode = "w") # write to file
+
+    ##################################################
+
+
+    # MAKE A PLOT
+    ##################################################
+
+    if not exists(dirname(output_filepath_plot)): # make sure output directory exists
+        os.mkdir(dirname(output_filepath_plot))
+
+    # create plot
+    by_to_title = {"path": "Title", "arrangement": "Title and Instrumentation"}
+    fig, axes = plt.subplot_mosaic(mosaic = [list(by_to_title.keys())], constrained_layout = True, figsize = (8, 4))
+    fig.suptitle("Deduplication By...", fontweight = "bold")
+
+    # helper function to plot quantile plot
+    percentile_step = 0.001
+    def make_quantile_plot(by: str) -> None:
+        """
+        Helper function to create a quantile plot.
+        """
+
+        # get percentiles
+        percentiles = np.arange(start = 0, stop = 100 + percentile_step, step = percentile_step)
+        percentile_values = np.percentile(a = dataset.groupby(by = by).size()["size"], q = percentiles)
+
+        # plot
+        axes[by].plot(percentiles, percentile_values, color = "blue")
+        axes[by].set_xlabel("Percentile (%)")
+        axes[by].set_ylabel("Count")
+        axes[by].set_title(by_to_title[by])
+        axes[by].grid()
+
+    # save image
+    fig.savefig(output_filepath_plot, dpi = 200, transparent = True, bbox_inches = "tight")
+    logging.info(f"Saved figure to {output_filepath_plot}.")
 
     ##################################################
 
