@@ -46,8 +46,11 @@ DESCRIPTOR_COLUMNS = ["song_name", "title", "subtitle", "artist_name", "composer
 # column names for how to determine the best version of a song
 BEST_VERSION_METRIC_COLUMNS = ["rating", "n_ratings", "n_notes", "n_tokens"]
 
+# column names to include in the output
+OUTPUT_COLUMNS = ["best_path", "path"] + DESCRIPTOR_COLUMNS + BEST_VERSION_METRIC_COLUMNS
+
 # minimum similarity (0 to 1) between two song titles for them to be considered duplicates
-SIMILARITY_THRESHOLD = 0.99
+SIMILARITY_THRESHOLD = 0.999
 
 ##################################################
 
@@ -172,7 +175,7 @@ if __name__ == "__main__":
     # output filepaths
     output_filepath_embeddings = f"{extra_output_dir}/embeddings.csv"
     output_filepath_magnitudes = f"{extra_output_dir}/magnitudes.csv"
-    output_filepath = f"{output_dir}/paths.deduplicated.txt"
+    output_filepath = f"{args.dataset_filepath.split('.')[0]}.deduplicated.csv"
 
     # set up logging
     logging.basicConfig(level = logging.INFO, format = "%(message)s")
@@ -310,11 +313,19 @@ if __name__ == "__main__":
                                           desc = "Choosing the Best Version of Each Song",
                                           total = len(songs)))
         
+    # update on how many and what percentage of songs were removed
     logging.info(f"Removed {len(dataset) - len(songs):,} duplicates ({100 * (len(songs) / len(dataset)):.2f}% removed).")
 
+    # associate every path with the path to the best version of that song
+    path_to_best_path = dict()
+    for i, deduplicated_index in enumerate(deduplicated_indicies):
+        best_path = dataset.at[deduplicated_index, "path"]
+        path_to_best_path.update({dataset.at[j, "path"]: best_path for j in songs[i]})
+
     # get and output deduplicated paths
-    paths = dataset.loc[deduplicated_indicies, "path"] # obtain the filepath of each top choice per song
-    paths.to_csv(path_or_buf = output_filepath, sep = ",", header = False, index = False, mode = "w") # write to file
+    dataset = dataset[OUTPUT_COLUMNS[1:]]
+    dataset[OUTPUT_COLUMNS[0]] = list(map(lambda path: path_to_best_path.get(path, None), dataset["path"])) # associate each path with the 'best' version of that song
+    dataset.to_csv(path_or_buf = output_filepath, sep = ",", header = True, index = False, mode = "w") # write to file
 
     ##################################################
 
