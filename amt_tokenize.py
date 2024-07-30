@@ -522,7 +522,6 @@ if __name__ == "__main__":
 
     # create list of paths if does not exist
     if not exists(args.paths):
-        # print_bad_line = lambda line: print(line.split(","))
         data = pd.read_csv(filepath_or_buffer = f"{args.input_dir}/{DATASET_DIR_NAME}/dataset.full.csv", sep = ",", header = 0, index_col = False) # load in data frame, on_bad_lines = print_bad_line, engine = "python"
         # data = data[data["in_dataset"]] # filter # no filter as of now
         paths = pd.unique(values = data["path"]).tolist()

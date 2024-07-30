@@ -23,7 +23,6 @@ import multiprocessing
 from typing import List
 import torch
 import logging
-from utils import rep
 
 from sentence_transformers import SentenceTransformer
 
@@ -44,13 +43,16 @@ DEFAULT_BATCH_SIZE = 32
 DESCRIPTOR_COLUMNS = ["song_name", "title", "subtitle", "artist_name", "composer_name"]
 
 # column names for how to determine the best version of a song
-BEST_VERSION_METRIC_COLUMNS = ["rating", "n_ratings", "n_notes", "n_tokens"]
+BEST_VERSION_METRIC_COLUMNS = ["rating", "n_ratings", "n_tokens", "n_notes"]
 
 # column names to include in the output
-OUTPUT_COLUMNS = ["best_path", "is_best_path", "path"] + DESCRIPTOR_COLUMNS + BEST_VERSION_METRIC_COLUMNS + ["n_tracks", "tracks"]
+OUTPUT_COLUMNS = ["path", "best_path", "is_best_path", "best_arrangement", "is_best_arrangement", "is_unique_arrangement"]
 
 # minimum similarity (0 to 1) between two song titles for them to be considered duplicates
 SIMILARITY_THRESHOLD = 0.999
+
+# fraction difference in number of tokens necessary for two songs when those songs have the same instrumentation to be considered 'unique' arrangements
+UNIQUENESS_THRESHOLD = 0.05
 
 ##################################################
 
@@ -120,17 +122,63 @@ def choose_best_song_from_indicies(indicies: List[int]) -> int:
     duplicates = dataset.loc[indicies, BEST_VERSION_METRIC_COLUMNS]
 
     # determine best version of song
-    duplicates = duplicates.sort_values(
-        by = BEST_VERSION_METRIC_COLUMNS,
-        axis = 0,
-        ascending = False,
-        na_position = "last",
-        ignore_index = False
-    )
+    duplicates = duplicates.sort_values(by = BEST_VERSION_METRIC_COLUMNS, axis = 0, ascending = False, na_position = "last", ignore_index = False)
     best_index = duplicates.index[0] # the top index is the best index
 
     # return the best index
     return best_index
+
+##################################################
+
+
+# FINDS THE BEST ARRANGMENTS WITHIN DESCRIPTOR-DUPLICATES
+##################################################
+
+def choose_unique_arrangements(duplicates: pd.DataFrame) -> pd.DataFrame:
+    """
+    Given a dataframe with all the duplicates for a certain song, find and label unique arrangments.
+    """
+
+    # get all unique instrumentations of a song
+    instrumentations = pd.unique(values = duplicates["tracks"])
+
+    # avoid unnecessary computations if possible; if there are no duplicates or if each duplicate is a different instrumentation
+    if (len(duplicates) == 1) or (len(instrumentations) == len(duplicates)):
+        return duplicates
+
+    # within each instrumentation choose the best arrangement
+    for instrumentation in instrumentations:
+        duplicates_instrumentation = duplicates[duplicates["tracks"] == instrumentation]
+
+        # find the best arrangement with this instrumentation
+        if len(duplicates_instrumentation) > 1: # if there are duplicates within the instrumentation
+
+            # update data
+            best_arrangement_index = choose_best_song_from_indicies(indicies = duplicates_instrumentation.index) # get the index of the best arrangement with this instrumentation
+            not_best_arrangement_indicies = list(filter(lambda index: index != best_arrangement_index, duplicates_instrumentation.index)) # get the indicies that are not the best arrangement
+            duplicates.loc[not_best_arrangement_indicies, "best_arrangement"] = duplicates.at[best_arrangement_index, "path"] # the path of the best arrangement with this instrumentation
+            duplicates.loc[not_best_arrangement_indicies, "is_best_arrangement"] = False # these indicies are not the best arrangment with this instrumentation
+            
+            # find unique arrangements within this instrumentation; group songs with similar number of tokens together
+            duplicates_instrumentation = duplicates_instrumentation.sort_values(by = BEST_VERSION_METRIC_COLUMNS[-2:], axis = 0, ascending = False, na_position = "last", ignore_index = False)
+            groups = [[duplicates_instrumentation.index[0]]]
+            for i in range(1, len(duplicates_instrumentation)):
+                i_previous, i_current = duplicates_instrumentation.index[(i - 1):(i + 1)]
+                value_previous, value_current = duplicates_instrumentation.loc[[i_previous, i_current], "n_tokens"]
+                if abs((2 * (value_current - value_previous)) / (value_current + value_previous)) <= UNIQUENESS_THRESHOLD:
+                    groups[-1].append(i_current)
+                else:
+                    groups.append([i_current])
+
+            # update data
+            for group in groups:
+                if len(group) > 1: # if there are duplicates within the group
+                    unique_arrangement_index = choose_best_song_from_indicies(indicies = group) # get the index of the best arrangement within this group
+                    not_unique_arrangement_indicies = list(filter(lambda index: index != unique_arrangement_index, group)) # get the indicies that are not the one
+                    duplicates.loc[not_unique_arrangement_indicies, "is_unique_arrangement"] = False # these indicies are not the best within this group
+
+    # return edited dataframe
+    return duplicates
 
 ##################################################
 
@@ -142,7 +190,6 @@ def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(prog = "Deduplicate", description = "Deduplicate songs in full dataset.")
     parser.add_argument("-d", "--dataset_filepath", default = f"{OUTPUT_DIR}/dataset.full.csv", type = str, help = "Filepath to full dataset")
-    parser.add_argument("-s", "--similarity_threshold", default = SIMILARITY_THRESHOLD, type = float, help = "Similarity Threshold")
     parser.add_argument("-r", "--reset", action = "store_true", help = "Whether or not to recreate intermediate data tables")
     parser.add_argument("-bs", "--batch_size", default = DEFAULT_BATCH_SIZE, type = int, help = "Batch size")
     parser.add_argument("-g", "--gpu", default = -1, type = int, help = "GPU number")
@@ -279,7 +326,7 @@ if __name__ == "__main__":
         similarities = (similarities + 1) / 2 # normalize
 
         # create a song group
-        song = torch.where(similarities >= args.similarity_threshold)[0] + (i + 1) # get indicies of duplicates for the `i`th song, add `i` + 1 to account for the fact the matrix is a triangle
+        song = torch.where(similarities >= SIMILARITY_THRESHOLD)[0] + (i + 1) # get indicies of duplicates for the `i`th song, add `i` + 1 to account for the fact the matrix is a triangle
         song = list(filter(lambda index: index not in songs_already_grouped, song.tolist())) # remove indicies that have already been grouped with another song; not needed anymore, as this is done in similarity function calculations
         song.append(i) # a song is similar to itself
 
@@ -314,17 +361,52 @@ if __name__ == "__main__":
                                           total = len(songs)))
         
     # update on how many and what percentage of songs were removed
-    logging.info(f"Removed {len(dataset) - len(songs):,} duplicates ({100 * (len(songs) / len(dataset)):.2f}% removed).")
+    logging.info(f"{len(songs):,} unique songs ({100 * (len(songs) / len(dataset)):.2f}% of files); {len(dataset) - len(songs):,} duplicates.")
 
     # associate every path with the path to the best version of that song
     path_to_best_path = dict()
     for best_path, duplicate_path_indicies in zip(dataset.loc[deduplicated_indicies, "path"], songs):
         path_to_best_path.update({dataset.at[i, "path"]: best_path for i in duplicate_path_indicies})
 
-    # get and output deduplicated paths
-    dataset[OUTPUT_COLUMNS[0]] = list(map(lambda path: path_to_best_path.get(path, None), dataset["path"])) # associate each path with the 'best' version of that song
-    dataset[OUTPUT_COLUMNS[1]] = (dataset[OUTPUT_COLUMNS[0]] == dataset["path"])
-    dataset = dataset[OUTPUT_COLUMNS]
+    # add best path to dataset
+    dataset["best_path"] = list(map(lambda path: path_to_best_path.get(path, None), dataset["path"])) # associate each path with the 'best' version of that song
+    dataset["is_best_path"] = (dataset["best_path"] == dataset["path"])
+
+    # free up memory
+    del path_to_best_path, deduplicated_indicies, songs
+
+    ##################################################
+
+
+    # FOR EACH BEST PATH, THOUGH THE TITLE IS THE SAME, THERE COULD BE DIFFERENT ARRANGEMENTS
+    ##################################################
+
+    # dataframe for each best path to find unique arrangements
+    dataset["best_arrangement"] = dataset["path"]
+    dataset["is_best_arrangement"] = True
+    dataset["is_unique_arrangement"] = True
+    best_path_groups = [dataset[dataset["path"] == best_path] for best_path in pd.unique(values = dataset["best_path"])]
+
+    # use multiprocessing to find different arrangements
+    with multiprocessing.Pool(processes = args.jobs) as pool:
+        best_path_groups = list(tqdm(iterable = pool.map(func = choose_unique_arrangements, iterable = best_path_groups, chunksize = CHUNK_SIZE),
+                                     desc = "Finding Unique Arrangements",
+                                     total = len(best_path_groups)))
+        
+    # regroup groups into dataframe
+    dataset = pd.concat(objs = best_path_groups, axis = 0, ignore_index = False)
+    del best_path_groups # free up memory
+
+    # update on how many unique arrangments
+    n_arrangements = sum(dataset["is_best_arrangment"])
+    n_unique_arrangements = sum(dataset["is_unique_arrangement"])
+    logging.info(f"{n_arrangements:,} unique songs (including different instrumentations) ({100 * (n_arrangements / len(dataset)):.2f}% of files); {len(dataset) - n_arrangements:,} duplicates.")
+    logging.info(f"{n_unique_arrangements:,} unique arrangements ({100 * (n_unique_arrangements / len(dataset)):.2f}% of files); {len(dataset) - n_unique_arrangements:,} duplicates.")
+    del n_arrangements, n_unique_arrangements # free up memory
+
+    # write to file
+    dataset = dataset[OUTPUT_COLUMNS] # reorder columns, only select columns we like
+    dataset = dataset.sort_index(axis = 0, ascending = True, na_position = "last", ignore_index = False) # sort indicies so they align with indicies in original dataset
     dataset.to_csv(path_or_buf = output_filepath, sep = ",", header = True, index = False, mode = "w") # write to file
 
     ##################################################

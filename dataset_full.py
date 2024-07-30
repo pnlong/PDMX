@@ -486,7 +486,7 @@ if __name__ == "__main__":
     paths = tuple(path for path in paths if isfile(path) and path.endswith("mscz")) # filter out non-file elements that were globbed
     if exists(OUTPUT_FILEPATH_FULL):
         completed_paths = set(pd.read_csv(filepath_or_buffer = OUTPUT_FILEPATH_FULL, sep = ",", header = 0, index_col = False)["path"].tolist())
-        paths = list(path for path in tqdm(iterable = paths, desc = "Determining already-completed paths") if path not in completed_paths)
+        paths = list(path for path in tqdm(iterable = paths, desc = "Determining Already-Complete Paths") if path not in completed_paths)
         paths = random.sample(population = paths, k = len(paths))
 
     ##################################################
