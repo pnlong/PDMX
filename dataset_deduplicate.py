@@ -229,7 +229,7 @@ if __name__ == "__main__":
     output_filepath_embeddings = f"{extra_output_dir}/embeddings.csv"
     output_filepath_magnitudes = f"{extra_output_dir}/magnitudes.csv"
     output_filepath = f"{args.dataset_filepath.split('.')[0]}.deduplicated.csv"
-    output_filepath_plot = f"{output_dir}/{PLOTS_DIR_NAME}/.pdf"
+    output_filepath_plot = f"{output_dir}/{PLOTS_DIR_NAME}/duplicates.pdf"
 
     # set up logging
     logging.basicConfig(level = logging.INFO, format = "%(message)s")
