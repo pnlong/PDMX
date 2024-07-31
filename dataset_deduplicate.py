@@ -446,11 +446,15 @@ if __name__ == "__main__":
         percentile_values = np.percentile(a = dataset.groupby(by = f"best_{by}").size()["size"], q = percentiles)
 
         # plot
-        axes[by].plot(percentiles, percentile_values, color = "blue")
+        axes[by].scatter(percentiles, percentile_values, color = "blue")
         axes[by].set_xlabel("Percentile (%)")
         axes[by].set_ylabel("Count")
         axes[by].set_title(by_to_title[by])
         axes[by].grid()
+    
+    # plot
+    for by in by_to_title.keys():
+        make_quantile_plot(by = by)
 
     # save image
     fig.savefig(output_filepath_plot, dpi = 200, transparent = True, bbox_inches = "tight")
