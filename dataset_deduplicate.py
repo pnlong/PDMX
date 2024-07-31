@@ -51,7 +51,7 @@ BEST_VERSION_METRIC_COLUMNS = ["rating", "n_ratings", "n_tokens", "n_notes"]
 OUTPUT_COLUMNS = ["path", "best_path", "is_best_path", "best_arrangement", "is_best_arrangement", "is_unique_arrangement"]
 
 # minimum similarity (0 to 1) between two song titles for them to be considered duplicates
-SIMILARITY_THRESHOLD = 0.999
+SIMILARITY_THRESHOLD = 0.8
 
 # fraction difference in number of tokens necessary for two songs when those songs have the same instrumentation to be considered 'unique' arrangements
 UNIQUENESS_DIFFERENTIATION_COLUMN = "n_tokens"
@@ -449,7 +449,7 @@ if __name__ == "__main__":
         percentiles = np.arange(start = 0, stop = 100 + percentile_step, step = percentile_step)
         percentile_values = np.percentile(a = dataset.groupby(by = f"best_{by}").size(), q = percentiles)
         if apply_log_scale:
-            percentile_values = np.log10(x = percentile_values) # apply log scale
+            percentile_values = np.log10(percentile_values) # apply log scale
 
         # plot
         axes[by].plot(x = percentiles, y = percentile_values, color = "blue")
