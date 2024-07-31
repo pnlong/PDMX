@@ -448,7 +448,7 @@ if __name__ == "__main__":
             percentile_values = np.log10(percentile_values) # apply log scale
 
         # plot
-        axes[by].plot(x = percentiles, y = percentile_values, color = "blue")
+        axes[by].plot(percentiles, percentile_values, color = "blue")
         axes[by].set_xlabel("Percentile (%)")
         axes[by].set_ylabel("log10(Count)" if apply_log_scale else "Count")
         axes[by].set_title(by_to_title[by])
