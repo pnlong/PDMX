@@ -407,13 +407,17 @@ if __name__ == "__main__":
     n_arrangements = sum(dataset["is_best_arrangement"])
     n_unique_arrangements = sum(dataset["is_unique_arrangement"])
     bar_width = 100
+
+    # log info
     print("".join(("=" for _ in range(bar_width))))
     logging.info(f"{len(dataset):,} total songs.")
     logging.info(f"{n_best_paths:,} unique songs, excluding different instrumentations ({100 * (n_best_paths / len(dataset)):.2f}% of all songs); {len(dataset) - n_best_paths:,} duplicates.")
     logging.info(f"{n_arrangements:,} unique songs, including different instrumentations ({100 * (n_arrangements / len(dataset)):.2f}% of all songs); {len(dataset) - n_arrangements:,} duplicates.")
     logging.info(f"{n_unique_arrangements:,} unique arrangements ({100 * (n_unique_arrangements / len(dataset)):.2f}% of all songs); {len(dataset) - n_unique_arrangements:,} duplicates.")
     print("".join(("=" for _ in range(bar_width))))
-    del n_best_paths, n_arrangements, n_unique_arrangements # free up memory
+    
+    # free up memory
+    del n_best_paths, n_arrangements, n_unique_arrangements
 
     # write to file
     dataset = dataset[OUTPUT_COLUMNS] # reorder columns, only select columns we like
