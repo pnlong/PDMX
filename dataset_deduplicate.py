@@ -440,7 +440,7 @@ if __name__ == "__main__":
 
     # helper function to plot quantile plot
     percentile_step = 0.001
-    def make_quantile_plot(by: str) -> None:
+    def make_quantile_plot(by: str, apply_log_scale: bool = True) -> None:
         """
         Helper function to create a quantile plot.
         """
@@ -448,17 +448,19 @@ if __name__ == "__main__":
         # get percentiles
         percentiles = np.arange(start = 0, stop = 100 + percentile_step, step = percentile_step)
         percentile_values = np.percentile(a = dataset.groupby(by = f"best_{by}").size(), q = percentiles)
+        if apply_log_scale:
+            percentile_values = np.log10(x = percentile_values) # apply log scale
 
         # plot
-        axes[by].scatter(percentiles, percentile_values, color = "blue")
+        axes[by].plot(x = percentiles, y = percentile_values, color = "blue")
         axes[by].set_xlabel("Percentile (%)")
-        axes[by].set_ylabel("Count")
+        axes[by].set_ylabel("log10(Count)" if apply_log_scale else "Count")
         axes[by].set_title(by_to_title[by])
         axes[by].grid()
     
     # plot
     for by in by_to_title.keys():
-        make_quantile_plot(by = by)
+        make_quantile_plot(by = by, apply_log_scale = True)
 
     # save image
     fig.savefig(output_filepath_plot, dpi = 200, transparent = True, bbox_inches = "tight")
