@@ -341,19 +341,15 @@ if __name__ == "__main__":
         songs.append(song) # add song group to songs
         songs_already_grouped.update(song) # all these indicies have already been grouped
 
-    # free up memory
-    del similarities, song
-
     # account for the last song, i.e. if it hasn't been grouped yet
     last_song_index = len(dataset) - 1
     if last_song_index not in songs_already_grouped:
         song = [last_song_index]
         songs.append(song)
         songs_already_grouped.update(song)
-    del last_song_index, song # free up memory
-
+    
     # free up memory
-    del songs_already_grouped
+    del similarities, song, songs_already_grouped, last_song_index
 
     ##################################################
     
