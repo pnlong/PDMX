@@ -450,7 +450,7 @@ if __name__ == "__main__":
         # plot
         axes[by].plot(percentiles, percentile_values, color = "blue")
         axes[by].set_xlabel("Percentile (%)")
-        axes[by].set_ylabel("log10(Count)" if apply_log_scale else "Count")
+        axes[by].set_ylabel("log(Count)" if apply_log_scale else "Count")
         axes[by].set_title(by_to_title[by])
         axes[by].grid()
     
