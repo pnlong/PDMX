@@ -443,7 +443,7 @@ if __name__ == "__main__":
 
         # get percentiles
         percentiles = np.arange(start = 0, stop = 100 + percentile_step, step = percentile_step)
-        percentile_values = np.percentile(a = dataset.groupby(by = f"best_{by}").size()["size"], q = percentiles)
+        percentile_values = np.percentile(a = dataset.groupby(by = f"best_{by}").size(), q = percentiles)
 
         # plot
         axes[by].scatter(percentiles, percentile_values, color = "blue")
