@@ -191,9 +191,13 @@ if __name__ == "__main__":
             statistic_fancy = " ".join(mmt_statistic_column.split("_")).title() # stylize the name of the mmt statistic
             column = f"{mmt_statistic_column}.{key}" # axes name
 
+            # little bit of data wrangling
+            data_mmt_statistic = data[mmt_statistic_column]
+            data_mmt_statistic = data_mmt_statistic[~pd.isna(data_mmt_statistic["sem"])] # no na values
+
             # plot
-            axes[column].barh(y = y_values, width = data[mmt_statistic_column]["mean"], color = "blue")
-            axes[column].errorbar(x = data[mmt_statistic_column]["mean"], y = y_values, xerr = data[mmt_statistic_column]["sem"], fmt = "o", color = "red")            
+            axes[column].barh(y = y_values, width = data_mmt_statistic["mean"], color = "blue")
+            axes[column].errorbar(x = data_mmt_statistic["mean"], y = y_values, xerr = data_mmt_statistic["sem"], fmt = "o", color = "red")            
 
             # y and x axis labels
             if mmt_statistic_column == MMT_STATISTIC_COLUMNS[0]:
@@ -203,7 +207,7 @@ if __name__ == "__main__":
             axes[column].set_xlabel(statistic_fancy)
 
             # add margin
-            min_val, max_val = min(data[mmt_statistic_column]["mean"] - data[mmt_statistic_column]["sem"]), max(data[mmt_statistic_column]["mean"] + data[mmt_statistic_column]["sem"])
+            min_val, max_val = min(data_mmt_statistic["mean"] - data_mmt_statistic["sem"]), max(data_mmt_statistic["mean"] + data_mmt_statistic["sem"])
             margin = margin_proportion * (max_val - min_val)
             axes[column].set_xlim(left = min_val - margin, right = max_val + margin)
 
