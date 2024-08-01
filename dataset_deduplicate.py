@@ -27,7 +27,7 @@ import logging
 
 from sentence_transformers import SentenceTransformer
 
-from dataset_full import OUTPUT_DIR, CHUNK_SIZE
+from dataset_full import OUTPUT_DIR, DATASET_DIR_NAME, CHUNK_SIZE
 from dataset_full_analysis import PLOTS_DIR_NAME
 
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
@@ -196,7 +196,7 @@ def choose_unique_arrangements_from_indicies(indicies: List[int]) -> pd.DataFram
 def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(prog = "Deduplicate", description = "Deduplicate songs in full dataset.")
-    parser.add_argument("-d", "--dataset_filepath", default = f"{OUTPUT_DIR}/dataset.full.csv", type = str, help = "Filepath to full dataset")
+    parser.add_argument("-d", "--dataset_filepath", default = f"{OUTPUT_DIR}/{DATASET_DIR_NAME}_full.csv", type = str, help = "Filepath to full dataset")
     parser.add_argument("-ro", "--rated_only", action = "store_true", help = "Whether or not to determine duplicates on subset of data with ratings")
     parser.add_argument("-r", "--reset", action = "store_true", help = "Whether or not to recreate intermediate data tables")
     parser.add_argument("-bs", "--batch_size", default = DEFAULT_BATCH_SIZE, type = int, help = "Batch size")
