@@ -48,13 +48,13 @@ DESCRIPTOR_COLUMNS = ["song_name", "title", "subtitle", "artist_name", "composer
 BEST_VERSION_METRIC_COLUMNS = ["rating", "n_ratings", "n_tokens", "n_notes"]
 
 # column names to include in the output
-OUTPUT_COLUMNS = ["path", "best_path", "is_best_path", "best_arrangement", "is_best_arrangement", "is_unique_arrangement"]
+OUTPUT_COLUMNS = ["path", "best_path", "is_best_path", "best_arrangement", "is_best_arrangement", "best_unique_arrangement", "is_best_unique_arrangement"]
 
 # minimum similarity (0 to 1) between two song titles for them to be considered duplicates
 SIMILARITY_THRESHOLD = 0.8
 
 # fraction difference in number of tokens necessary for two songs when those songs have the same instrumentation to be considered 'unique' arrangements
-UNIQUENESS_DIFFERENTIATION_COLUMN = "n_tokens"
+UNIQUENESS_DIFFERENTIATION_COLUMN = "n_notes"
 UNIQUENESS_THRESHOLD = 0.05
 
 ##################################################
@@ -181,7 +181,8 @@ def choose_unique_arrangements_from_indicies(indicies: List[int]) -> pd.DataFram
                 if len(group) > 1: # if there are duplicates within the group
                     unique_arrangement_index = choose_best_song_from_indicies(indicies = group) # get the index of the best arrangement within this group
                     not_unique_arrangement_indicies = list(filter(lambda index: index != unique_arrangement_index, group)) # get the indicies that are not the one
-                    duplicates.loc[not_unique_arrangement_indicies, "is_unique_arrangement"] = False # these indicies are not the best within this group
+                    duplicates.loc[not_unique_arrangement_indicies, "best_unique_arrangement"] = duplicates.at[unique_arrangement_index, "path"] # the path of the best unique arrangement within this group
+                    duplicates.loc[not_unique_arrangement_indicies, "is_best_unique_arrangement"] = False # these indicies are not the best unique arrangment within this group
 
     # return edited dataframe
     return duplicates
@@ -381,7 +382,8 @@ if __name__ == "__main__":
     # set default values and a list of dataframes for each best path
     dataset["best_arrangement"] = dataset["path"]
     dataset["is_best_arrangement"] = True
-    dataset["is_unique_arrangement"] = True
+    dataset["best_unique_arrangement"] = dataset["path"]
+    dataset["is_best_unique_arrangement"] = True
             
     # find unique arrangements
     logging.info("Finding Unique Arrangements within Each Best Version.") # update
@@ -401,7 +403,7 @@ if __name__ == "__main__":
     # update on how many unique arrangments
     n_best_paths = sum(dataset["is_best_path"])
     n_arrangements = sum(dataset["is_best_arrangement"])
-    n_unique_arrangements = sum(dataset["is_unique_arrangement"])
+    n_unique_arrangements = sum(dataset["is_best_unique_arrangement"])
     bar_width = 100
 
     # log info
@@ -430,7 +432,7 @@ if __name__ == "__main__":
         os.mkdir(dirname(output_filepath_plot))
 
     # create plot
-    by_to_title = {"path": "Title", "arrangement": "Title and Instrumentation"}
+    by_to_title = {"path": "Title", "arrangement": "Title and Instrumentation", "unique_arrangement": "Unique Arrangements"}
     fig, axes = plt.subplot_mosaic(mosaic = [list(by_to_title.keys())], constrained_layout = True, figsize = (8, 4))
     fig.suptitle("Deduplication By...", fontweight = "bold")
 
