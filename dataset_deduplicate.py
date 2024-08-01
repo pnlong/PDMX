@@ -227,11 +227,14 @@ if __name__ == "__main__":
     # get device for gpu calculations
     device = f"cuda:{abs(args.gpu)}" if (torch.cuda.is_available() and args.gpu != -1) else "cpu"
 
+    # set up logging
+    logging.basicConfig(level = logging.INFO, format = "%(message)s")
+
     # load in dataset
     logging.info("Loading in Dataset.")
     dataset = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)
     if args.rated_only:
-        dataset = dataset[dataset["rating"] > 0]
+        dataset = dataset[dataset["rating"] > 0].reset_index(drop = True)
     
     # output filepaths
     suffix = ".rated_only" if args.rated_only else ""
@@ -239,9 +242,6 @@ if __name__ == "__main__":
     output_filepath_magnitudes = f"{extra_output_dir}/magnitudes{suffix}.csv"
     output_filepath = f"{args.dataset_filepath.split('.')[0]}_deduplicated{suffix}.csv"
     output_filepath_plot = f"{output_dir}/{PLOTS_DIR_NAME}/duplicates{suffix}.pdf"
-
-    # set up logging
-    logging.basicConfig(level = logging.INFO, format = "%(message)s")
 
     ##################################################
 
