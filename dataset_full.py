@@ -16,7 +16,6 @@ from os import makedirs
 import random
 import pandas as pd
 import numpy as np
-from typing import List, Union
 from tqdm import tqdm
 import multiprocessing
 import argparse
@@ -39,7 +38,8 @@ from utils import write_to_file, rep
 MUSESCORE_DIR = "/data2/zachary/musescore/data"
 INPUT_DIR = "/data2/pnlong/musescore"
 METADATA_MAPPING = f"{INPUT_DIR}/metadata_to_data.csv"
-OUTPUT_DIR = f"{INPUT_DIR}/dataset"
+DATASET_DIR_NAME = "dataset"
+OUTPUT_DIR = f"{INPUT_DIR}/{DATASET_DIR_NAME}"
 LIST_FEATURE_JOIN_STRING = "-"
 MMT_STATISTIC_COLUMNS = ["pitch_class_entropy", "scale_consistency", "groove_consistency"] # names of the MMT-style statistics
 
@@ -467,7 +467,7 @@ if __name__ == "__main__":
     if (not exists(args.output_dir)):
         makedirs(args.output_dir)
     OUTPUT_FILEPATH_ALL = f"{args.output_dir}/all_files.csv"
-    OUTPUT_FILEPATH_FULL = f"{args.output_dir}/{basename(args.output_dir)}.full.csv"
+    OUTPUT_FILEPATH_FULL = f"{args.output_dir}/{basename(args.output_dir)}_full.csv"
 
     # for getting metadata
     METADATA = pd.read_csv(filepath_or_buffer = args.metadata_mapping, sep = ",", header = 0, index_col = False)

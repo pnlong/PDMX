@@ -197,6 +197,7 @@ def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(prog = "Deduplicate", description = "Deduplicate songs in full dataset.")
     parser.add_argument("-d", "--dataset_filepath", default = f"{OUTPUT_DIR}/dataset.full.csv", type = str, help = "Filepath to full dataset")
+    parser.add_argument("-ro", "--rated_only", action = "store_true", help = "Whether or not to determine duplicates on subset of data with ratings")
     parser.add_argument("-r", "--reset", action = "store_true", help = "Whether or not to recreate intermediate data tables")
     parser.add_argument("-bs", "--batch_size", default = DEFAULT_BATCH_SIZE, type = int, help = "Batch size")
     parser.add_argument("-g", "--gpu", default = -1, type = int, help = "GPU number")
@@ -226,18 +227,21 @@ if __name__ == "__main__":
     # get device for gpu calculations
     device = f"cuda:{abs(args.gpu)}" if (torch.cuda.is_available() and args.gpu != -1) else "cpu"
 
-    # output filepaths
-    output_filepath_embeddings = f"{extra_output_dir}/embeddings.csv"
-    output_filepath_magnitudes = f"{extra_output_dir}/magnitudes.csv"
-    output_filepath = f"{args.dataset_filepath.split('.')[0]}.deduplicated.csv"
-    output_filepath_plot = f"{output_dir}/{PLOTS_DIR_NAME}/duplicates.pdf"
-
-    # set up logging
-    logging.basicConfig(level = logging.INFO, format = "%(message)s")
-
     # load in dataset
     logging.info("Loading in Dataset.")
     dataset = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)
+    if args.rated_only:
+        dataset = dataset[dataset["rating"] > 0]
+    
+    # output filepaths
+    suffix = ".rated_only" if args.rated_only else ""
+    output_filepath_embeddings = f"{extra_output_dir}/embeddings{suffix}.csv"
+    output_filepath_magnitudes = f"{extra_output_dir}/magnitudes{suffix}.csv"
+    output_filepath = f"{args.dataset_filepath.split('.')[0]}_deduplicated{suffix}.csv"
+    output_filepath_plot = f"{output_dir}/{PLOTS_DIR_NAME}/duplicates{suffix}.pdf"
+
+    # set up logging
+    logging.basicConfig(level = logging.INFO, format = "%(message)s")
 
     ##################################################
 

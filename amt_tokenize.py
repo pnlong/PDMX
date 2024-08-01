@@ -27,7 +27,7 @@ import random
 import utils
 from read_mscz.read_mscz import read_musescore
 from read_mscz.music import MusicExpress
-from dataset_full import CHUNK_SIZE
+from dataset_full import CHUNK_SIZE, DATASET_DIR_NAME
 
 from amt_config import *
 from amt_vocab import *
@@ -40,7 +40,6 @@ import amt_ops as ops
 ##################################################
 
 INPUT_DIR = "/data2/pnlong/musescore"
-DATASET_DIR_NAME = "dataset"
 MSCZ_FILEPATHS = f"{INPUT_DIR}/{DATASET_DIR_NAME}/paths.relevant.txt"
 OUTPUT_DIR = "/data2/pnlong/musescore/amt"
 
@@ -522,7 +521,7 @@ if __name__ == "__main__":
 
     # create list of paths if does not exist
     if not exists(args.paths):
-        data = pd.read_csv(filepath_or_buffer = f"{args.input_dir}/{DATASET_DIR_NAME}/dataset.full.csv", sep = ",", header = 0, index_col = False) # load in data frame, on_bad_lines = print_bad_line, engine = "python"
+        data = pd.read_csv(filepath_or_buffer = f"{args.input_dir}/{DATASET_DIR_NAME}/{DATASET_DIR_NAME}_full.csv", sep = ",", header = 0, index_col = False) # load in data frame, on_bad_lines = print_bad_line, engine = "python"
         # data = data[data["in_dataset"]] # filter # no filter as of now
         paths = pd.unique(values = data["path"]).tolist()
         with open(args.paths, "w") as file:
