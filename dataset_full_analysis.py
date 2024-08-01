@@ -229,7 +229,7 @@ if __name__ == "__main__":
     if not exists(dirname(output_filepath)): # make sure output directory exists
         makedirs(dirname(output_filepath))
     fig.savefig(output_filepath, dpi = 200, transparent = True, bbox_inches = "tight")
-    logging.info(f"Saved figure to {output_filepath}.")
+    logging.info(f"Saved figure to {output_filepath}.\n")
 
     ##################################################
 
