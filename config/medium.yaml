@@ -7,6 +7,7 @@ data:
   tokenizer: "passthrough"
   plaintext: True
   enforce_eos: False
+  vocab_size: 55028
 model:
   type: gpt2
   hidden_dim: 1024
