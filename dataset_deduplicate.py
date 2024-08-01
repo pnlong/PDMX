@@ -432,12 +432,13 @@ if __name__ == "__main__":
         os.mkdir(dirname(output_filepath_plot))
 
     # create plot
-    by_to_title = {"path": "Title", "arrangement": "Title and Instrumentation", "unique_arrangement": "Unique Arrangements"}
-    fig, axes = plt.subplot_mosaic(mosaic = [list(by_to_title.keys())], constrained_layout = True, figsize = (8, 4))
+    bys = ["path", "arrangement", "unique_arrangement"]
+    by_to_title = dict(zip(bys, ["Title", "Title and Instrumentation", "Unique Arrangements"]))
+    fig, axes = plt.subplot_mosaic(mosaic = [["plot"]], constrained_layout = True, figsize = (4, 4))
     fig.suptitle("Deduplication By...", fontweight = "bold")
 
     # helper function to plot quantile plot
-    percentile_step = 0.001
+    percentile_step = 0.005
     def make_quantile_plot(by: str, apply_log_scale: bool = True) -> None:
         """
         Helper function to create a quantile plot.
@@ -450,15 +451,19 @@ if __name__ == "__main__":
             percentile_values = np.log10(percentile_values) # apply log scale
 
         # plot
-        axes[by].plot(percentiles, percentile_values, color = "blue")
-        axes[by].set_xlabel("Percentile (%)")
-        axes[by].set_ylabel("log(Count)" if apply_log_scale else "Count")
-        axes[by].set_title(by_to_title[by])
-        axes[by].grid()
+        axes["plot"].plot(percentiles, percentile_values, label = by_to_title[by])
+        
     
     # plot
-    for by in by_to_title.keys():
-        make_quantile_plot(by = by, apply_log_scale = True)
+    apply_log_scale = True
+    for by in bys:
+        make_quantile_plot(by = by, apply_log_scale = apply_log_scale)
+
+    axes["plot"].set_xlabel("Percentile (%)")
+    axes["plot"].set_xlim(left = 50) # information below 50th percentile is unnecessary
+    axes["plot"].set_ylabel("log(Count)" if apply_log_scale else "Count")
+    axes["plot"].grid()
+    axes["plot"].legend()
 
     # save image
     fig.savefig(output_filepath_plot, dpi = 200, transparent = True, bbox_inches = "tight")
