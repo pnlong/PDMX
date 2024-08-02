@@ -197,7 +197,6 @@ def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(prog = "Deduplicate", description = "Deduplicate songs in full dataset.")
     parser.add_argument("-d", "--dataset_filepath", default = f"{OUTPUT_DIR}/{DATASET_DIR_NAME}_full.csv", type = str, help = "Filepath to full dataset")
-    parser.add_argument("-ro", "--rated_only", action = "store_true", help = "Whether or not to determine duplicates on subset of data with ratings")
     parser.add_argument("-r", "--reset", action = "store_true", help = "Whether or not to recreate intermediate data tables")
     parser.add_argument("-bs", "--batch_size", default = DEFAULT_BATCH_SIZE, type = int, help = "Batch size")
     parser.add_argument("-g", "--gpu", default = -1, type = int, help = "GPU number")
@@ -238,7 +237,7 @@ if __name__ == "__main__":
     output_filepath_embeddings = f"{extra_output_dir}/embeddings.csv"
     output_filepath_magnitudes = f"{extra_output_dir}/magnitudes.csv"
     output_filepath = f"{output_dir}/{basename(dirname(args.dataset_filepath))}_deduplicated.csv"
-    output_filepath_plot = f"{output_dir}/{PLOTS_DIR_NAME}/duplicates{'.rated_only' if args.rated_only else ''}.pdf"
+    output_filepath_plot = f"{output_dir}/{PLOTS_DIR_NAME}/duplicates.pdf"
 
     ##################################################
 
@@ -426,27 +425,41 @@ if __name__ == "__main__":
     # OUTPUT STATISTICS
     ##################################################
 
-    # filter dataset if needed
-    if args.rated_only:
-        dataset = dataset[dataset["rating"] > 0] # filter if necessary
+    # helper function to output statistics
+    bar_width = 104 # how wide are the separation bars
+    def output_statistics(rated_only: bool = False) -> None:
+        """Helper function to output statistics."""
 
-    # update on how many unique arrangments
-    n_best_paths = sum(dataset["is_best_path"])
-    n_arrangements = sum(dataset["is_best_arrangement"])
-    n_unique_arrangements = sum(dataset["is_best_unique_arrangement"])
-    bar_width = 104
+        # filter dataset if needed
+        if rated_only:
+            data = dataset[dataset["rating"] > 0]
+        else:
+            data = dataset
 
-    # log info
-    print("".join(("=" for _ in range(bar_width))))
-    word = " rated" if args.rated_only else ""
-    logging.info(f"{len(dataset):,} total{word} songs.")
-    logging.info(f"{n_best_paths:,} unique songs, excluding different instrumentations ({100 * (n_best_paths / len(dataset)):.2f}% of all{word} songs); {len(dataset) - n_best_paths:,} duplicates.")
-    logging.info(f"{n_arrangements:,} unique songs, including different instrumentations ({100 * (n_arrangements / len(dataset)):.2f}% of all{word} songs); {len(dataset) - n_arrangements:,} duplicates.")
-    logging.info(f"{n_unique_arrangements:,} unique arrangements ({100 * (n_unique_arrangements / len(dataset)):.2f}% of all{word} songs); {len(dataset) - n_unique_arrangements:,} duplicates.")
-    print("".join(("=" for _ in range(bar_width))))
-    
+        # update on how many unique arrangments
+        n_best_paths = sum(data["is_best_path"])
+        n_arrangements = sum(data["is_best_arrangement"])
+        n_unique_arrangements = sum(data["is_best_unique_arrangement"])
+
+        # log info
+        title = "rated" if rated_only else "all"
+        print(f"\n{f' {title} songs '.upper():=^{bar_width}}\n")
+        word = " rated" if rated_only else ""
+        logging.info(f"{len(data):,} total{word} songs.")
+        logging.info(f"{n_best_paths:,} unique songs, excluding different instrumentations ({100 * (n_best_paths / len(data)):.2f}% of all{word} songs); {len(data) - n_best_paths:,} duplicates.")
+        logging.info(f"{n_arrangements:,} unique songs, including different instrumentations ({100 * (n_arrangements / len(data)):.2f}% of all{word} songs); {len(data) - n_arrangements:,} duplicates.")
+        logging.info(f"{n_unique_arrangements:,} unique arrangements ({100 * (n_unique_arrangements / len(data)):.2f}% of all{word} songs); {len(data) - n_unique_arrangements:,} duplicates.")
+        
+        # free up memory
+        del n_best_paths, n_arrangements, n_unique_arrangements, title, word
+
+    # output statistics
+    output_statistics(rated_only = False)
+    output_statistics(rated_only = True)
+    print("\n" + "".join(("=" for _ in range(bar_width))) + "\n")
+
     # free up memory
-    del n_best_paths, n_arrangements, n_unique_arrangements
+    del bar_width
 
     ##################################################
 
@@ -460,36 +473,52 @@ if __name__ == "__main__":
     # create plot
     bys = ["path", "arrangement", "unique_arrangement"]
     by_to_title = dict(zip(bys, ["Title", "Title and Instrumentation", "Unique Arrangements"]))
-    fig, axes = plt.subplot_mosaic(mosaic = [["plot"]], constrained_layout = True, figsize = (4, 4))
+    fig, axes = plt.subplot_mosaic(mosaic = [["all", "rated"]], constrained_layout = True, figsize = (6, 4))
     fig.suptitle("Deduplication By...", fontweight = "bold")
 
     # helper function to plot quantile plot
     percentile_step = 0.005
-    def make_quantile_plot(by: str, apply_log_scale: bool = True) -> None:
+    def make_quantile_plot(by: str, rated_only: bool = False, apply_log_scale: bool = True) -> None:
         """
         Helper function to create a quantile plot.
         """
 
+        # filter dataset if needed
+        if rated_only:
+            data = dataset[dataset["rating"] > 0]
+        else:
+            data = dataset
+
         # get percentiles
         percentiles = np.arange(start = 0, stop = 100 + percentile_step, step = percentile_step)
-        percentile_values = np.percentile(a = dataset.groupby(by = f"best_{by}").size(), q = percentiles)
+        percentile_values = np.percentile(a = data.groupby(by = f"best_{by}").size(), q = percentiles)
         if apply_log_scale:
             percentile_values = np.log10(percentile_values) # apply log scale
 
         # plot
-        axes["plot"].plot(percentiles, percentile_values, label = by_to_title[by])
+        axes["rated" if rated_only else "all"].plot(percentiles, percentile_values, label = by_to_title[by])
         
     
     # plot
     apply_log_scale = True
     for by in bys:
-        make_quantile_plot(by = by, apply_log_scale = apply_log_scale)
-
-    axes["plot"].set_xlabel("Percentile (%)")
-    axes["plot"].set_xlim(left = 50) # information below 50th percentile is unnecessary
-    axes["plot"].set_ylabel("log(Count)" if apply_log_scale else "Count")
-    axes["plot"].grid()
-    axes["plot"].legend()
+        make_quantile_plot(by = by, rated_only = False, apply_log_scale = apply_log_scale)
+        make_quantile_plot(by = by, rated_only = True, apply_log_scale = apply_log_scale)
+    axes["all"].set_title("All Songs")
+    axes["rated"].set_title("Rated")
+    percentile_label = "Percentile (%)"
+    axes["all"].set_xlabel(percentile_label)
+    axes["rated"].set_xlabel(percentile_label)
+    del percentile_label
+    min_percentile = 50 # information below 50th percentile is unnecessary
+    axes["all"].set_xlim(left = min_percentile)
+    axes["rated"].set_xlim(left = min_percentile)
+    del min_percentile
+    axes["all"].set_ylabel("log(Count)" if apply_log_scale else "Count")
+    axes["rated"].sharey(other = axes["all"])
+    axes["all"].grid()
+    axes["rated"].grid()
+    axes["all"].legend()
 
     # save image
     fig.savefig(output_filepath_plot, dpi = 200, transparent = True, bbox_inches = "tight")
