@@ -135,7 +135,7 @@ if __name__ == "__main__":
     dataset["rating"] = list(map(discretize_rating, dataset["rating"]))
 
     # deduplicate
-    dataset_deduplicated = pd.read_csv(filepath_or_buffer = f"{args.dataset_filepath.split('_')[0]}_deduplicated.csv", sep = ",", header = 0, index_col = False) # load in data
+    dataset_deduplicated = pd.read_csv(filepath_or_buffer = f"{args.dataset_filepath[:-len('_full.csv')]}_deduplicated.csv", sep = ",", header = 0, index_col = False) # load in data
     dataset_deduplicated = dataset_deduplicated[dataset_deduplicated["is_best_unique_arrangement"]] # only keep best unique arrangements (or whatever boolean column for that matter)
     dataset_deduplicated = dataset_deduplicated["path"] # extract the deduplicated paths
     dataset_deduplicated = dataset.merge(right = dataset_deduplicated, how = "right", on = "path") # only keep the deduplicated paths in dataset
