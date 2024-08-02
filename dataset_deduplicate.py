@@ -18,7 +18,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from re import sub
 import os
-from os.path import dirname, exists
+from os.path import dirname, basename, exists
 from tqdm import tqdm
 import multiprocessing
 from typing import List
@@ -232,14 +232,13 @@ if __name__ == "__main__":
 
     # load in dataset
     logging.info("Loading in Dataset.")
-    dataset = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)        
+    dataset = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)
     
     # output filepaths
-    suffix = ".rated_only" if args.rated_only else ""
     output_filepath_embeddings = f"{extra_output_dir}/embeddings.csv"
     output_filepath_magnitudes = f"{extra_output_dir}/magnitudes.csv"
-    output_filepath = f"{args.dataset_filepath.split('.')[0]}_deduplicated{suffix}.csv"
-    output_filepath_plot = f"{output_dir}/{PLOTS_DIR_NAME}/duplicates{suffix}.pdf"
+    output_filepath = f"{output_dir}/{basename(dirname(args.dataset_filepath))}_deduplicated.csv"
+    output_filepath_plot = f"{output_dir}/{PLOTS_DIR_NAME}/duplicates{'.rated_only' if args.rated_only else ''}.pdf"
 
     ##################################################
 
@@ -274,7 +273,7 @@ if __name__ == "__main__":
         pd.DataFrame(data = embeddings).to_csv(path_or_buf = output_filepath_embeddings, sep = ",", header = False, index = False, mode = "w")
 
     # can we load them instead
-    else :
+    elif not exists(output_filepath):
 
         # update on progress
         logging.info("Loading Vector Embeddings.")
@@ -301,7 +300,7 @@ if __name__ == "__main__":
         pd.DataFrame(data = magnitudes).to_csv(path_or_buf = output_filepath_magnitudes, sep = ",", header = False, index = False, mode = "w")
 
     # can we load them instead
-    else:
+    elif not exists(output_filepath):
 
         # update on progress
         logging.info("Loading Embedding Magnitudes.")
@@ -312,95 +311,121 @@ if __name__ == "__main__":
     ##################################################
 
 
-    # GROUP TOGETHER SIMILAR SONG NAMES INTO A DICTIONARY
+    # CALCULATE DEDUPLICATED DATASET
     ##################################################
 
-    if args.rated_only:
-        dataset = dataset[dataset["rating"] > 0]
-        embeddings = embeddings[dataset.index]
-        magnitudes = magnitudes[dataset.index]
-        dataset = dataset.reset_index(drop = True)
+    # do we need to generate the similarities here?
+    if (not exists(output_filepath)) or args.reset:
 
-    # move stuff to gpu for fast matrix operations
-    embeddings = torch.from_numpy(embeddings).to(device)
-    magnitudes = torch.from_numpy(magnitudes).to(device)
+        # GROUP TOGETHER SIMILAR SONG NAMES INTO A DICTIONARY
+        ##################################################
+
+        # move stuff to gpu for fast matrix operations
+        embeddings = torch.from_numpy(embeddings).to(device)
+        magnitudes = torch.from_numpy(magnitudes).to(device)
+        
+        # stores lists of indicies, where each list represents a song
+        songs = []
+        songs_already_grouped = set() # store indicies of songs that have already been placed in a group
+        
+        # group duplicates together, reading in similarities line by line
+        for i in tqdm(iterable = range(len(dataset) - 1), desc = "Grouping Duplicates Together", total = len(dataset) - 1):
+
+            # don't deal with songs that have already been grouped
+            if i in songs_already_grouped:
+                continue
+
+            # calculate similarities
+            similarities = torch.matmul(input = embeddings[(i + 1):], other = embeddings[i]) # calculate dot products (numerator of cosine similarity)
+            similarities = similarities / (magnitudes[(i + 1):] * magnitudes[i]) # calculate cosine similarities
+            similarities = (similarities + 1) / 2 # normalize
+
+            # create a song group
+            song = torch.where(similarities >= SIMILARITY_THRESHOLD)[0] + (i + 1) # get indicies of duplicates for the `i`th song, add `i` + 1 to account for the fact the matrix is a triangle
+            song = list(filter(lambda index: index not in songs_already_grouped, song.tolist())) # remove indicies that have already been grouped with another song; not needed anymore, as this is done in similarity function calculations
+            song.append(i) # a song is similar to itself
+
+            # add song group to lists
+            songs.append(song) # add song group to songs
+            songs_already_grouped.update(song) # all these indicies have already been grouped
+
+        # account for the last song, i.e. if it hasn't been grouped yet
+        last_song_index = len(dataset) - 1
+        if last_song_index not in songs_already_grouped:
+            song = [last_song_index]
+            songs.append(song)
+            songs_already_grouped.update(song)
+        
+        # free up memory
+        del similarities, song, songs_already_grouped, last_song_index
+
+        ##################################################
+        
+
+        # ASSEMBLE DEDUPLICATED DATASET
+        ##################################################
+
+        # get deduplicated indicies
+        logging.info("Choosing the Best Version of Each Song.") # update
+        with multiprocessing.Pool(processes = args.jobs) as pool:
+            deduplicated_indicies = list(pool.map(func = choose_best_song_from_indicies, iterable = songs, chunksize = CHUNK_SIZE))
+
+        # dictionary mapping each path to its best version
+        path_to_best_path = dict()
+        for best_path, duplicate_path_indicies in zip(dataset.loc[deduplicated_indicies, "path"], songs):
+            path_to_best_path.update({dataset.at[i, "path"]: best_path for i in duplicate_path_indicies})
+        dataset["best_path"] = list(map(lambda path: path_to_best_path.get(path, None), dataset["path"]))
+        dataset["is_best_path"] = (dataset["path"] == dataset["best_path"])
+
+        # free up memory
+        del deduplicated_indicies, path_to_best_path
+
+        ##################################################
+
+
+        # FOR EACH BEST PATH, THOUGH THE TITLE IS THE SAME, THERE COULD BE DIFFERENT ARRANGEMENTS
+        ##################################################
+
+        # set default values and a list of dataframes for each best path
+        dataset["best_arrangement"] = dataset["path"]
+        dataset["is_best_arrangement"] = True
+        dataset["best_unique_arrangement"] = dataset["path"]
+        dataset["is_best_unique_arrangement"] = True
+                
+        # find unique arrangements
+        logging.info("Finding Unique Arrangements within Each Best Version.") # update
+        with multiprocessing.Pool(processes = args.jobs) as pool:
+            best_path_groups = list(pool.map(func = choose_unique_arrangements_from_indicies, iterable = songs, chunksize = CHUNK_SIZE))
+        dataset = pd.concat(objs = best_path_groups, axis = 0, ignore_index = False) # regroup groups into dataframe
+        
+        # free up memory
+        del songs, best_path_groups
+
+        # write to file
+        dataset = dataset[OUTPUT_COLUMNS] # reorder columns, only select columns we like
+        dataset = dataset.sort_index(axis = 0, ascending = True, na_position = "last", ignore_index = False) # sort indicies so they align with indicies in original dataset
+        dataset.to_csv(path_or_buf = output_filepath, sep = ",", header = True, index = False, mode = "w") # write to file
+
+        ##################################################
     
-    # stores lists of indicies, where each list represents a song
-    songs = []
-    songs_already_grouped = set() # store indicies of songs that have already been placed in a group
-    
-    # group duplicates together, reading in similarities line by line
-    for i in tqdm(iterable = range(len(dataset) - 1), desc = "Grouping Duplicates Together", total = len(dataset) - 1):
+    else:
 
-        # don't deal with songs that have already been grouped
-        if i in songs_already_grouped:
-            continue
+        # LOAD IN ALREADY CALCULATE DATASET
+        ##################################################
 
-        # calculate similarities
-        similarities = torch.matmul(input = embeddings[(i + 1):], other = embeddings[i]) # calculate dot products (numerator of cosine similarity)
-        similarities = similarities / (magnitudes[(i + 1):] * magnitudes[i]) # calculate cosine similarities
-        similarities = (similarities + 1) / 2 # normalize
+        # update
+        logging.info("Loading in Deduplicated Dataset.")
 
-        # create a song group
-        song = torch.where(similarities >= SIMILARITY_THRESHOLD)[0] + (i + 1) # get indicies of duplicates for the `i`th song, add `i` + 1 to account for the fact the matrix is a triangle
-        song = list(filter(lambda index: index not in songs_already_grouped, song.tolist())) # remove indicies that have already been grouped with another song; not needed anymore, as this is done in similarity function calculations
-        song.append(i) # a song is similar to itself
+        # load in dataset
+        dataset_deduplicated = pd.read_csv(filepath_or_buffer = output_filepath, sep = ",", header = 0, index_col = False)
+        if args.rated_only:
+            dataset = dataset[dataset["rating"] > 0] # filter if necessary
+        dataset = dataset.merge(right = dataset_deduplicated, how = "left", on = "path") # add deduplicate columns
+        
+        # free up memory
+        del dataset_deduplicated
 
-        # add song group to lists
-        songs.append(song) # add song group to songs
-        songs_already_grouped.update(song) # all these indicies have already been grouped
-
-    # account for the last song, i.e. if it hasn't been grouped yet
-    last_song_index = len(dataset) - 1
-    if last_song_index not in songs_already_grouped:
-        song = [last_song_index]
-        songs.append(song)
-        songs_already_grouped.update(song)
-    
-    # free up memory
-    del similarities, song, songs_already_grouped, last_song_index
-
-    ##################################################
-    
-
-    # ASSEMBLE DEDUPLICATED DATASET
-    ##################################################
-
-    # get deduplicated indicies
-    logging.info("Choosing the Best Version of Each Song.") # update
-    with multiprocessing.Pool(processes = args.jobs) as pool:
-        deduplicated_indicies = list(pool.map(func = choose_best_song_from_indicies, iterable = songs, chunksize = CHUNK_SIZE))
-
-    # dictionary mapping each path to its best version
-    path_to_best_path = dict()
-    for best_path, duplicate_path_indicies in zip(dataset.loc[deduplicated_indicies, "path"], songs):
-        path_to_best_path.update({dataset.at[i, "path"]: best_path for i in duplicate_path_indicies})
-    dataset["best_path"] = list(map(lambda path: path_to_best_path.get(path, None), dataset["path"]))
-    dataset["is_best_path"] = (dataset["path"] == dataset["best_path"])
-
-    # free up memory
-    del deduplicated_indicies, path_to_best_path
-
-    ##################################################
-
-
-    # FOR EACH BEST PATH, THOUGH THE TITLE IS THE SAME, THERE COULD BE DIFFERENT ARRANGEMENTS
-    ##################################################
-
-    # set default values and a list of dataframes for each best path
-    dataset["best_arrangement"] = dataset["path"]
-    dataset["is_best_arrangement"] = True
-    dataset["best_unique_arrangement"] = dataset["path"]
-    dataset["is_best_unique_arrangement"] = True
-            
-    # find unique arrangements
-    logging.info("Finding Unique Arrangements within Each Best Version.") # update
-    with multiprocessing.Pool(processes = args.jobs) as pool:
-        best_path_groups = list(pool.map(func = choose_unique_arrangements_from_indicies, iterable = songs, chunksize = CHUNK_SIZE))
-    dataset = pd.concat(objs = best_path_groups, axis = 0, ignore_index = False) # regroup groups into dataframe
-    
-    # free up memory
-    del songs, best_path_groups
+        ##################################################
 
     ##################################################
     
@@ -412,23 +437,19 @@ if __name__ == "__main__":
     n_best_paths = sum(dataset["is_best_path"])
     n_arrangements = sum(dataset["is_best_arrangement"])
     n_unique_arrangements = sum(dataset["is_best_unique_arrangement"])
-    bar_width = 100
+    bar_width = 104
 
     # log info
     print("".join(("=" for _ in range(bar_width))))
-    logging.info(f"{len(dataset):,} total songs.")
-    logging.info(f"{n_best_paths:,} unique songs, excluding different instrumentations ({100 * (n_best_paths / len(dataset)):.2f}% of all songs); {len(dataset) - n_best_paths:,} duplicates.")
-    logging.info(f"{n_arrangements:,} unique songs, including different instrumentations ({100 * (n_arrangements / len(dataset)):.2f}% of all songs); {len(dataset) - n_arrangements:,} duplicates.")
-    logging.info(f"{n_unique_arrangements:,} unique arrangements ({100 * (n_unique_arrangements / len(dataset)):.2f}% of all songs); {len(dataset) - n_unique_arrangements:,} duplicates.")
+    word = " rated" if args.rated_only else ""
+    logging.info(f"{len(dataset):,} total{word} songs.")
+    logging.info(f"{n_best_paths:,} unique songs, excluding different instrumentations ({100 * (n_best_paths / len(dataset)):.2f}% of all{word} songs); {len(dataset) - n_best_paths:,} duplicates.")
+    logging.info(f"{n_arrangements:,} unique songs, including different instrumentations ({100 * (n_arrangements / len(dataset)):.2f}% of all{word} songs); {len(dataset) - n_arrangements:,} duplicates.")
+    logging.info(f"{n_unique_arrangements:,} unique arrangements ({100 * (n_unique_arrangements / len(dataset)):.2f}% of all{word} songs); {len(dataset) - n_unique_arrangements:,} duplicates.")
     print("".join(("=" for _ in range(bar_width))))
     
     # free up memory
     del n_best_paths, n_arrangements, n_unique_arrangements
-
-    # write to file
-    dataset = dataset[OUTPUT_COLUMNS] # reorder columns, only select columns we like
-    dataset = dataset.sort_index(axis = 0, ascending = True, na_position = "last", ignore_index = False) # sort indicies so they align with indicies in original dataset
-    dataset.to_csv(path_or_buf = output_filepath, sep = ",", header = True, index = False, mode = "w") # write to file
 
     ##################################################
 
