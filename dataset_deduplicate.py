@@ -474,7 +474,7 @@ if __name__ == "__main__":
     bys = ["path", "arrangement", "unique_arrangement"]
     by_to_title = dict(zip(bys, ["Title", "Title and Instrumentation", "Unique Arrangements"]))
     fig, axes = plt.subplot_mosaic(mosaic = [["all", "rated"]], constrained_layout = True, figsize = (6, 4))
-    fig.suptitle("Deduplication By...", fontweight = "bold")
+    fig.suptitle("Deduplication", fontweight = "bold")
 
     # helper function to plot quantile plot
     percentile_step = 0.005
