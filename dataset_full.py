@@ -11,8 +11,9 @@
 ##################################################
 
 import glob
-from os.path import isfile, exists, basename
-from os import makedirs
+from os.path import isfile, exists, basename, dirname
+from os import makedirs, mkdir
+from shutil import copyfile
 import random
 import pandas as pd
 import numpy as np
@@ -35,13 +36,14 @@ from utils import write_to_file, rep
 # CONSTANTS
 ##################################################
 
-MUSESCORE_DIR = "/data2/zachary/musescore/data"
+MUSESCORE_DIR = "/data2/zachary/musescore"
 INPUT_DIR = "/data2/pnlong/musescore"
 METADATA_MAPPING = f"{INPUT_DIR}/metadata_to_data.csv"
 DATASET_DIR_NAME = "dataset"
 OUTPUT_DIR = f"{INPUT_DIR}/{DATASET_DIR_NAME}"
 LIST_FEATURE_JOIN_STRING = "-"
 MMT_STATISTIC_COLUMNS = ["pitch_class_entropy", "scale_consistency", "groove_consistency"] # names of the MMT-style statistics
+COMPRESS_JSON_MUSIC_FILES = False # whether to compress json music files
 
 # public domain licenses for extracting from metadata
 PUBLIC_LICENSE_URLS = (
@@ -291,7 +293,7 @@ def get_full_dataset(path: str) -> None:
     write_to_file(info = results_all, columns = list(results_all.keys()), output_filepath = OUTPUT_FILEPATH_ALL)
 
     # stop execution if a track is invalid, meaning it is either copyrighted or it is public domain, but doesn't open correctly
-    if (not is_valid):
+    if not is_valid:
         return
 
     ##################################################
@@ -303,9 +305,19 @@ def get_full_dataset(path: str) -> None:
     # songs analyzed here are in the full, uncleaned dataset
     # in other words, songs are in the public domain and can open properly
 
+    # save as music object
+    output_path = DATA_DIR + path[len(f"{MUSESCORE_DIR}/data"):] # determine output filepath of music object
+    music.save_json(path = output_path, compressed = COMPRESS_JSON_MUSIC_FILES) # save as music object
+
+    # copy over metadata path
+    if metadata_path:
+        metadata_path_new = METADATA_DIR + metadata_path[len(f"{MUSESCORE_DIR}/metadata"):]
+        copyfile(src = metadata_path, dst = metadata_path_new) # copy over metadata
+        metadata_path = metadata_path_new
+
     # start results dictionary
     results = {
-        "path" :            path,
+        "path" :            output_path,
         "metadata" :        metadata_path,
         "has_metadata" :    bool(metadata_path),
     }
@@ -464,14 +476,20 @@ if __name__ == "__main__":
     args = parse_args()
 
     # constant filepaths
-    if (not exists(args.output_dir)):
+    if not exists(args.output_dir):
         makedirs(args.output_dir)
     OUTPUT_FILEPATH_ALL = f"{args.output_dir}/all_files.csv"
     OUTPUT_FILEPATH_FULL = f"{args.output_dir}/{basename(args.output_dir)}_full.csv"
+    DATA_DIR = f"{args.output_dir}/data"
+    if not exists(DATA_DIR):
+        mkdir(DATA_DIR)
+    METADATA_DIR = f"{args.output_dir}/metadata"
+    if not exists(METADATA_DIR):
+        mkdir(METADATA_DIR)
 
     # for getting metadata
     METADATA = pd.read_csv(filepath_or_buffer = args.metadata_mapping, sep = ",", header = 0, index_col = False)
-    METADATA = {path : (path_metadata if (not pd.isna(path_metadata)) else None) for path, path_metadata in zip(METADATA["data_path"], METADATA["metadata_path"])}
+    METADATA = {path : path_metadata if not pd.isna(path_metadata) else None for path, path_metadata in zip(METADATA["data_path"], METADATA["metadata_path"])}
 
     # set up logging
     logging.basicConfig(level = logging.INFO, format = "%(message)s")
@@ -482,12 +500,21 @@ if __name__ == "__main__":
     ##################################################
 
     # use glob to get all mscz files
-    paths = glob.iglob(pathname = f"{MUSESCORE_DIR}/**", recursive = True) # glob filepaths recursively, generating an iterator object
+    paths = glob.iglob(pathname = f"{MUSESCORE_DIR}/data/**", recursive = True) # glob filepaths recursively, generating an iterator object
     paths = tuple(path for path in paths if isfile(path) and path.endswith("mscz")) # filter out non-file elements that were globbed
     if exists(OUTPUT_FILEPATH_FULL):
         completed_paths = set(pd.read_csv(filepath_or_buffer = OUTPUT_FILEPATH_FULL, sep = ",", header = 0, index_col = False)["path"].tolist())
         paths = list(path for path in tqdm(iterable = paths, desc = "Determining Already-Complete Paths") if path not in completed_paths)
         paths = random.sample(population = paths, k = len(paths))
+
+    # create necessary directory trees
+    data_subdirectories = pd.unique(values = list(map(lambda path: dirname(path)[len(f"{MUSESCORE_DIR}/data/"):], paths)))
+    for data_subdirectory in data_subdirectories:
+        makedirs(f"{DATA_DIR}/{data_subdirectory}", exist_ok = True)
+    metadata_subdirectories = pd.unique(values = list(map(lambda path: dirname(path)[len(f"{MUSESCORE_DIR}/metadata/"):], filter(lambda path: not pd.isna(path), METADATA.values()))))
+    for metadata_subdirectory in metadata_subdirectories:
+        makedirs(f"{METADATA_DIR}/{metadata_subdirectory}", exist_ok = True)
+    del data_subdirectories, metadata_subdirectories # free up memory
 
     ##################################################
 
