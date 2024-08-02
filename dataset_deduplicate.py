@@ -220,7 +220,7 @@ if __name__ == "__main__":
 
     # directory to output files
     output_dir = dirname(args.dataset_filepath)
-    extra_output_dir = f"{output_dir}/deduplicate_intermediate_data"
+    extra_output_dir = f"{output_dir}/.deduplicate_intermediate_data" # make the directory hidden
     if not exists(extra_output_dir):
         os.mkdir(extra_output_dir)
 
@@ -232,14 +232,12 @@ if __name__ == "__main__":
 
     # load in dataset
     logging.info("Loading in Dataset.")
-    dataset = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)
-    if args.rated_only:
-        dataset = dataset[dataset["rating"] > 0].reset_index(drop = True)
+    dataset = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)        
     
     # output filepaths
     suffix = ".rated_only" if args.rated_only else ""
-    output_filepath_embeddings = f"{extra_output_dir}/embeddings{suffix}.csv"
-    output_filepath_magnitudes = f"{extra_output_dir}/magnitudes{suffix}.csv"
+    output_filepath_embeddings = f"{extra_output_dir}/embeddings.csv"
+    output_filepath_magnitudes = f"{extra_output_dir}/magnitudes.csv"
     output_filepath = f"{args.dataset_filepath.split('.')[0]}_deduplicated{suffix}.csv"
     output_filepath_plot = f"{output_dir}/{PLOTS_DIR_NAME}/duplicates{suffix}.pdf"
 
@@ -316,6 +314,12 @@ if __name__ == "__main__":
 
     # GROUP TOGETHER SIMILAR SONG NAMES INTO A DICTIONARY
     ##################################################
+
+    if args.rated_only:
+        dataset = dataset[dataset["rating"] > 0]
+        embeddings = embeddings[dataset.index]
+        magnitudes = magnitudes[dataset.index]
+        dataset = dataset.reset_index(drop = True)
 
     # move stuff to gpu for fast matrix operations
     embeddings = torch.from_numpy(embeddings).to(device)
