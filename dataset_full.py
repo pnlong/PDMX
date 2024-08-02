@@ -305,15 +305,19 @@ def get_full_dataset(path: str) -> None:
     # songs analyzed here are in the full, uncleaned dataset
     # in other words, songs are in the public domain and can open properly
 
-    # save as music object
-    output_path = DATA_DIR + path[len(f"{MUSESCORE_DIR}/data"):] # determine output filepath of music object
-    music.save_json(path = output_path, compressed = COMPRESS_JSON_MUSIC_FILES) # save as music object
+    # do we copy objects
+    output_path = path
+    if args.copy:
+    
+        # save as music object
+        output_path = DATA_DIR + path[len(f"{MUSESCORE_DIR}/data"):] # determine output filepath of music object
+        music.save_json(path = output_path, compressed = COMPRESS_JSON_MUSIC_FILES) # save as music object
 
-    # copy over metadata path
-    if metadata_path:
-        metadata_path_new = METADATA_DIR + metadata_path[len(f"{MUSESCORE_DIR}/metadata"):]
-        copyfile(src = metadata_path, dst = metadata_path_new) # copy over metadata
-        metadata_path = metadata_path_new
+        # copy over metadata path
+        if metadata_path:
+            metadata_path_new = METADATA_DIR + metadata_path[len(f"{MUSESCORE_DIR}/metadata"):]
+            copyfile(src = metadata_path, dst = metadata_path_new) # copy over metadata
+            metadata_path = metadata_path_new
 
     # start results dictionary
     results = {
@@ -458,6 +462,7 @@ def parse_args(args = None, namespace = None):
     parser = argparse.ArgumentParser(prog = "Parse MuseScore", description = "Extract information about and from MuseScore files.")
     parser.add_argument("-m", "--metadata_mapping", type = str, default = METADATA_MAPPING, help = "Absolute filepath to metadata-to-data table")
     parser.add_argument("-o", "--output_dir", type = str, default = OUTPUT_DIR, help = "Output directory")
+    parser.add_argument("-c", "--copy", action = "store_true", help = "Whether or not to copy over files and save as Music objects")
     parser.add_argument("-j", "--jobs", type = int, default = int(multiprocessing.cpu_count() / 4), help = "Number of Jobs")
     return parser.parse_args(args = args, namespace = namespace)
 
@@ -481,10 +486,10 @@ if __name__ == "__main__":
     OUTPUT_FILEPATH_ALL = f"{args.output_dir}/all_files.csv"
     OUTPUT_FILEPATH_FULL = f"{args.output_dir}/{basename(args.output_dir)}_full.csv"
     DATA_DIR = f"{args.output_dir}/data"
-    if not exists(DATA_DIR):
+    if not exists(DATA_DIR) and args.copy:
         mkdir(DATA_DIR)
     METADATA_DIR = f"{args.output_dir}/metadata"
-    if not exists(METADATA_DIR):
+    if not exists(METADATA_DIR) and args.copy:
         mkdir(METADATA_DIR)
 
     # for getting metadata
@@ -507,14 +512,15 @@ if __name__ == "__main__":
         paths = list(path for path in tqdm(iterable = paths, desc = "Determining Already-Complete Paths") if path not in completed_paths)
         paths = random.sample(population = paths, k = len(paths))
 
-    # create necessary directory trees
-    data_subdirectories = pd.unique(values = list(map(lambda path: dirname(path)[len(f"{MUSESCORE_DIR}/data/"):], paths)))
-    for data_subdirectory in data_subdirectories:
-        makedirs(f"{DATA_DIR}/{data_subdirectory}", exist_ok = True)
-    metadata_subdirectories = pd.unique(values = list(map(lambda path: dirname(path)[len(f"{MUSESCORE_DIR}/metadata/"):], filter(lambda path: not pd.isna(path), METADATA.values()))))
-    for metadata_subdirectory in metadata_subdirectories:
-        makedirs(f"{METADATA_DIR}/{metadata_subdirectory}", exist_ok = True)
-    del data_subdirectories, metadata_subdirectories # free up memory
+    # create necessary directory trees if required
+    if args.copy:
+        data_subdirectories = pd.unique(values = list(map(lambda path: dirname(path)[len(f"{MUSESCORE_DIR}/data/"):], paths)))
+        for data_subdirectory in data_subdirectories:
+            makedirs(f"{DATA_DIR}/{data_subdirectory}", exist_ok = True)
+        metadata_subdirectories = pd.unique(values = list(map(lambda path: dirname(path)[len(f"{MUSESCORE_DIR}/metadata/"):], filter(lambda path: not pd.isna(path), METADATA.values()))))
+        for metadata_subdirectory in metadata_subdirectories:
+            makedirs(f"{METADATA_DIR}/{metadata_subdirectory}", exist_ok = True)
+        del data_subdirectories, metadata_subdirectories # free up memory
 
     ##################################################
 
