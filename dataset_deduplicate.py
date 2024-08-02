@@ -416,11 +416,7 @@ if __name__ == "__main__":
         # load in dataset
         dataset_deduplicated = pd.read_csv(filepath_or_buffer = output_filepath, sep = ",", header = 0, index_col = False)
         dataset = dataset.merge(right = dataset_deduplicated, how = "left", on = "path", left_index = False, right_index = False) # add deduplicate columns
-        if args.rated_only:
-            dataset = dataset[dataset["rating"] > 0] # filter if necessary
-        
-        # free up memory
-        del dataset_deduplicated
+        del dataset_deduplicated # free up memory
 
         ##################################################
 
@@ -429,6 +425,10 @@ if __name__ == "__main__":
 
     # OUTPUT STATISTICS
     ##################################################
+
+    # filter dataset if needed
+    if args.rated_only:
+        dataset = dataset[dataset["rating"] > 0] # filter if necessary
 
     # update on how many unique arrangments
     n_best_paths = sum(dataset["is_best_path"])
