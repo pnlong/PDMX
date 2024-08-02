@@ -45,7 +45,7 @@ DEFAULT_BATCH_SIZE = 32
 DESCRIPTOR_COLUMNS = ["song_name", "title", "subtitle", "artist_name", "composer_name"]
 
 # column names for how to determine the best version of a song
-BEST_VERSION_METRIC_COLUMNS = ["rating", "n_ratings", "n_tokens", "n_notes"]
+BEST_VERSION_METRIC_COLUMNS = ["rating", "n_ratings", "n_notes", "n_tokens"]
 
 # column names to include in the output
 OUTPUT_COLUMNS = ["path", "best_path", "is_best_path", "best_arrangement", "is_best_arrangement", "best_unique_arrangement", "is_best_unique_arrangement"]
@@ -53,7 +53,7 @@ OUTPUT_COLUMNS = ["path", "best_path", "is_best_path", "best_arrangement", "is_b
 # minimum similarity (0 to 1) between two song titles for them to be considered duplicates
 SIMILARITY_THRESHOLD = 0.8
 
-# fraction difference in number of tokens necessary for two songs when those songs have the same instrumentation to be considered 'unique' arrangements
+# fraction difference in number of notes necessary for two songs when those songs have the same instrumentation to be considered 'unique' arrangements
 UNIQUENESS_DIFFERENTIATION_COLUMN = "n_notes"
 UNIQUENESS_THRESHOLD = 0.05
 
@@ -166,7 +166,7 @@ def choose_unique_arrangements_from_indicies(indicies: List[int]) -> pd.DataFram
             duplicates.loc[not_best_arrangement_indicies, "is_best_arrangement"] = False # these indicies are not the best arrangment with this instrumentation
             
             # find unique arrangements within this instrumentation; group songs with similar number of tokens together
-            duplicates_instrumentation = duplicates_instrumentation.sort_values(by = UNIQUENESS_DIFFERENTIATION_COLUMN, axis = 0, ascending = False, na_position = "last", ignore_index = False)
+            duplicates_instrumentation = duplicates_instrumentation.sort_values(by = UNIQUENESS_DIFFERENTIATION_COLUMN, axis = 0, ascending = True, na_position = "last", ignore_index = False)
             groups = [[duplicates_instrumentation.index[0]]]
             for i in range(1, len(duplicates_instrumentation)):
                 i_previous, i_current = duplicates_instrumentation.index[(i - 1):(i + 1)]
@@ -413,14 +413,11 @@ if __name__ == "__main__":
         # LOAD IN ALREADY CALCULATE DATASET
         ##################################################
 
-        # update
-        logging.info("Loading in Deduplicated Dataset.")
-
         # load in dataset
         dataset_deduplicated = pd.read_csv(filepath_or_buffer = output_filepath, sep = ",", header = 0, index_col = False)
+        dataset = dataset.merge(right = dataset_deduplicated, how = "left", on = "path", left_index = False, right_index = False) # add deduplicate columns
         if args.rated_only:
             dataset = dataset[dataset["rating"] > 0] # filter if necessary
-        dataset = dataset.merge(right = dataset_deduplicated, how = "left", on = "path") # add deduplicate columns
         
         # free up memory
         del dataset_deduplicated
