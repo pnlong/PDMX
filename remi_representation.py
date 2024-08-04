@@ -11,7 +11,6 @@
 ##################################################
 
 import pprint
-from os.path import abspath, dirname
 import numpy as np
 from typing import List
 import utils
@@ -432,14 +431,15 @@ def extract_notes(music: MusicExpress, resolution: int = RESOLUTION) -> np.array
     notes = []
     for track in music:
         for note in track:
-            beat, position = map(int, divmod(note.time * resolution_scale_factor, resolution))
-            notes.append((beat, position, note.pitch, note.duration, track.program))
+            beat, position = divmod(note.time * resolution_scale_factor, resolution)
+            duration = note.duration * resolution_scale_factor
+            notes.append(tuple(map(int, (beat, position, note.pitch, duration, track.program))))
 
     # deduplicate and sort the notes
     notes = sorted(set(notes))
 
     # return list of events
-    return np.array(notes)
+    return np.array(object = notes, dtype = np.uint16)
 
 # encode intermediate extraction scheme
 def encode_notes(notes: np.array, encoding: dict, indexer: Indexer) -> np.array:

@@ -39,7 +39,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "true"
 ##################################################
 
 # default batch size for encoding song titles as sentence embeddings
-DEFAULT_BATCH_SIZE = 32
+BATCH_SIZE = 32
 
 # column names in dataset from which we can create a description of the song that can be used for deduplication
 DESCRIPTOR_COLUMNS = ["song_name", "title", "subtitle", "artist_name", "composer_name"]
@@ -198,7 +198,7 @@ def parse_args(args = None, namespace = None):
     parser = argparse.ArgumentParser(prog = "Deduplicate", description = "Deduplicate songs in full dataset.")
     parser.add_argument("-d", "--dataset_filepath", default = f"{OUTPUT_DIR}/{DATASET_DIR_NAME}_full.csv", type = str, help = "Filepath to full dataset")
     parser.add_argument("-r", "--reset", action = "store_true", help = "Whether or not to recreate intermediate data tables")
-    parser.add_argument("-bs", "--batch_size", default = DEFAULT_BATCH_SIZE, type = int, help = "Batch size")
+    parser.add_argument("-bs", "--batch_size", default = BATCH_SIZE, type = int, help = "Batch size")
     parser.add_argument("-g", "--gpu", default = -1, type = int, help = "GPU number")
     parser.add_argument("-j", "--jobs", default = int(multiprocessing.cpu_count() / 4), type = int, help = "Number of Jobs")
     return parser.parse_args(args = args, namespace = namespace)

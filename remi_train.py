@@ -2,7 +2,7 @@
 # Phillip Long
 # August 1, 2024
 
-# Train a REMI-Style model
+# Train a REMI-Style model.
 
 # python /home/pnlong/model_musescore/remi_train.py
 
@@ -15,7 +15,7 @@ import pprint
 import sys
 from os.path import exists
 from os import makedirs, mkdir
-import multiprocessing
+from multiprocessing import cpu_count # for calculating num_workers
 import wandb
 import datetime # for creating wandb run names linked to time of run
 
@@ -36,7 +36,7 @@ import utils
 ##################################################
 
 # paths
-INPUT_DIR = "/data2/pnlong/musescore/remi/all"
+INPUT_DIR = f"{remi_dataset.OUTPUT_DIR}/{remi_dataset.FACETS[0]}"
 PATHS_TRAIN = f"{INPUT_DIR}/train.txt"
 PATHS_VALID = f"{INPUT_DIR}/valid.txt"
 OUTPUT_DIR = INPUT_DIR
@@ -100,11 +100,10 @@ def get_lr_multiplier(step: int, warmup_steps: int, decay_end_steps: int, decay_
 def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(prog = "Train", description = "Train a REMI-Style Model.")
-    parser.add_argument("-pt", "--paths_train", default = PATHS_TRAIN, type = str, help = ".txt file with absolute filepaths to training dataset.")
-    parser.add_argument("-pv", "--paths_valid", default = PATHS_VALID, type = str, help = ".txt file with absolute filepaths to validation dataset.")
+    parser.add_argument("-pt", "--paths_train", default = PATHS_TRAIN, type = str, help = ".txt file with absolute filepaths to training dataset")
+    parser.add_argument("-pv", "--paths_valid", default = PATHS_VALID, type = str, help = ".txt file with absolute filepaths to validation dataset")
     parser.add_argument("-o", "--output_dir", default = OUTPUT_DIR, type = str, help = "Output directory")
     # data
-    parser.add_argument("-bs", "--batch_size", default = BATCH_SIZE, type = int, help = "Batch size")
     parser.add_argument("--aug", action = argparse.BooleanOptionalAction, default = True, help = "Whether to use data augmentation")
     # model
     parser.add_argument("--max_seq_len", default = MAX_SEQ_LEN, type = int, help = "Maximum sequence length")
@@ -126,9 +125,10 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("--lr_decay_multiplier", default = LEARNING_RATE_DECAY_MULTIPLIER, type = float, help = "Learning rate multiplier at the end")
     parser.add_argument("--grad_norm_clip", default = GRAD_NORM_CLIP, type = float, help = "Gradient norm clipping")
     # others
-    parser.add_argument("-r", "--resume", default = None, type = str, help = "Provide the wandb run name/id to resume a run")
+    parser.add_argument("-bs", "--batch_size", default = BATCH_SIZE, type = int, help = "Batch size")
     parser.add_argument("-g", "--gpu", default = -1, type = int, help = "GPU number")
-    parser.add_argument("-j", "--jobs", default = int(multiprocessing.cpu_count() / 4), type = int, help = "Number of workers for data loading")
+    parser.add_argument("-j", "--jobs", default = int(cpu_count() / 4), type = int, help = "Number of workers for data loading")
+    parser.add_argument("-r", "--resume", default = None, type = str, help = "Provide the wandb run name/id to resume a run")
     return parser.parse_args(args = args, namespace = namespace)
 
 ##################################################

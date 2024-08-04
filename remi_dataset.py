@@ -42,7 +42,7 @@ OUTPUT_DIR = "/data2/pnlong/musescore/remi"
 FACETS = ["all", "rated", "deduplicated", "rated_deduplicated"]
 
 # partition names
-PARTITIONS = {"train": 0.8, "valid": 0.1, "test": 0.1}
+PARTITIONS = {"train": 0.9, "valid": 0.1, "test": 0.0} # no test partition
 
 # value for padding
 PAD_VALUE = 0
@@ -310,7 +310,8 @@ if __name__ == "__main__":
         paths = sample(population = data["path"], k = len(data)) # shuffle paths
         save_paths_to_file(paths = paths[:n_train], output_filepath = f"{output_dir}/train.txt") # train partition
         save_paths_to_file(paths = paths[n_train:(n_train + n_valid)], output_filepath = f"{output_dir}/valid.txt") # validation partition
-        save_paths_to_file(paths = paths[(n_train + n_valid):], output_filepath = f"{output_dir}/test.txt") # test partition
+        if n_test > 0:
+            save_paths_to_file(paths = paths[(n_train + n_valid):], output_filepath = f"{output_dir}/test.txt") # test partition
 
     ##################################################
 
@@ -332,7 +333,7 @@ if __name__ == "__main__":
     )
     data_loader = torch.utils.data.DataLoader(
         dataset = dataset,
-        batch_size = args.batch_size,
+        batch_size = 8,
         shuffle = True,
         collate_fn = MusicDataset.collate,
     )
