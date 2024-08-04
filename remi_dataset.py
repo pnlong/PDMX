@@ -221,6 +221,9 @@ if __name__ == "__main__":
     # set up the logger
     logging.basicConfig(level = logging.INFO, format = "%(message)s")
 
+    # save random seed so this can be replicated
+    random.seed(0)
+
     ##################################################
 
 
@@ -294,9 +297,6 @@ if __name__ == "__main__":
         """Given a list of paths, save to a file."""
         with open(output_filepath, "w") as output_file:
             output_file.write("\n".join(paths))
-
-    # save random seed so it can be replicated
-    random.seed(0)
 
     # go through the different facets
     for facet in FACETS:
