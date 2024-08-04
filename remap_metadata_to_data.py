@@ -9,8 +9,9 @@
 # IMPORTS
 ##################################################
 
+import argparse
 import glob
-from os.path import isfile, exists
+from os.path import isfile
 from tqdm import tqdm
 import multiprocessing
 import json
@@ -51,63 +52,64 @@ def parse_args(args = None, namespace = None):
 
 if __name__ == "__main__":
 
-    if not exists(args.output_filepath):
+    # SET UP
+    ##################################################
 
-        # SET UP
-        ##################################################
+    # parse arguments
+    args = parse_args()
 
-        # parse arguments
-        args = parse_args()
+    # set up logging
+    logging.basicConfig(level = logging.INFO, format = "%(message)s")
 
-        # set up logging
-        logging.basicConfig(level = logging.INFO, format = "%(message)s")
-
-        ##################################################
+    ##################################################
 
 
-        # GET FILEPATHS WITH GLOB + WRONG MAPPINGS
-        ##################################################
+    # GET FILEPATHS WITH GLOB + WRONG MAPPINGS
+    ##################################################
 
-        # create dictionary
-        metadata_paths = glob.iglob(pathname = f"{args.musescore_dir}/metadata/**", recursive = True) # glob filepaths recursively, generating an iterator object
-        metadata_paths = (metadata_path for metadata_path in metadata_paths if isfile(metadata_path)) # filter out non-file elements that were globbed
-        metadata_paths = {metadata_path.split("/")[-1].split(".")[0] : metadata_path for metadata_path in metadata_paths} # turn into dictionary, will make finding files much faster
+    # create dictionary
+    metadata_paths = glob.iglob(pathname = f"{args.musescore_dir}/metadata/**", recursive = True) # glob filepaths recursively, generating an iterator object
+    metadata_paths = (metadata_path for metadata_path in metadata_paths if isfile(metadata_path)) # filter out non-file elements that were globbed
+    metadata_paths = {metadata_path.split("/")[-1].split(".")[0] : metadata_path for metadata_path in metadata_paths} # turn into dictionary, will make finding files much faster
 
-        # import mappings
-        with open(f"{args.musescore_dir}/metadata2path.json", "r") as file:
-            mappings = json.load(fp = file)
-        mappings = pd.DataFrame.from_dict(data = mappings, orient = "index").reset_index(drop = False).rename(columns = {"index": "metadata", 0: "data_path"})
-        mappings["data"] = mappings["data_path"].apply(lambda data_path: data_path.split("/")[-1].split(".")[0])
-        mappings = mappings[MAPPINGS_COLUMNS[:2] + MAPPINGS_COLUMNS[3:]]
+    # import mappings
+    with open(f"{args.musescore_dir}/metadata2path.json", "r") as file:
+        mappings = json.load(fp = file)
+    mappings = pd.DataFrame.from_dict(data = mappings, orient = "index").reset_index(drop = False).rename(columns = {"index": "metadata", 0: "data_path"})
+    mappings["data"] = mappings["data_path"].apply(lambda data_path: data_path.split("/")[-1].split(".")[0])
+    mappings = mappings[MAPPINGS_COLUMNS[:2] + MAPPINGS_COLUMNS[3:]]
 
-        ##################################################
+    ##################################################
 
 
-        # ITERATE THROUGH MAPPINGS, CREATE A HELPER FUNCTION TO REMAP, OUTPUTTING EACH NEW FILE
-        ##################################################
+    # CREATE A HELPER FUNCTION TO REMAP, OUTPUTTING EACH NEW FILE
+    ##################################################
 
-        # create remappings dataframe
-        remappings = pd.DataFrame(columns = MAPPINGS_COLUMNS) # create dataframe
-        remappings.to_csv(path_or_buf = args.output_filepath, sep = ",", na_rep = utils.NA_STRING, header = True, index = False, mode = "w")
+    # create remappings dataframe
+    remappings = pd.DataFrame(columns = MAPPINGS_COLUMNS) # create dataframe
+    remappings.to_csv(path_or_buf = args.output_filepath, sep = ",", na_rep = utils.NA_STRING, header = True, index = False, mode = "w")
 
-        def find_metadata_path(i: int):
+    def find_metadata_path(i: int) -> None:
+        """
+        Given an index, find the metadata path, and output that information to the output filepath.
+        """
 
-            # get current mapping
-            current = mappings.loc[i]
+        # get current mapping
+        current = mappings.loc[i]
 
-            # get metadata path
-            try:
-                metadata_path = metadata_paths[str(current["metadata"])]
-            except KeyError: # if nothing was found, make NA
-                metadata_path = None
+        # get metadata path
+        try:
+            metadata_path = metadata_paths[str(current["metadata"])]
+        except KeyError: # if nothing was found, make NA
+            metadata_path = None
 
-            # add metadata path to list to output
-            current = current.to_list() # convert to list
-            current.insert(2, metadata_path) # add metadatapath to current
+        # add metadata path to list to output
+        current = current.to_list() # convert to list
+        current.insert(2, metadata_path) # add metadatapath to current
 
-            # output current
-            remappings_current = pd.DataFrame(data = [dict(zip(MAPPINGS_COLUMNS, current))], columns = MAPPINGS_COLUMNS)
-            remappings_current.to_csv(path_or_buf = args.output_filepath, sep = ",", na_rep = utils.NA_STRING, header = False, index = False, mode = "a")
+        # output current
+        remappings_current = pd.DataFrame(data = [dict(zip(MAPPINGS_COLUMNS, current))], columns = MAPPINGS_COLUMNS)
+        remappings_current.to_csv(path_or_buf = args.output_filepath, sep = ",", na_rep = utils.NA_STRING, header = False, index = False, mode = "a")
 
     ##################################################
 
@@ -117,7 +119,7 @@ if __name__ == "__main__":
 
     # run with multiprocessing
     with multiprocessing.Pool(processes = args.jobs) as pool:
-        results = list(tqdm(iterable = pool.imap_unordered(
+        _ = list(tqdm(iterable = pool.imap_unordered(
                 func = find_metadata_path,
                 iterable = range(len(mappings)),
                 chunksize = CHUNK_SIZE,
