@@ -14,6 +14,7 @@ import logging
 import multiprocessing
 import pandas as pd
 import matplotlib.pyplot as plt
+import numpy as np
 
 from dataset_full import MMT_STATISTIC_COLUMNS, CHUNK_SIZE
 from remi_dataset import FACETS, OUTPUT_DIR
@@ -73,6 +74,9 @@ if __name__ == "__main__":
     if model not in models:
         raise RuntimeError(f"`{model}` is not a valid model.")
 
+    # remove part of dataset we don't need
+    dataset = dataset[dataset["model"] == model]
+
     ##################################################
 
 
@@ -80,19 +84,40 @@ if __name__ == "__main__":
     ##################################################
 
     # create plot
-    plot_to_legend_ratio = 3 # plots are `plot_to_legend_ratio` times taller than the legend
     fig, axes = plt.subplot_mosaic(mosaic = [MMT_STATISTIC_COLUMNS[:-1], [MMT_STATISTIC_COLUMNS[-1], "legend"]], constrained_layout = True, figsize = (6, 6))
     fig.suptitle(f"Evaluating {model} Model Performance", fontweight = "bold")
 
     # helper function to plot
+    n_bins = 10
+    range_multiplier_constant = 1.1
     def plot_mmt_statistic(mmt_statistic: str) -> None:
         """Plot information on MMT-style statistic in evaluations."""
 
-        #
+        # loop through facets
+        for facet in FACETS:
+            
+            # get histogram values
+            data = dataset[dataset["facet"] == facet][mmt_statistic]
+            min_data, max_data = min(data), max(data)
+            range = max_data - min_data
+            margin = ((range_multiplier_constant - 1) / 2) * range
+            bin_width = (range_multiplier_constant * range) / n_bins
+            bins = np.arange(start = min_data - margin, stop = max_data + margin + (bin_width / 2), step = bin_width)
+            data, bins = np.histogram(a = data, bins = bins) # create histogram
+            bins = [(bins[i] + bins[i + 1]) / 2 for i in range(len(bins) - 1)] # get centerpoints of each bin
+
+            # plot
+            axes[mmt_statistic].plot(bins, data, label = facet)
+
+        # axes labels and such
+        axes[mmt_statistic].set_xlabel("Value")
+        axes[mmt_statistic].set_ylabel("Count")
+        axes[mmt_statistic].set_title(mmt_statistic.replace("_", " ").title())
+        axes[mmt_statistic].grid()
 
     # plot plots
     with multiprocessing.Pool(processes = args.jobs) as pool:
-        _ = pool.map(func = plot_mmt_statistic, iterable = MMT_STATISTIC_COLUMNS, chunksize = dataset_full.CHUNK_SIZE)
+        _ = pool.map(func = plot_mmt_statistic, iterable = MMT_STATISTIC_COLUMNS, chunksize = CHUNK_SIZE)
 
     # plot legend
     handles, labels = axes[MMT_STATISTIC_COLUMNS[0]].get_legend_handles_labels()
