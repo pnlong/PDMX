@@ -291,9 +291,7 @@ if __name__ == "__main__":
 
         # for calculating cosine similarity, calculate the magnitude of each song title vector embedding
         with multiprocessing.Pool(processes = args.jobs) as pool:
-            magnitudes = np.array(list(tqdm(iterable = pool.map(func = np.linalg.norm, iterable = embeddings, chunksize = CHUNK_SIZE),
-                                            desc = "Computing Embedding Magnitudes",
-                                            total = len(embeddings))))
+            magnitudes = np.array(list(pool.map(func = np.linalg.norm, iterable = tqdm(iterable = embeddings, desc = "Computing Embedding Magnitudes", total = len(embeddings)), chunksize = CHUNK_SIZE)))
         
         # write magnitudes to file for future use
         pd.DataFrame(data = magnitudes).to_csv(path_or_buf = output_filepath_magnitudes, sep = ",", header = False, index = False, mode = "w")
