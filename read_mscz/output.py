@@ -24,7 +24,6 @@ from warnings import warn
 # general
 from .classes import *
 from utils import unique
-import representation
 
 # midi
 from mido import Message, MetaMessage, MidiFile, MidiTrack, bpm2tempo, second2tick, MAX_PITCHWHEEL
@@ -54,14 +53,29 @@ from music21.exceptions21 import StreamException
 # CONSTANTS
 ##################################################
 
-DEFAULT_DYNAMIC = "mf" # not to be confused with representation.DEFAULT_DYNAMIC
 FERMATA_TEMPO_SLOWDOWN = 3 # factor by which to slow down the tempo when there is a fermata
+N_NOTES = 128 # number of notes for midi
+RESOLUTION = 12 # resolution for MusicExpress
 PEDAL_DURATION_CHANGE_FACTOR = 3 # factor by which the sustain pedal increases the duration of each note
 STACCATO_DURATION_CHANGE_FACTOR = 5 # factor by which a staccato decreases the duration of a note
 VELOCITY_INCREASE_FACTOR = 2 # factor by which to increase velocity when an expressive feature GRADUALLY increases velocity
 ACCENT_VELOCITY_INCREASE_FACTOR = 1.5 # factor by which to increase velocity when an accent INSTANTANEOUSLY increases velocity
 FRACTION_TO_WIGGLE = 0.34 # fraction of MAX/MIN_PITCHWHEEL to bend notes for wiggle articulations (vibratos and sawtooths)
 DEFAULT_TEMPO = bpm2tempo(bpm = DEFAULT_QPM)
+
+# dynamics
+MAX_VELOCITY = 127 # maximum velocity for midi
+DEFAULT_DYNAMIC = "mf" # not to be confused with representation.DEFAULT_DYNAMIC
+DEFAULT_DYNAMIC_NAME = "dynamic-marking"
+DYNAMIC_VELOCITY_MAP = {
+    "pppppp": 4, "ppppp": 8, "pppp": 12, "ppp": 16, "pp": 33, "p": 49, "mp": 64,
+    "mf": 80, "f": 96, "ff": 112, "fff": 126, "ffff": 127, "fffff": 127, "ffffff": 127,
+    "sfpp": 96, "sfp": 112, "sf": 112, "sff": 126, "sfz": 112, "sffz": 126, "fz": 112, "rf": 112, "rfz": 112,
+    "fp": 96, "pf": 49, "s": DEFAULT_VELOCITY, "r": DEFAULT_VELOCITY, "z": DEFAULT_VELOCITY, "n": DEFAULT_VELOCITY, "m": DEFAULT_VELOCITY,
+    DEFAULT_DYNAMIC_NAME: DEFAULT_VELOCITY,
+}
+DYNAMIC_DYNAMICS = set(tuple(DYNAMIC_VELOCITY_MAP.keys())[:tuple(DYNAMIC_VELOCITY_MAP.keys()).index("ffffff") + 1]) # dynamics that are actually dynamic markings and not sudden dynamic hikes
+
 
 ##################################################
 
@@ -106,11 +120,11 @@ def to_mido_note_on_note_off(note: Note, channel: int, use_note_off_message: boo
     velocity = note.velocity # copy of velocity as to not alter the music object
     if velocity is None:
         velocity = DEFAULT_VELOCITY
-    velocity = int(max(min(velocity, representation.MAX_VELOCITY), 0)) # make sure velocity is within valid range and an integer
+    velocity = int(max(min(velocity, MAX_VELOCITY), 0)) # make sure velocity is within valid range and an integer
 
     # deal with note
     pitch = note.pitch
-    pitch = int(max(min(pitch, representation.N_NOTES - 1), 0)) # make sure the note is within valid range and an integer
+    pitch = int(max(min(pitch, N_NOTES - 1), 0)) # make sure the note is within valid range and an integer
 
     # note on message
     note_on_msg = Message(type = "note_on", time = note.time, note = pitch, velocity = velocity, channel = channel) # create note on message
@@ -268,7 +282,7 @@ def sort_expressive_features_key(annotation: Annotation) -> int:
         return len(EXPRESSIVE_FEATURE_PRIORITIES)
 
 
-def get_wiggle_func(articulation_subtype: str, amplitude: float = FRACTION_TO_WIGGLE * MAX_PITCHWHEEL, resolution: float = representation.RESOLUTION) -> Callable:
+def get_wiggle_func(articulation_subtype: str, amplitude: float = FRACTION_TO_WIGGLE * MAX_PITCHWHEEL, resolution: float = RESOLUTION) -> Callable:
     """Return the function that given a time, returns the amount of pitchbend for wiggle functions (vibrato or sawtooth)."""
     period = resolution / 3
     if ("fast" in articulation_subtype) or ("wide" not in articulation_subtype):
@@ -295,7 +309,7 @@ def get_expressive_features_per_note(note_times: list, all_annotations: list) ->
         if annotation_falls_on_note: # if this annotation falls on a note, add that annotation to expressive features (which we care about)
             expressive_features[annotation.time].append(annotation) # add annotation
         if hasattr(annotation.annotation, "duration"): # deal with duration
-            if (annotation.annotation.__class__.__name__ == "Dynamic") and (annotation.annotation.subtype not in representation.DYNAMIC_DYNAMICS): # for sudden dynamic hikes do not fill with duration
+            if (annotation.annotation.__class__.__name__ == "Dynamic") and (annotation.annotation.subtype not in DYNAMIC_DYNAMICS): # for sudden dynamic hikes do not fill with duration
                 continue
             if annotation_falls_on_note: # get index of the note after the current time when annotation falls on a note
                 current_note_time_index = note_times.index(annotation.time) + 1
@@ -316,16 +330,16 @@ def get_expressive_features_per_note(note_times: list, all_annotations: list) ->
     for i, note_time in enumerate(note_times):
         if not any((annotation.annotation.__class__.__name__ == "Dynamic" for annotation in expressive_features[note_time])): # if there is no dynamic
             j = i - 1 # start index finder at the index before current
-            while not any((annotation.annotation.subtype in representation.DYNAMIC_DYNAMICS for annotation in expressive_features[note_times[j]] if annotation.annotation.__class__.__name__ == "Dynamic")) and (j > -1): # look for previous note times with a dynamic
+            while not any((annotation.annotation.subtype in DYNAMIC_DYNAMICS for annotation in expressive_features[note_times[j]] if annotation.annotation.__class__.__name__ == "Dynamic")) and (j > -1): # look for previous note times with a dynamic
                 j -= 1 # decrement j
             if j == -1: # no notes with dynamics before this one, result to default values
-                dynamic_annotation = Dynamic(subtype = DEFAULT_DYNAMIC, velocity = representation.DYNAMIC_VELOCITY_MAP[DEFAULT_DYNAMIC])
+                dynamic_annotation = Dynamic(subtype = DEFAULT_DYNAMIC, velocity = DYNAMIC_VELOCITY_MAP[DEFAULT_DYNAMIC])
             else: # we found a dynamic before this note time
                 dynamic_annotation = expressive_features[note_times[j]][0].annotation # we can assume the dynamic marking is at index 0 because of our sorting
             expressive_features[note_time].insert(0, Annotation(time = note_time, annotation = dynamic_annotation))
         expressive_features[note_time] = sorted(expressive_features[note_time], key = sort_expressive_features_key) # sort expressive features in desired order
         if expressive_features[note_time][0].annotation.velocity is None: # make sure dynamic velocity is not none
-            expressive_features[note_time][0].annotation.velocity = representation.DYNAMIC_VELOCITY_MAP[DEFAULT_DYNAMIC] # set to default velocity
+            expressive_features[note_time][0].annotation.velocity = DYNAMIC_VELOCITY_MAP[DEFAULT_DYNAMIC] # set to default velocity
 
     return expressive_features
 
@@ -715,7 +729,7 @@ def write_musicxml(path: str, music: "MusicExpress", compressed: bool = None):
                 m21_annotation = M21Expression.RehearsalMark(content = annotation.annotation.text)
             # Dynamic
             elif annotation.annotation.__class__.__name__ == "Dynamic":
-                m21_annotation = M21Dynamic.Dynamic(value = annotation.annotation.subtype if annotation.annotation.subtype != representation.DEFAULT_EXPRESSIVE_FEATURE_VALUES["Dynamic"] else DEFAULT_DYNAMIC)
+                m21_annotation = M21Dynamic.Dynamic(value = annotation.annotation.subtype if annotation.annotation.subtype != DEFAULT_DYNAMIC_NAME else DEFAULT_DYNAMIC)
             # Fermata
             elif is_fermata:
                 m21_annotation = M21Expression.Fermata()
