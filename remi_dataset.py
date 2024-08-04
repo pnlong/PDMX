@@ -16,7 +16,7 @@ from tqdm import tqdm
 from typing import List, Callable
 from os.path import exists, basename
 from os import makedirs, mkdir
-from random import sample
+import random
 
 import numpy as np
 import pandas as pd
@@ -280,6 +280,12 @@ if __name__ == "__main__":
     with multiprocessing.Pool(processes = args.jobs) as pool:
         dataset["output_path"] = list(pool.map(func = extract_notes, iterable = tqdm(iterable = dataset["path"], desc = "Extracting Notes", total = len(dataset)), chunksize = dataset_full.CHUNK_SIZE))
 
+    ##################################################
+
+
+    # PARTITION
+    ##################################################
+
     # get partitions set up
     partitions = dict(zip(PARTITIONS.keys(), (1 - args.ratio_valid - args.ratio_test, args.ratio_valid, args.ratio_test)))
 
@@ -288,6 +294,9 @@ if __name__ == "__main__":
         """Given a list of paths, save to a file."""
         with open(output_filepath, "w") as output_file:
             output_file.write("\n".join(paths))
+
+    # save random seed so it can be replicated
+    random.seed(0)
 
     # go through the different facets
     for facet in FACETS:
@@ -298,6 +307,7 @@ if __name__ == "__main__":
             data = data[data["rating"] > 0]
         if "deduplicate" in facet:
             data = data[data["is_best_unique_arrangement"]]
+        data = data["output_path"].to_list() # filter down to only necessary column, output_path
 
         # create subdirectory
         output_dir = f"{args.output_dir}/{facet}"
@@ -307,7 +317,7 @@ if __name__ == "__main__":
         # partition files
         n_valid, n_test = (partitions["valid"] * len(data)), (partitions["test"] * len(data)) # get the validation and test partitions from the ratios
         n_train = len(data) - n_valid - n_test # as to not exclude any files, the train partition is simply what's not in the validation or test partition
-        paths = sample(population = data["path"], k = len(data)) # shuffle paths
+        paths = random.sample(population = data, k = len(data)) # shuffle paths
         save_paths_to_file(paths = paths[:n_train], output_filepath = f"{output_dir}/train.txt") # train partition
         save_paths_to_file(paths = paths[n_train:(n_train + n_valid)], output_filepath = f"{output_dir}/valid.txt") # validation partition
         if n_test > 0:
