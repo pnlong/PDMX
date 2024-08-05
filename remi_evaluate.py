@@ -45,7 +45,7 @@ TEMPERATURE = 1.0
 FILTER = "top_k"
 
 # output columns
-OUTPUT_COLUMNS = ["path", "model"] + MMT_STATISTIC_COLUMNS
+OUTPUT_COLUMNS = ["model", "path"] + MMT_STATISTIC_COLUMNS
 
 ##################################################
 
@@ -256,7 +256,7 @@ if __name__ == "__main__":
     results = pd.read_csv(filepath_or_buffer = output_filepath, sep = ",", na_values = utils.NA_STRING, header = 0, index_col = False) # load in previous values
     for model in models:
         results_model = results[results["model"] == model]
-        logging.info(f"\n{f' {model} ':^={bar_width}}")
+        logging.info(f"\n{f' {model} ':=^{bar_width}}")
         for mmt_statistic in MMT_STATISTIC_COLUMNS:
             logging.info(f"{mmt_statistic.replace('_', ' ').title()}: mean = {np.nanmean(a = results[mmt_statistic], axis = 0):.4f}, std = {np.nanstd(a = results[mmt_statistic], axis = 0):.4f}")
 
