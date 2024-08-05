@@ -79,9 +79,10 @@ def pad(data: np.array, maxlen: int = None) -> np.array:
 def get_mask(data: np.array) -> torch.tensor:
     """Get a boolean mask to cover part of data."""
     max_seq_len = max(len(seq) for seq in data)
-    mask = torch.zeros(size = (len(data), max_seq_len), dtype = torch.bool)
+    mask = torch.zeros(size = (len(data), max_seq_len - 1), dtype = torch.bool)
     for i, seq in enumerate(data):
         mask[i, :len(seq)] = True # mask values
+    mask = mask[:, :-1] # because we do autoregression autoregression, we are predicting data[:, 1:], so mask must be max_seq_len - 1 to accomodate
     return mask # return the mask
 
 ##################################################
@@ -163,7 +164,7 @@ class MusicDataset(torch.utils.data.Dataset):
         # encode the notes
         seq = self.encode_fn(notes = notes, encoding = self.encoding, indexer = self.indexer)
 
-        # Trim sequence to max_seq_len
+        # trim sequence to max_seq_len
         if (self.max_seq_len is not None) and (len(seq) > self.max_seq_len):
             seq = np.concatenate((seq[:(self.max_seq_len - 2)], seq[(-2):]))
 
