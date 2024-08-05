@@ -79,10 +79,10 @@ def pad(data: np.array, maxlen: int = None) -> np.array:
 def get_mask(data: np.array) -> torch.tensor:
     """Get a boolean mask to cover part of data."""
     max_seq_len = max(len(seq) for seq in data)
-    mask = torch.zeros(size = (len(data), max_seq_len - 1), dtype = torch.bool)
+    mask = torch.zeros(size = (len(data), max_seq_len), dtype = torch.bool)
     for i, seq in enumerate(data):
         mask[i, :len(seq)] = True # mask values
-    mask = mask[:, :-1] # because we do autoregression autoregression, we are predicting data[:, 1:], so mask must be max_seq_len - 1 to accomodate
+    mask = mask[:, :(max_seq_len - 1)] # because we do autoregression autoregression, we are predicting data[:, 1:], so mask must be max_seq_len - 1 to accomodate
     return mask # return the mask
 
 ##################################################
