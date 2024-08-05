@@ -304,7 +304,7 @@ if __name__ == "__main__":
     for facet in FACETS:
 
         # filter dataset
-        data = dataset.copy()
+        data = dataset
         if "rate" in facet:
             data = data[data["rating"] > 0]
         if "deduplicate" in facet:
@@ -317,7 +317,7 @@ if __name__ == "__main__":
             mkdir(output_dir)
 
         # partition files
-        n_valid, n_test = (partitions["valid"] * len(data)), (partitions["test"] * len(data)) # get the validation and test partitions from the ratios
+        n_valid, n_test = int(partitions["valid"] * len(data)), int(partitions["test"] * len(data)) # get the validation and test partitions from the ratios
         n_train = len(data) - n_valid - n_test # as to not exclude any files, the train partition is simply what's not in the validation or test partition
         paths = random.sample(population = data, k = len(data)) # shuffle paths
         save_paths_to_file(paths = paths[:n_train], output_filepath = f"{output_dir}/train.txt") # train partition
