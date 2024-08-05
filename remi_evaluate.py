@@ -63,7 +63,7 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("--seq_len", default = SEQ_LEN, type = int, help = "Sequence length to generate")
     parser.add_argument("--temperature", nargs = "+", default = TEMPERATURE, type = float, help = f"Sampling temperature (default: {TEMPERATURE})")
     parser.add_argument("--filter", nargs = "+", default = FILTER, type = str, help = f"Sampling filter (default: '{FILTER}')")
-    parser.add_argument("--filter_thres", nargs = "+", default = FILTER_THRESHOLD, type = float, help = f"Sampling filter threshold (default: {FILTER_THRESHOLD})")
+    parser.add_argument("--filter_threshold", nargs = "+", default = FILTER_THRESHOLD, type = float, help = f"Sampling filter threshold (default: {FILTER_THRESHOLD})")
     # others
     parser.add_argument("-bs", "--batch_size", default = BATCH_SIZE, type = int, help = "Batch size")
     parser.add_argument("-g", "--gpu", default = -1, type = int, help = "GPU number")
@@ -164,7 +164,7 @@ if __name__ == "__main__":
     # REPEAT WITH EACH MODEL IN INPUT DIRECTORY
     ##################################################
 
-    for model, model_dir, n_samples, starting_index in zip(models, model_dirs, n_samples_to_calculate, starting_indicies):
+    for model_name, model_dir, n_samples, starting_index in zip(models, model_dirs, n_samples_to_calculate, starting_indicies):
 
         # LOAD MODEL
         ##################################################
@@ -175,7 +175,7 @@ if __name__ == "__main__":
             mkdir(eval_dir)
 
         # load training configurations
-        train_args_filepath = f"{args.output_dir}/train_args.json"
+        train_args_filepath = f"{model_dir}/train_args.json"
         train_args = utils.load_json(filepath = train_args_filepath)
         del train_args_filepath       
 
@@ -194,6 +194,7 @@ if __name__ == "__main__":
             ),
             use_abs_pos_emb = train_args["abs_pos_emb"],
         ).to(device)
+        model = x_transformers.AutoregressiveWrapper(net = model)
 
         # load the checkpoint
         checkpoint_filepath = f"{model_dir}/checkpoints/best_model.valid.pth"
@@ -212,7 +213,7 @@ if __name__ == "__main__":
         batch_size_evenly_divides_n_samples = ((n_samples % args.batch_size) == 0) # does batch size evenly divide n_samples
         n_batches = int(n_samples / args.batch_size) + int(not batch_size_evenly_divides_n_samples) # n batches
         with torch.no_grad():
-            for i in tqdm(iterable = range(n_batches), desc = f"Evaluating the {model} Model"):
+            for i in tqdm(iterable = range(n_batches), desc = f"Evaluating the {model_name} Model"):
 
                 # get number of samples to calculate
                 n_samples_in_batch = (n_samples % args.batch_size) if ((i == (n_batches - 1)) and (not batch_size_evenly_divides_n_samples)) else args.batch_size
@@ -227,7 +228,7 @@ if __name__ == "__main__":
                     eos_token = eos,
                     temperature = args.temperature,
                     filter_logits_fn = filter_logits_fn,
-                    filter_thres = args.filter_threshold,
+                    # filter_thres = args.filter_threshold,
                 )
                 generated = torch.cat(tensors = (prefix, generated), dim = 1).cpu().numpy()
 
@@ -242,7 +243,7 @@ if __name__ == "__main__":
                     results = pool.map(func = evaluate, iterable = generated, chunksize = CHUNK_SIZE)
 
                 # write results to file
-                results = pd.DataFrame(data = map(lambda j: [model, generated_output_filepaths[j]] + results[j], range(len(results))), columns = OUTPUT_COLUMNS)
+                results = pd.DataFrame(data = map(lambda j: [model_name, generated_output_filepaths[j]] + results[j], range(len(results))), columns = OUTPUT_COLUMNS)
                 results.to_csv(path_or_buf = output_filepath, sep = ",", na_rep = utils.NA_STRING, header = False, index = False, mode = "a")
                 
         ##################################################

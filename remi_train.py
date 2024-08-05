@@ -190,7 +190,7 @@ if __name__ == "__main__":
         ),
         use_abs_pos_emb = args.abs_pos_emb,
     ).to(device)
-    model = x_transformers.AutoregressiveWrapper(net= model)
+    model = x_transformers.AutoregressiveWrapper(net = model)
     n_parameters = sum(p.numel() for p in model.parameters()) # statistics
     n_parameters_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad) # statistics (model size)
 
