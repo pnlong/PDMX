@@ -256,6 +256,12 @@ if __name__ == "__main__":
         Given a path, extract notes and return the output path.
         """
 
+        # determine output path early to avoid computations if possible
+        output_path_prefix = f"{DATA_DIR}/{'.'.join(basename(path).split('.')[:-1])}"
+        output_path = output_path_prefix + (".csv" if args.use_csv else ".npy")
+        if exists(output_path): # avoid computations if possible
+            return output_path
+
         # load music object
         if path.endswith("mscz"): # musescore file
             music = read_musescore(path = path, resolution = remi_representation.RESOLUTION)
@@ -268,12 +274,9 @@ if __name__ == "__main__":
         notes = remi_representation.extract_notes(music = music, resolution = remi_representation.RESOLUTION)
 
         # output
-        output_path_prefix = f"{DATA_DIR}/{'.'.join(basename(path).split('.')[:-1])}"
         if args.use_csv:
-            output_path = f"{output_path_prefix}.csv"
             remi_representation.save_csv_notes(filepath = output_path, data = notes)
         else:
-            output_path = f"{output_path_prefix}.npy"
             np.save(file = output_path, arr = notes)
 
         # return path to which we outputted
