@@ -13,7 +13,7 @@ import argparse
 import logging
 import pprint
 import sys
-from os.path import exists
+from os.path import exists, basename
 from os import makedirs, mkdir
 from multiprocessing import cpu_count # for calculating num_workers
 import wandb
@@ -198,25 +198,25 @@ if __name__ == "__main__":
     model_size = int(n_parameters_trainable / 1e+6)
     output_parent_dir = args.output_dir
     output_dir_name = f"{model_size}M"
-    args.output_dir = f"{output_parent_dir}/{output_dir_name}" # custom output directory based on arguments
-    if not exists(args.output_dir):
-        makedirs(args.output_dir)
-    checkpoints_dir = f"{args.output_dir}/checkpoints" # models will be stored in the output directory
+    output_dir = f"{output_parent_dir}/{output_dir_name}" # custom output directory based on arguments
+    if not exists(output_dir):
+        makedirs(output_dir)
+    checkpoints_dir = f"{output_dir}/checkpoints" # models will be stored in the output directory
     if not exists(checkpoints_dir):
         mkdir(checkpoints_dir)
 
     # start a new wandb run to track the script
-    group_name = output_parent_dir
+    group_name = basename(output_parent_dir)
     if run_name == INFER_RUN_NAME_STRING:
         run_name = next(filter(lambda name: name.startswith(output_dir_name), (run.name for run in wandb.Api().runs(f"philly/{PROJECT_NAME}", filters = {"group": group_name}))), None) # try to infer the run name
         args.resume = (run_name != None) # redefine args.resume in the event that no run name was supplied, but we can't infer one either
     if run_name is None: # in the event we need to create a new run name
-        current_datetime = datetime.datetime.now().strftime("%m%d%y%H%M")
+        current_datetime = datetime.datetime.now().strftime("%m%d%y%H%M%S")
         run_name = f"{output_dir_name}-{current_datetime}"
     run = wandb.init(config = dict(vars(args), **{"n_parameters": n_parameters, "n_parameters_trainable": n_parameters_trainable}), resume = "allow", project = PROJECT_NAME, group = group_name, name = run_name, id = run_name) # set project title, configure with hyperparameters
 
     # set up the logger
-    logging_output_filepath = f"{args.output_dir}/train.log"
+    logging_output_filepath = f"{output_dir}/train.log"
     log_hyperparameters = not (args.resume and exists(logging_output_filepath))
     logging.basicConfig(level = logging.INFO, format = "%(message)s", handlers = [logging.FileHandler(filename = logging_output_filepath, mode = "a" if args.resume else "w"), logging.StreamHandler(stream = sys.stdout)])
 
@@ -224,7 +224,7 @@ if __name__ == "__main__":
     if log_hyperparameters:
         logging.info(f"Running command: python {' '.join(sys.argv)}")
         logging.info(f"Using arguments:\n{pprint.pformat(vars(args))}")
-        args_output_filepath = f"{args.output_dir}/train_args.json"
+        args_output_filepath = f"{output_dir}/train_args.json"
         logging.info(f"Saved arguments to {args_output_filepath}")
         utils.save_args(filepath = args_output_filepath, args = args)
         del args_output_filepath # clear up memory
@@ -260,7 +260,7 @@ if __name__ == "__main__":
     ##################################################
 
     # create a file to record loss metrics
-    output_filepath = f"{args.output_dir}/loss.csv"
+    output_filepath = f"{output_dir}/loss.csv"
     loss_columns_must_be_written = not (exists(output_filepath) and args.resume) # whether or not to write column names
     if loss_columns_must_be_written: # if column names need to be written
         pd.DataFrame(columns = LOSS_OUTPUT_COLUMNS).to_csv(path_or_buf = output_filepath, sep = ",", na_rep = utils.NA_STRING, header = True, index = False, mode = "w")
