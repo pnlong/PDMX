@@ -68,7 +68,7 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("-bs", "--batch_size", default = BATCH_SIZE, type = int, help = "Batch size")
     parser.add_argument("-g", "--gpu", default = -1, type = int, help = "GPU number")
     parser.add_argument("-j", "--jobs", default = int(multiprocessing.cpu_count() / 4), type = int, help = "Number of workers for data loading")
-    parser.add_argument("-r", "--reset", action = "store_true", help = "Whether or not to recreate intermediate data tables")
+    parser.add_argument("-r", "--reset", action = "store_true", help = "Whether or not to regenerate samples")
     return parser.parse_args(args = args, namespace = namespace)
 
 ##################################################
@@ -87,6 +87,7 @@ if __name__ == "__main__":
 
     # get directories to eval
     model_dirs = list(filter(lambda path: isdir(path) and path.endswith("M"), map(lambda base: f"{args.input_dir}/{base}", listdir(args.input_dir))))
+    models = list(map(basename, model_dirs))
 
     # set up the logger
     logging.basicConfig(level = logging.INFO, format = "%(message)s", handlers = [logging.FileHandler(filename = f"{args.input_dir}/evaluate.log", mode = "a"), logging.StreamHandler(stream = sys.stdout)])
@@ -134,8 +135,8 @@ if __name__ == "__main__":
     else:
         previous = pd.read_csv(filepath_or_buffer = output_filepath, sep = ",", na_values = utils.NA_STRING, header = 0, index_col = False) # load in previous values
         n_samples_to_calculate = previous.groupby(by = "model").size() # calculate number of samples already generated
-        n_samples_to_calculate = list(map(lambda model_dir: max(args.n_samples - n_samples_to_calculate[basename(model_dir)], 0), model_dirs)) # determine number of samples to calculate
-        starting_indicies = list(map(lambda model_dir: max(map(lambda path: int(path[len(f"{model_dir}/eval/"):].split(".")[0]), previous[previous["model"] == basename(model_dir)]["path"])) + 1, model_dirs)) # get the starting index for generation names for each model
+        n_samples_to_calculate = list(map(lambda model: max(args.n_samples - n_samples_to_calculate[model], 0), models)) # determine number of samples to calculate
+        starting_indicies = list(map(lambda model: max(map(lambda path: int(path[len(f"{args.input_dir}/{model_dir}/eval/"):-len(f".npy")]), previous[previous["model"] == model]["path"])) + 1, models)) # get the starting index for generation names for each model
         del previous
 
     ##################################################
@@ -163,13 +164,12 @@ if __name__ == "__main__":
     # REPEAT WITH EACH MODEL IN INPUT DIRECTORY
     ##################################################
 
-    for model_dir, n_samples, starting_index in zip(model_dirs, n_samples_to_calculate, starting_indicies):
+    for model, model_dir, n_samples, starting_index in zip(models, model_dirs, n_samples_to_calculate, starting_indicies):
 
         # LOAD MODEL
         ##################################################
 
         # get evaluation directory (where to output generations)
-        model = basename(model_dir)
         eval_dir = f"{model_dir}/eval"
         if not exists(eval_dir):
             mkdir(eval_dir)
@@ -256,8 +256,7 @@ if __name__ == "__main__":
     # log statistics
     bar_width = 104
     results = pd.read_csv(filepath_or_buffer = output_filepath, sep = ",", na_values = utils.NA_STRING, header = 0, index_col = False) # load in previous values
-    for model_dir in model_dirs:
-        model = basename(model_dir)
+    for model in models:
         results_model = results[results["model"] == model]
         logging.info(f"\n{f' {model} ':^={bar_width}}")
         for mmt_statistic in MMT_STATISTIC_COLUMNS:
