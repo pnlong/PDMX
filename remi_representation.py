@@ -472,7 +472,7 @@ def encode_notes(notes: np.array, encoding: dict, indexer: Indexer) -> np.array:
 
         # skip unknown instruments
         instrument = program_instrument_map[program]
-        if instrument is None:
+        if (instrument is None) or (duration == 0):
             continue
         if beat > last_beat:
             codes.append(indexer[f"beat_{beat}"])
