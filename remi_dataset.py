@@ -36,7 +36,7 @@ import utils
 ##################################################
 
 # output directory
-OUTPUT_DIR = "/data2/pnlong/musescore/remi"
+OUTPUT_DIR = "/data1/pnlong/musescore/remi"
 
 # facets of the dataset
 FACETS = ["all", "rated", "deduplicated", "rated_deduplicated"]
