@@ -257,8 +257,7 @@ if __name__ == "__main__":
         """
 
         # determine output path early to avoid computations if possible
-        output_path_prefix = f"{DATA_DIR}/{'.'.join(basename(path).split('.')[:-1])}"
-        output_path = output_path_prefix + (".csv" if args.use_csv else ".npy")
+        output_path = f"{DATA_DIR}/{'.'.join(basename(path).split('.')[:-1])}.{'csv' if args.use_csv else 'npy'}"
         if exists(output_path): # avoid computations if possible
             return output_path
 
