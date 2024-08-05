@@ -140,14 +140,14 @@ if __name__ == "__main__":
     ##################################################
 
 
-    # HELPER FUNCTION
+    # HELPER FUNCTION FOR EVALUATING
     ##################################################
 
     # helper function for evaluating a generated sequence
     def evaluate(codes: Union[np.array, torch.tensor]) -> List[float]:
         """Evaluate the results."""
 
-        # save results
+        # convert codes to a music object
         music = remi_representation.decode(codes = codes, encoding = encoding, vocabulary = vocabulary) # convert to a MusicExpress object
 
         # return a dictionary

@@ -134,3 +134,33 @@ if __name__ == "__main__":
     ##################################################
 
 ##################################################
+
+
+# HELPER FUNCTIONS
+##################################################
+
+# given a generated codes path, convert into audio
+def generated_to_audio(path: str, output_path: str) -> None:
+    """
+    Given the path to generated codes, convert those codes into audio.
+    """
+
+    # imports
+    import remi_representation
+    import utils
+
+    # get variables
+    encoding = remi_representation.get_encoding() # load the encoding
+    vocabulary = utils.inverse_dict(remi_representation.Indexer(data = encoding["event_code_map"]).get_dict()) # for decoding
+
+    # load codes
+    codes = np.load(file = path)
+
+    # convert codes to a music object
+    music = remi_representation.decode(codes = codes, encoding = encoding, vocabulary = vocabulary) # convert to a MusicExpress object
+
+    # output codes as audio
+    music.write(path = output_path)
+    print(f"Saved to {output_path}.")
+
+##################################################
