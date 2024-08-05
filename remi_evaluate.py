@@ -43,7 +43,6 @@ N_SAMPLES = 1000
 SEQ_LEN = 1024
 TEMPERATURE = 1.0
 FILTER = "top_k"
-FILTER_THRESHOLD = 0.9
 
 # output columns
 OUTPUT_COLUMNS = ["path", "model"] + MMT_STATISTIC_COLUMNS
@@ -63,7 +62,6 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("--seq_len", default = SEQ_LEN, type = int, help = "Sequence length to generate")
     parser.add_argument("--temperature", nargs = "+", default = TEMPERATURE, type = float, help = f"Sampling temperature (default: {TEMPERATURE})")
     parser.add_argument("--filter", nargs = "+", default = FILTER, type = str, help = f"Sampling filter (default: '{FILTER}')")
-    parser.add_argument("--filter_threshold", nargs = "+", default = FILTER_THRESHOLD, type = float, help = f"Sampling filter threshold (default: {FILTER_THRESHOLD})")
     # others
     parser.add_argument("-bs", "--batch_size", default = BATCH_SIZE, type = int, help = "Batch size")
     parser.add_argument("-g", "--gpu", default = -1, type = int, help = "GPU number")
@@ -228,7 +226,6 @@ if __name__ == "__main__":
                     eos_token = eos,
                     temperature = args.temperature,
                     filter_logits_fn = filter_logits_fn,
-                    # filter_thres = args.filter_threshold,
                 )
                 generated = torch.cat(tensors = (prefix, generated), dim = 1).cpu().numpy()
 
