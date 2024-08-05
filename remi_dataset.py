@@ -100,7 +100,7 @@ class MusicDataset(torch.utils.data.Dataset):
         indexer: remi_representation.Indexer = remi_representation.Indexer(), # indexer
         encode_fn: Callable = remi_representation.encode_notes, # encoding function
         max_seq_len: int = None, # max sequence length
-        max_beat: int = None, # max beat
+        max_beat: int = remi_representation.MAX_BEAT, # max beat
         use_augmentation: bool = False, # use data augmentation?
     ):
         super().__init__()
@@ -192,8 +192,9 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("-d", "--dataset_filepath", default = f"{dataset_full.OUTPUT_DIR}/{dataset_full.DATASET_DIR_NAME}_full.csv", type = str, help = "Filepath to full dataset")
     parser.add_argument("-o", "--output_dir", default = OUTPUT_DIR, type = str, help = "Output directory for any relevant files")
     parser.add_argument("-u", "--use_csv", action = "store_true", help = "Whether to save outputs in CSV format (default to NPY format)")
-    parser.add_argument("-rv", "--ratio_valid", default = PARTITIONS["valid"], type = float, help = "Ratio of validation files.")
-    parser.add_argument("-rt", "--ratio_test", default = PARTITIONS["test"], type = float, help = "Ratio of test files.")
+    parser.add_argument("-rv", "--ratio_valid", default = PARTITIONS["valid"], type = float, help = "Ratio of validation files")
+    parser.add_argument("-rt", "--ratio_test", default = PARTITIONS["test"], type = float, help = "Ratio of test files")
+    parser.add_argument("-r", "--reset", action = "store_true", help = "Whether or not to recreate data files")
     parser.add_argument("-j", "--jobs", default = int(multiprocessing.cpu_count() / 4), type = int, help = "Number of Jobs")
     return parser.parse_args(args = args, namespace = namespace)
 
@@ -258,7 +259,7 @@ if __name__ == "__main__":
 
         # determine output path early to avoid computations if possible
         output_path = f"{DATA_DIR}/{'.'.join(basename(path).split('.')[:-1])}.{'csv' if args.use_csv else 'npy'}"
-        if exists(output_path): # avoid computations if possible
+        if exists(output_path) and (not args.reset): # avoid computations if possible
             return output_path
 
         # load music object
@@ -324,6 +325,9 @@ if __name__ == "__main__":
         save_paths_to_file(paths = paths[n_train:(n_train + n_valid)], output_filepath = f"{output_dir}/valid.txt") # validation partition
         if n_test > 0:
             save_paths_to_file(paths = paths[(n_train + n_valid):], output_filepath = f"{output_dir}/test.txt") # test partition
+        
+    # update
+    logging.info("Partitioned data.")
 
     ##################################################
 
@@ -339,9 +343,10 @@ if __name__ == "__main__":
 
     # create the dataset and data loader
     dataset = MusicDataset(
-        paths = f"{args.output_dir}/{FACETS[0]}/test.txt",
+        paths = f"{args.output_dir}/{FACETS[0]}/valid.txt",
         encoding = encoding,
         indexer = indexer,
+        encode_fn = remi_representation.encode_notes,
     )
     data_loader = torch.utils.data.DataLoader(
         dataset = dataset,
