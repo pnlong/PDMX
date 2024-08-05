@@ -219,7 +219,7 @@ if __name__ == "__main__":
                 # get start tokens
                 prefix = torch.ones(size = (n_samples_in_batch, 1), dtype = torch.long, device = device) * sos
 
-                # generate new samples
+                # generate new samples; unconditioned generation
                 generated = model.generate(
                     prompts = prefix,
                     seq_len = args.seq_len,
