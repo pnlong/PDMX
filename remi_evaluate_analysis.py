@@ -140,7 +140,7 @@ if __name__ == "__main__":
 ##################################################
 
 # given a generated codes path, convert into audio
-def generated_to_audio(path: str, output_path: str) -> None:
+def generated_to_audio(path: str, output_path: str = None) -> None:
     """
     Given the path to generated codes, convert those codes into audio.
     """
@@ -160,6 +160,8 @@ def generated_to_audio(path: str, output_path: str) -> None:
     music = remi_representation.decode(codes = codes, encoding = encoding, vocabulary = vocabulary) # convert to a MusicExpress object
 
     # output codes as audio
+    if output_path is None:
+        output_path = "/home/pnlong/model_musescore/" + path[len("/home/pnlong/musescore/remi/"):].replace("/", ".")
     music.write(path = output_path)
     print(f"Saved to {output_path}.")
 
