@@ -71,6 +71,7 @@ if __name__ == "__main__":
     model = (str(max(map(lambda model: int(model[:-1]), models))) + "M") if args.model is None else args.model
     if model not in models:
         raise RuntimeError(f"`{model}` is not a valid model.")
+    plot_title = f"Evaluating {model} Model Performance"
 
     # remove part of dataset we don't need
     dataset = dataset[dataset["model"] == model]
@@ -78,21 +79,40 @@ if __name__ == "__main__":
     ##################################################
 
 
-    # PLOT
+    # PLOTTING CONSTANTS
+    ##################################################
+
+    # plotting constants
+    n_bins = 12
+    range_multiplier_constant = 1.001
+    plot_mosaic = [MMT_STATISTIC_COLUMNS[:-1], [MMT_STATISTIC_COLUMNS[-1], "legend"]]
+    make_facet_name_fancy = lambda facet: facet.title().replace("_", " and ")
+    legent_title = "Facet"
+    x_axis_label = "Value"
+    output_filepath_prefix = "model_comparison"
+    legend_title_fontsize = "large"
+    legend_fontsize = "medium"
+    colors = ("black", "blue", "orange", "green") # FACETS = ["all", "rated", "deduplicated", "rated_deduplicated"]
+
+    ##################################################
+
+
+    # PLOT LINE PLOT
     ##################################################
 
     # create plot
-    fig, axes = plt.subplot_mosaic(mosaic = [MMT_STATISTIC_COLUMNS[:-1], [MMT_STATISTIC_COLUMNS[-1], "legend"]], constrained_layout = True, figsize = (6, 6))
-    fig.suptitle(f"Evaluating {model} Model Performance", fontweight = "bold")
+    fig, axes = plt.subplot_mosaic(mosaic = plot_mosaic, constrained_layout = True, figsize = (8, 6))
+    fig.suptitle(plot_title, fontweight = "bold")
 
     # helper function to plot
-    n_bins = 10
-    range_multiplier_constant = 1.1
     def plot_mmt_statistic(mmt_statistic: str) -> None:
         """Plot information on MMT-style statistic in evaluations."""
 
+        # left side will be fraction, right will be count
+        count_axes = axes[mmt_statistic].twinx()
+
         # loop through facets
-        for facet in FACETS:
+        for i, facet in enumerate(FACETS):
             
             # get histogram values
             data = dataset[dataset["facet"] == facet][mmt_statistic]
@@ -102,14 +122,16 @@ if __name__ == "__main__":
             bin_width = (range_multiplier_constant * data_range) / n_bins
             bins = np.arange(start = min_data - margin, stop = max_data + margin + (bin_width / 2), step = bin_width)
             data, bins = np.histogram(a = data, bins = bins) # create histogram
-            bins = [(bins[i] + bins[i + 1]) / 2 for i in range(len(bins) - 1)] # get centerpoints of each bin
+            bin_centers = [(bins[i] + bins[i + 1]) / 2 for i in range(len(bins) - 1)] # get centerpoints of each bin
 
             # plot
-            axes[mmt_statistic].plot(bins, data, label = facet)
+            axes[mmt_statistic].plot(bin_centers, data / sum(data), color = colors[i], label = facet) # fraction
+            count_axes.plot(bin_centers, data, color = colors[i], label = facet) # count
 
         # axes labels and such
-        axes[mmt_statistic].set_xlabel("Value")
-        axes[mmt_statistic].set_ylabel("Count")
+        axes[mmt_statistic].set_xlabel(x_axis_label)
+        axes[mmt_statistic].set_ylabel("Fraction")
+        count_axes.set_ylabel("Count")
         axes[mmt_statistic].set_title(mmt_statistic.replace("_", " ").title())
         axes[mmt_statistic].grid()
 
@@ -120,14 +142,70 @@ if __name__ == "__main__":
     # plot legend
     handles, labels = axes[MMT_STATISTIC_COLUMNS[0]].get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
-    make_facet_name_fancy = lambda facet: facet.title().replace("_", " and ")
     axes["legend"].legend(handles = by_label.values(), labels = list(map(make_facet_name_fancy, by_label.keys())),
-                          loc = "center", fontsize = "medium", title_fontsize = "large", alignment = "center",
-                          ncol = 1, title = "Facet", mode = "expand")
+                          loc = "center", fontsize = legend_fontsize, title_fontsize = legend_title_fontsize, alignment = "center",
+                          ncol = 1, title = legent_title, mode = "expand")
     axes["legend"].axis("off")
 
     # save image
-    output_filepath_plot = f"{args.input_dir}/model_comparison.pdf"
+    output_filepath_plot = f"{args.input_dir}/{output_filepath_prefix}.pdf"
+    fig.savefig(output_filepath_plot, dpi = 200, transparent = True, bbox_inches = "tight")
+    logging.info(f"Saved figure to {output_filepath_plot}.")
+
+    ##################################################
+
+
+    # PLOT STACKED PLOT
+    ##################################################
+
+    # create plot
+    fig, axes = plt.subplot_mosaic(mosaic = plot_mosaic, constrained_layout = True, figsize = (8, 8))
+    fig.suptitle(plot_title, fontweight = "bold")
+
+    # helper function to plot
+    def plot_mmt_statistic_stacked(mmt_statistic: str) -> None:
+        """Plot information on MMT-style statistic in evaluations."""
+
+        # get the range of data
+        min_data, max_data = dataset[mmt_statistic].min(), dataset[mmt_statistic].max()
+        data_range = max_data - min_data
+        margin = ((range_multiplier_constant - 1) / 2) * data_range
+        bin_width = (range_multiplier_constant * data_range) / n_bins
+        bins = np.arange(start = min_data - margin, stop = max_data + margin + (bin_width / 2), step = bin_width)
+        bin_centers = [(bins[i] + bins[i + 1]) / 2 for i in range(len(bins) - 1)] # get centerpoints of each bin
+        
+        # get histograms and convert to fraction
+        data = np.array(list(map(lambda facet: np.histogram(a = dataset[dataset["facet"] == facet][mmt_statistic], bins = bins)[0], FACETS)))
+        bin_sums = np.sum(a = data, axis = 0)
+        bin_sums += (bin_sums == 0) # replace 0s with 1s to avoid divide by zero error
+        data = data / bin_sums
+
+        # loop through facets and plot
+        for i, facet in enumerate(FACETS):
+            axes[mmt_statistic].bar(bin_centers, data[i], width = bin_width, bottom = np.sum(a = data[:i, :], axis = 0), color = colors[i], label = facet)
+
+        # axes labels and such
+        axes[mmt_statistic].set_xlabel(x_axis_label)
+        axes[mmt_statistic].set_xlim(left = bins[0], right = bins[-1])
+        axes[mmt_statistic].set_ylabel("")
+        axes[mmt_statistic].set_ylim(bottom = 0, top = 1)
+        axes[mmt_statistic].set_title(mmt_statistic.replace("_", " ").title())
+        axes[mmt_statistic].grid()
+
+    # plot plots
+    for mmt_statistic_column in MMT_STATISTIC_COLUMNS:
+        plot_mmt_statistic_stacked(mmt_statistic = mmt_statistic_column)
+
+    # plot legend
+    handles, labels = axes[MMT_STATISTIC_COLUMNS[0]].get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    axes["legend"].legend(handles = by_label.values(), labels = list(map(make_facet_name_fancy, by_label.keys())),
+                          loc = "center", fontsize = legend_fontsize, title_fontsize = legend_title_fontsize, alignment = "center",
+                          ncol = 1, title = legent_title, mode = "expand")
+    axes["legend"].axis("off")
+
+    # save image
+    output_filepath_plot = f"{args.input_dir}/{output_filepath_prefix}.stacked.pdf"
     fig.savefig(output_filepath_plot, dpi = 200, transparent = True, bbox_inches = "tight")
     logging.info(f"Saved figure to {output_filepath_plot}.")
 
