@@ -11,12 +11,11 @@
 
 import argparse
 import logging
-import multiprocessing
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 
-from dataset_full import MMT_STATISTIC_COLUMNS, CHUNK_SIZE
+from dataset_full import MMT_STATISTIC_COLUMNS
 from remi_dataset import FACETS, OUTPUT_DIR
 from remi_evaluate import OUTPUT_COLUMNS
 import utils
@@ -40,7 +39,6 @@ def parse_args(args = None, namespace = None):
     parser = argparse.ArgumentParser(prog = "Evaluate Analysis", description = "Analyze the evaluation a REMI-Style Model.")
     parser.add_argument("-i", "--input_dir", default = OUTPUT_DIR, type = str, help = "Directory containing facets (as subdirectories) to evaluate")
     parser.add_argument("-m", "--model", default = None, type = str, help = "Name of the model to evaluate for each different facet")
-    parser.add_argument("-j", "--jobs", default = int(multiprocessing.cpu_count() / 4), type = int, help = "Number of Jobs")
     return parser.parse_args(args = args, namespace = namespace)
 
 ##################################################
@@ -99,9 +97,9 @@ if __name__ == "__main__":
             # get histogram values
             data = dataset[dataset["facet"] == facet][mmt_statistic]
             min_data, max_data = min(data), max(data)
-            range = max_data - min_data
-            margin = ((range_multiplier_constant - 1) / 2) * range
-            bin_width = (range_multiplier_constant * range) / n_bins
+            data_range = max_data - min_data
+            margin = ((range_multiplier_constant - 1) / 2) * data_range
+            bin_width = (range_multiplier_constant * data_range) / n_bins
             bins = np.arange(start = min_data - margin, stop = max_data + margin + (bin_width / 2), step = bin_width)
             data, bins = np.histogram(a = data, bins = bins) # create histogram
             bins = [(bins[i] + bins[i + 1]) / 2 for i in range(len(bins) - 1)] # get centerpoints of each bin
@@ -116,14 +114,16 @@ if __name__ == "__main__":
         axes[mmt_statistic].grid()
 
     # plot plots
-    with multiprocessing.Pool(processes = args.jobs) as pool:
-        _ = pool.map(func = plot_mmt_statistic, iterable = MMT_STATISTIC_COLUMNS, chunksize = CHUNK_SIZE)
+    for mmt_statistic_column in MMT_STATISTIC_COLUMNS:
+        plot_mmt_statistic(mmt_statistic = mmt_statistic_column)
 
     # plot legend
     handles, labels = axes[MMT_STATISTIC_COLUMNS[0]].get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     make_facet_name_fancy = lambda facet: facet.title().replace("_", " and ")
-    axes["legend"].legend(handles = by_label.values(), labels = list(map(make_facet_name_fancy, by_label.keys())), loc = "center", fontsize = "xlarge", title_fontsize = "xxlarge", alignment = "center", ncol = 1, title = "Facet", mode = "expand")
+    axes["legend"].legend(handles = by_label.values(), labels = list(map(make_facet_name_fancy, by_label.keys())),
+                          loc = "center", fontsize = "medium", title_fontsize = "large", alignment = "center",
+                          ncol = 1, title = "Facet", mode = "expand")
     axes["legend"].axis("off")
 
     # save image
