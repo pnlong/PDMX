@@ -126,7 +126,8 @@ if __name__ == "__main__":
     # output file
     output_filepath = f"{args.input_dir}/evaluation.csv"
     output_columns_must_be_written = (not exists(output_filepath)) or args.reset
-    if output_columns_must_be_written: # if column names need to be written
+    n_lines_in_output = sum(1 for _ in open(output_filepath, "r")) if exists(output_filepath) else 0
+    if output_columns_must_be_written or (n_lines_in_output == 1): # if column names need to be written
         pd.DataFrame(columns = OUTPUT_COLUMNS).to_csv(path_or_buf = output_filepath, sep = ",", na_rep = utils.NA_STRING, header = True, index = False, mode = "w")
         n_samples_to_calculate = utils.rep(x = args.n_samples, times = len(model_dirs)) # number of samples to calculate
         starting_indicies = utils.rep(x = 0, times = len(model_dirs))
@@ -136,6 +137,7 @@ if __name__ == "__main__":
         n_samples_to_calculate = list(map(lambda model: max(args.n_samples - n_samples_to_calculate[model], 0), models)) # determine number of samples to calculate
         starting_indicies = list(map(lambda model: max(map(lambda path: int(path[len(f"{args.input_dir}/{model_dir}/eval/"):-len(f".npy")]), previous[previous["model"] == model]["path"])) + 1, models)) # get the starting index for generation names for each model
         del previous
+    del output_columns_must_be_written, n_lines_in_output # free up memory
 
     ##################################################
 
