@@ -101,10 +101,10 @@ if __name__ == "__main__":
     range_multiplier_constant = 1.001
     make_facet_name_fancy = lambda facet: facet.title().replace("_", " and ")
     legend_title = "Facet"
-    output_filepath_prefix = "model_comparison"
     legend_title_fontsize = "large"
     legend_fontsize = "medium"
     colors = ("black", "blue", "orange", "green") # FACETS = ["all", "rated", "deduplicated", "rated_deduplicated"]
+    output_filepath_prefix = f"evaluation.{model}"
 
     ##################################################
 
@@ -287,7 +287,8 @@ def generated_to_audio(path: str, output_path: str = None) -> None:
 
     # output codes as audio
     if output_path is None:
-        output_path = "/home/pnlong/model_musescore/" + ".".join(path.split("/")[-2:])[:-len(".npy")] + ".wav"
+        path_info = path[len("/home/pnlong/musescore/remi/"):-len(".npy")].split("/")
+        output_path = "/home/pnlong/model_musescore/" + path_info[0] + "." + path_info[-1] + ".wav"
     music.write(path = output_path)
     print(f"Saved to {output_path}.")
 
