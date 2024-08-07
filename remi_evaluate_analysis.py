@@ -20,6 +20,10 @@ from remi_dataset import FACETS, OUTPUT_DIR
 from remi_evaluate import OUTPUT_COLUMNS
 import utils
 
+plt.style.use("default")
+plt.rcParams["font.family"] = "serif"
+plt.rcParams["mathtext.fontset"] = "dejavuserif"
+
 ##################################################
 
 
@@ -103,7 +107,6 @@ if __name__ == "__main__":
     legend_title = "Facet"
     legend_title_fontsize = "large"
     legend_fontsize = "medium"
-    colors = ("black", "blue", "orange", "green") # FACETS = ["all", "rated", "deduplicated", "rated_deduplicated"]
     output_filepath_prefix = f"evaluation.{model}"
 
     ##################################################
@@ -124,7 +127,7 @@ if __name__ == "__main__":
         count_axes = axes[mmt_statistic].twinx()
 
         # loop through facets
-        for i, facet in enumerate(FACETS):
+        for facet in FACETS:
             
             # get histogram values
             data_values = dataset[dataset["facet"] == facet][mmt_statistic]
@@ -137,8 +140,8 @@ if __name__ == "__main__":
             bin_centers = [(bins[i] + bins[i + 1]) / 2 for i in range(len(bins) - 1)] # get centerpoints of each bin
 
             # plot
-            axes[mmt_statistic].plot(bin_centers, data / sum(data), color = colors[i], label = facet) # fraction
-            count_axes.plot(bin_centers, data, color = colors[i], label = facet) # count
+            axes[mmt_statistic].plot(bin_centers, data / sum(data), label = facet) # fraction
+            count_axes.plot(bin_centers, data, label = facet) # count
 
         # axes labels and such
         axes[mmt_statistic].set_xlabel("Value")
@@ -227,7 +230,7 @@ if __name__ == "__main__":
         axes_names = list(map(lambda realness_name: f"{realness_name}.{mmt_statistic}", realness_names))
         for realness_name, axes_name in zip(realness_names, axes_names):
             for i, facet in enumerate(FACETS):
-                axes[axes_name].bar(bin_centers, data[realness_name][i], width = bin_width, bottom = np.sum(a = data[realness_name][:i, :], axis = 0), color = colors[i], label = facet)
+                axes[axes_name].bar(bin_centers, data[realness_name][i], width = bin_width, bottom = np.sum(a = data[realness_name][:i, :], axis = 0), label = facet)
             axes[axes_name].set_xlabel(mmt_statistic.replace("_", " ").title())
             axes[axes_name].set_xlim(left = bins[0], right = bins[-1])
             axes[axes_name].set_ylabel("")

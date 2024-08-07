@@ -31,6 +31,9 @@ from dataset_full import OUTPUT_DIR, DATASET_DIR_NAME, CHUNK_SIZE
 from dataset_full_analysis import PLOTS_DIR_NAME
 
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
+plt.style.use("default")
+plt.rcParams["font.family"] = "serif"
+plt.rcParams["mathtext.fontset"] = "dejavuserif"
 
 ##################################################
 

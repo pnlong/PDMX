@@ -21,6 +21,10 @@ import logging
 
 from dataset_full import MMT_STATISTIC_COLUMNS, OUTPUT_DIR, DATASET_DIR_NAME
 
+plt.style.use("default")
+plt.rcParams["font.family"] = "serif"
+plt.rcParams["mathtext.fontset"] = "dejavuserif"
+
 ##################################################
 
 
