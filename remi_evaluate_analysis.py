@@ -108,7 +108,7 @@ if __name__ == "__main__":
     ##################################################
 
     # plotting constants
-    n_bins = 16
+    n_bins = 12
     range_multiplier_constant = 1.001
     make_facet_name_fancy = lambda facet: facet.title().replace("_", " and ")
     legend_title = "Facet"
