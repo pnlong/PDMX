@@ -198,7 +198,7 @@ def to_mido_meta_track(music: "MusicExpress") -> MidiTrack:
         tempo_changes = [] # keep track of tempo changes to deal with tempo spanners later
         for temporal_feature in combined_temporal_features:
             if isinstance(temporal_feature, Tempo): # if tempo feature
-                current_tempo = bpm2tempo(bpm = temporal_feature.qpm, time_signature = (current_time_signature.numerator, current_time_signature.denominator))
+                current_tempo = bpm2tempo(bpm = temporal_feature.qpm)
                 meta_track.append(MetaMessage(type = "set_tempo", time = temporal_feature.time, tempo = current_tempo))
                 tempo_changes.append({"time": temporal_feature.time, "tempo": current_tempo})
             elif isinstance(temporal_feature, TimeSignature): # if time signature

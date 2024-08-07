@@ -273,6 +273,7 @@ def generated_to_audio(path: str, output_path: str = None) -> None:
     # imports
     import remi_representation
     import utils
+    import numpy as np
 
     # get variables
     encoding = remi_representation.get_encoding() # load the encoding
@@ -286,7 +287,7 @@ def generated_to_audio(path: str, output_path: str = None) -> None:
 
     # output codes as audio
     if output_path is None:
-        output_path = "/home/pnlong/model_musescore/" + path[len("/home/pnlong/musescore/remi/"):].replace("/", ".")
+        output_path = "/home/pnlong/model_musescore/" + path[len("/home/pnlong/musescore/remi/"):-len(".npy")].replace("/", ".") + ".wav"
     music.write(path = output_path)
     print(f"Saved to {output_path}.")
 
