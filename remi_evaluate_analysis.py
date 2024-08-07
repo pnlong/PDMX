@@ -14,6 +14,8 @@ import logging
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
+from os.path import exists
+from os import mkdir
 
 import dataset_full
 from remi_dataset import FACETS, OUTPUT_DIR
@@ -74,6 +76,11 @@ if __name__ == "__main__":
     # parse the command-line arguments
     args = parse_args()
 
+    # create output directory
+    output_dir = f"{args.input_dir}/plots"
+    if not exists(output_dir):
+        mkdir(output_dir)
+
     # set up the logger
     logging.basicConfig(level = logging.INFO, format = "%(message)s")
 
@@ -107,7 +114,7 @@ if __name__ == "__main__":
     legend_title = "Facet"
     legend_title_fontsize = "large"
     legend_fontsize = "medium"
-    output_filepath_prefix = f"evaluation.{model}"
+    output_filepath_prefix = f"{output_dir}/evaluation.{model}"
 
     ##################################################
 
@@ -163,7 +170,7 @@ if __name__ == "__main__":
     axes["legend"].axis("off")
 
     # save image
-    output_filepath_plot = f"{args.input_dir}/{output_filepath_prefix}.pdf"
+    output_filepath_plot = f"{output_filepath_prefix}.lines.pdf"
     fig.savefig(output_filepath_plot, dpi = 200, transparent = True, bbox_inches = "tight")
     logging.info(f"Saved figure to {output_filepath_plot}.")
 
@@ -255,7 +262,7 @@ if __name__ == "__main__":
     axes["legend"].axis("off")
 
     # save image
-    output_filepath_plot = f"{args.input_dir}/{output_filepath_prefix}.stacked.pdf"
+    output_filepath_plot = f"{output_filepath_prefix}.stacked.pdf"
     fig.savefig(output_filepath_plot, dpi = 200, transparent = True, bbox_inches = "tight")
     logging.info(f"Saved figure to {output_filepath_plot}.")
 
@@ -292,7 +299,7 @@ def generated_to_audio(path: str, output_path: str = None) -> None:
     # output codes as audio
     if output_path is None:
         path_info = path[len("/home/pnlong/musescore/remi/"):-len(".npy")].split("/")
-        output_path = "/home/pnlong/model_musescore/generated_audio" + path_info[0] + "." + path_info[-1] + ".wav"
+        output_path = "/home/pnlong/musescore/remi/generated_audio" + path_info[0] + "." + path_info[-1] + ".wav"
         if not os.path.exists(os.path.dirname(output_path)):
             os.mkdir(os.path.dirname(output_path))
     music.write(path = output_path)
