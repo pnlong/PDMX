@@ -287,7 +287,7 @@ def generated_to_audio(path: str, output_path: str = None) -> None:
 
     # output codes as audio
     if output_path is None:
-        output_path = "/home/pnlong/model_musescore/" + path[len("/home/pnlong/musescore/remi/"):-len(".npy")].replace("/", ".") + ".wav"
+        output_path = "/home/pnlong/model_musescore/" + ".".join(path.split("/")[-2:])[:-len(".npy")] + ".wav"
     music.write(path = output_path)
     print(f"Saved to {output_path}.")
 
