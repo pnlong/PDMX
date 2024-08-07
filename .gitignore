@@ -1,4 +1,5 @@
 __pycache__/
 wandb/
 read_mscz/__pycache__/
-
+generated_audio/
+old_scripts/
