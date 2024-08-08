@@ -19,6 +19,7 @@ from os import mkdir
 
 import dataset_full
 from remi_dataset import FACETS, OUTPUT_DIR
+from remi_train import RELEVANT_PARTITIONS
 from remi_evaluate import OUTPUT_COLUMNS
 import utils
 
@@ -87,7 +88,7 @@ if __name__ == "__main__":
     # create full dataset
     dataset = pd.DataFrame(columns = COLUMNS)
     for facet in FACETS:
-        data = pd.read_csv(filepath_or_buffer = f"{args.input_dir}/{facet}/evaluation.csv", sep = ",", na_values = utils.NA_STRING, header = 0, index_col = False)
+        data = pd.read_csv(filepath_or_buffer = f"{args.input_dir}/{facet}/evaluation.csv", sep = ",", header = 0, index_col = False)
         data["facet"] = utils.rep(x = facet, times = len(data))
         dataset = pd.concat(objs = (dataset, data[COLUMNS]), axis = 0, ignore_index = True)
     del data
@@ -265,6 +266,53 @@ if __name__ == "__main__":
     output_filepath_plot = f"{output_filepath_prefix}.stacked.pdf"
     fig.savefig(output_filepath_plot, dpi = 200, transparent = True, bbox_inches = "tight")
     logging.info(f"Saved figure to {output_filepath_plot}.")
+
+    ##################################################
+
+
+    # TRAIN LOSS PLOT
+    ##################################################
+
+    # helper function to plot loss plot
+    def plot_loss(partition: str = RELEVANT_PARTITIONS[-1]) -> None:
+        """
+        Plot the loss curves (different dataset facets) for a given partition.
+        """
+
+        # create plot
+        fig, axes = plt.subplot_mosaic(mosaic = [["loss"]], constrained_layout = True, figsize = (4, 4))
+        fig.suptitle("Loss", fontweight = "bold")
+
+        # loop through facets
+        step_by = 1000 # step axis tick labels will be in units of step_by
+        for facet in FACETS:
+
+            # get data
+            data = pd.read_csv(filepath_or_buffer = f"{args.input_dir}/{facet}/{model}/loss.csv", sep = ",", header = 0, index_col = False)
+            data = data[data["partition"] == partition] # filter to correct partition
+
+            # plot data
+            axes["loss"].plot(data["step"] / step_by, data["loss"], label = facet)
+
+        # add axis titles and such
+        axes["loss"].set_xlabel(f"Step (in {step_by:,}s)")
+        axes["loss"].set_ylabel("Loss")
+        axes["loss"].grid()
+
+        # plot legend
+        handles, labels = axes["loss"].get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        axes["loss"].legend(handles = by_label.values(), labels = list(map(make_facet_name_fancy, by_label.keys())),
+                            alignment = "center", ncol = 1, title = legend_title)
+
+        # save image
+        output_filepath_plot = f"{output_dir}/loss.{model}.{partition}.pdf"
+        fig.savefig(output_filepath_plot, dpi = 200, transparent = True, bbox_inches = "tight")
+        logging.info(f"Saved figure to {output_filepath_plot}.")
+
+    # plot plots
+    for partition in RELEVANT_PARTITIONS:
+        plot_loss(partition = partition)
 
     ##################################################
 
