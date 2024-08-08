@@ -86,7 +86,7 @@ def group_by(df: pd.DataFrame, by: Union[str, List[str]]) -> pd.DataFrame:
         df = df.set_index(keys = by_string, drop = True)
 
     # sort indicies
-    df = df.sort_index(ascending = True)
+    df = df.sort_index(ascending = False)
 
     # return df
     return df
