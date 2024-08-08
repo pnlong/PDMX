@@ -194,7 +194,7 @@ def groove_consistency(music: MusicExpress) -> float:
     """
 
     measure_resolution = 4 * music.resolution
-    length = max(max([note.time for note in track.notes] + [0]) for track in music.tracks)
+    length = max(max([note.time + note.duration for note in track.notes] + [0]) for track in music.tracks)
     if measure_resolution < 1:
         raise ValueError("Measure resolution must be a positive integer.")
 
