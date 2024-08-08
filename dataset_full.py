@@ -28,7 +28,8 @@ import muspy
 
 from read_mscz.read_mscz import read_musescore, get_musescore_version
 from read_mscz.music import MusicExpress
-from utils import write_to_file, rep
+import remi_representation
+import utils
 
 ##################################################
 
@@ -194,7 +195,7 @@ def groove_consistency(music: MusicExpress) -> float:
     """
 
     measure_resolution = 4 * music.resolution
-    length = max(max([note.time + note.duration for note in track.notes] + [0]) for track in music.tracks)
+    length = max([note.time + note.duration for track in music.tracks for note in track.notes] + [0])
     if measure_resolution < 1:
         raise ValueError("Measure resolution must be a positive integer.")
 
@@ -290,7 +291,7 @@ def get_full_dataset(path: str) -> None:
         "is_public_domain": is_public_domain,
         "is_valid": is_valid,
     }
-    write_to_file(info = results_all, columns = list(results_all.keys()), output_filepath = OUTPUT_FILEPATH_ALL)
+    utils.write_to_file(info = results_all, columns = list(results_all.keys()), output_filepath = OUTPUT_FILEPATH_ALL)
 
     # stop execution if a track is invalid, meaning it is either copyrighted or it is public domain, but doesn't open correctly
     if not is_valid:
@@ -345,6 +346,7 @@ def get_full_dataset(path: str) -> None:
         "is_user_publisher" :   False, # assume user is not a publisher by default
         "is_user_staff" :       False, # assume user is not part of MuseScore staff by default
         "has_paywall" :         False, # assume no paywall by default
+        "is_rated" :            False, # assume no ratings
         "is_official" :         False, # assume song is not the official score by default
         "is_original" :         False, # assume song is not original by default
         "is_draft" :            False, # assume song is not a draft by default
@@ -399,6 +401,7 @@ def get_full_dataset(path: str) -> None:
             if ("rating" in metadata["data"]["score"].keys()) and (metadata["data"]["score"]["rating"] is not None):
                 results["n_ratings"] = int(metadata["data"]["score"]["rating"].get("count", 0))
                 results["rating"] = float(metadata["data"]["score"]["rating"].get("rating", 0))
+                results["is_rated"] = bool(results["n_ratings"])
             results["song_name"] = metadata["data"]["score"].get("song_name", None)
             results["subtitle"] = metadata["data"]["score"].get("subtitle", None)
             results["tags"] = get_list_feature_string(list_feature = list(map(str, metadata["data"]["score"].get("tags", []))))
@@ -442,11 +445,23 @@ def get_full_dataset(path: str) -> None:
     # OUTPUT FINDINGS
     ##################################################
 
+    # encode then decode
+    notes = remi_representation.extract_notes(music = music, resolution = encoding["resolution"])
+    notes = notes[notes[:, 0] < encoding["max_beat"]] # filter so that all beats are in the vocabulary
+    notes[:, 2] = np.clip(a = notes[:, 2], a_min = 0, a_max = 127) # remove unknown pitches
+    codes = remi_representation.encode_notes(notes = notes, encoding = encoding, indexer = indexer)
+    notes = remi_representation.decode_notes(data = codes, encoding = encoding, vocabulary = vocabulary)
+    music = remi_representation.reconstruct(notes = notes, resolution = encoding["resolution"])
+
     # extract MMT-style statistics
-    results.update(dict(zip(MMT_STATISTIC_COLUMNS, (pitch_class_entropy(music = music), scale_consistency(music = music), groove_consistency(music = music)))))
+    results.update(dict(zip(MMT_STATISTIC_COLUMNS, (
+        pitch_class_entropy(music = music),
+        scale_consistency(music = music),
+        groove_consistency(music = music),
+    ))))
 
     # output results
-    write_to_file(info = results, columns = list(results.keys()), output_filepath = OUTPUT_FILEPATH_FULL)
+    utils.write_to_file(info = results, columns = list(results.keys()), output_filepath = OUTPUT_FILEPATH_FULL)
     return
 
     ##################################################
@@ -495,6 +510,11 @@ if __name__ == "__main__":
     # for getting metadata
     METADATA = pd.read_csv(filepath_or_buffer = args.metadata_mapping, sep = ",", header = 0, index_col = False)
     METADATA = {path : path_metadata if not pd.isna(path_metadata) else None for path, path_metadata in zip(METADATA["data_path"], METADATA["metadata_path"])}
+
+    # for encoding and decoding
+    encoding = remi_representation.get_encoding() # load the encoding
+    indexer = remi_representation.Indexer(data = encoding["event_code_map"])# get the indexer
+    vocabulary = utils.inverse_dict(indexer.get_dict()) # for decoding
 
     # set up logging
     logging.basicConfig(level = logging.INFO, format = "%(message)s")

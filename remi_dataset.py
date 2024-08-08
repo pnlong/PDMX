@@ -308,7 +308,7 @@ if __name__ == "__main__":
         # filter dataset
         data = dataset
         if "rate" in facet:
-            data = data[data["n_ratings"] > 0]
+            data = data[data["is_rated"]]
         if "deduplicate" in facet:
             data = data[data["is_best_unique_arrangement"]]
         data = data["output_path"].to_list() # filter down to only necessary column, output_path
