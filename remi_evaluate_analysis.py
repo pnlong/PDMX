@@ -93,6 +93,18 @@ if __name__ == "__main__":
         dataset = pd.concat(objs = (dataset, data[COLUMNS]), axis = 0, ignore_index = True)
     del data
 
+    # load in dataset
+    dataset_real = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)
+    dataset_real = dataset_real.merge(
+        right = pd.read_csv(
+            filepath_or_buffer = f"{args.dataset_filepath[:-len('_full.csv')]}_deduplicated.csv", # add deduplication information to dataset
+            sep = ",",
+            header = 0,
+            index_col = False),
+        how = "inner",
+        on = "path"
+    )
+
     # determine model to analyze; assumes the same models have been created for each facet
     models = set(pd.unique(values = dataset["model"]))
     model = (str(max(map(lambda model: int(model[:-1]), models))) + "M") if args.model is None else args.model
@@ -112,9 +124,11 @@ if __name__ == "__main__":
     n_bins = 12
     range_multiplier_constant = 1.001
     make_facet_name_fancy = lambda facet: facet.title().replace("_", " and ")
+    realness_names = ["actual", "generated"]
     legend_title = "Facet"
     legend_title_fontsize = "large"
     legend_fontsize = "medium"
+    plot_to_legend_ratio = 3
     output_filepath_prefix = f"{output_dir}/evaluation.{model}"
 
     ##################################################
@@ -181,21 +195,7 @@ if __name__ == "__main__":
     # PLOT STACKED PLOT
     ##################################################
 
-    # load in dataset
-    dataset_real = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)
-    dataset_real = dataset_real.merge(
-        right = pd.read_csv(
-            filepath_or_buffer = f"{args.dataset_filepath[:-len('_full.csv')]}_deduplicated.csv", # add deduplication information to dataset
-            sep = ",",
-            header = 0,
-            index_col = False),
-        how = "inner",
-        on = "path"
-    )
-
     # create plot
-    realness_names = ["actual", "generated"]
-    plot_to_legend_ratio = 3
     fig, axes = plt.subplot_mosaic(
         mosaic = (
             utils.rep(x = list(map(lambda mmt_statistic: f"{realness_names[0]}.{mmt_statistic}", dataset_full.MMT_STATISTIC_COLUMNS)), times = plot_to_legend_ratio) +
@@ -266,6 +266,75 @@ if __name__ == "__main__":
     output_filepath_plot = f"{output_filepath_prefix}.stacked.pdf"
     fig.savefig(output_filepath_plot, dpi = 200, transparent = True, bbox_inches = "tight")
     logging.info(f"Saved figure to {output_filepath_plot}.")
+
+    ##################################################
+
+
+    # DIFFERENT LINES PLOT
+    ##################################################
+
+    # plotting function
+    def plot_mmt_statistic_faceted(facet: str) -> None:
+        """Plot information on MMT-style statistic in evaluations."""
+
+        # create plot
+        fig, axes = plt.subplot_mosaic(
+            mosaic = utils.rep(x = dataset_full.MMT_STATISTIC_COLUMNS, times = plot_to_legend_ratio * 2) + [utils.rep(x = "legend", times = len(dataset_full.MMT_STATISTIC_COLUMNS))],
+            constrained_layout = True,
+            figsize = (12, 5))
+        fig.suptitle(f"Comparing {make_facet_name_fancy(facet = facet)} Facet in Actual versus Generated Music")
+
+        # get faceted dataset
+        dataset_facet = dataset[dataset["facet"] == facet]
+        dataset_real_facet = dataset_real
+        if "rate" in facet:
+            dataset_real_facet = dataset_real_facet[dataset_real_facet["rating"] > 0]
+        if "deduplicate" in facet:
+            dataset_real_facet = dataset_real_facet[dataset_real_facet["is_best_unique_arrangement"]]
+
+        # go through different mmt statistics
+        for mmt_statistic in dataset_full.MMT_STATISTIC_COLUMNS:
+
+            # # get the range of data
+            # data_values = pd.concat(objs = (dataset_facet[mmt_statistic], dataset_real_facet[mmt_statistic]), axis = 0)
+            # min_data, max_data = min(data_values), max(data_values)
+            # data_range = max_data - min_data
+            # margin = ((range_multiplier_constant - 1) / 2) * data_range
+            # bin_width = (range_multiplier_constant * data_range) / n_bins
+            # bins = np.arange(start = min_data - margin, stop = max_data + margin + (bin_width / 2), step = bin_width)
+            # bin_centers = [(bins[i] + bins[i + 1]) / 2 for i in range(len(bins) - 1)] # get centerpoints of each bin
+            
+            # # get histograms and convert to fraction
+            # data = {
+            #     realness_names[0]: np.histogram(a = dataset_real_facet[mmt_statistic], bins = bins)[0], # real
+            #     realness_names[1]: np.histogram(a = dataset_facet[mmt_statistic], bins = bins)[0], # generated
+            # }
+            # data = {realness_name: data_values / sum(data_values) for realness_name, data_values in data.items()} # normalize data such that it's like every facet has the same number of songs
+
+            # plot
+            alpha = 0.5
+            axes[mmt_statistic].hist(dataset_real_facet[mmt_statistic], label = realness_names[0], density = True, alpha = alpha)
+            axes[mmt_statistic].hist(dataset_facet[mmt_statistic], label = realness_names[1], density = True, alpha = alpha)
+            axes[mmt_statistic].set_xlabel(mmt_statistic.replace("_", " ").title())
+            axes[mmt_statistic].grid()
+            if mmt_statistic == dataset_full.MMT_STATISTIC_COLUMNS[0]: # add y label if necessary
+                axes[mmt_statistic].set_ylabel("Density")
+
+        # plot legend
+        handles, labels = axes[dataset_full.MMT_STATISTIC_COLUMNS[0]].get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        axes["legend"].legend(handles = by_label.values(), labels = list(map(make_facet_name_fancy, by_label.keys())),
+                              loc = "center", fontsize = legend_fontsize, alignment = "center", ncol = len(realness_names))
+        axes["legend"].axis("off")
+
+        # save image
+        output_filepath_plot = f"{output_filepath_prefix}.lines.{facet}.pdf"
+        fig.savefig(output_filepath_plot, dpi = 200, transparent = True, bbox_inches = "tight")
+        logging.info(f"Saved figure to {output_filepath_plot}.")
+
+    # plot plots
+    for facet in FACETS:
+        plot_mmt_statistic_faceted(facet = facet)
 
     ##################################################
 

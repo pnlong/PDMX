@@ -206,7 +206,7 @@ def groove_consistency(music: MusicExpress) -> float:
 
     for track in music.tracks:
         for note in track.notes:
-            measure, position = divmod(int(note.time), int(measure_resolution)) # ensure these values are integers, as they will be used for indexing
+            measure, position = map(int, divmod(note.time, measure_resolution)) # ensure these values are integers, as they will be used for indexing
             if not groove_patterns[measure, position]:
                 groove_patterns[measure, position] = 1
 
