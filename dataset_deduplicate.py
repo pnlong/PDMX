@@ -506,7 +506,7 @@ if __name__ == "__main__":
         make_quantile_plot(by = by, rated_only = False, apply_log_scale = apply_log_scale)
         make_quantile_plot(by = by, rated_only = True, apply_log_scale = apply_log_scale)
     axes["all"].set_title("All Songs")
-    axes["rated"].set_title("Rated")
+    axes["rated"].set_title("Rated Songs")
     percentile_label = "Percentile (%)"
     axes["all"].set_xlabel(percentile_label)
     axes["rated"].set_xlabel(percentile_label)
