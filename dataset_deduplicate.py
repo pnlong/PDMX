@@ -405,20 +405,20 @@ if __name__ == "__main__":
         dataset = dataset[OUTPUT_COLUMNS] # reorder columns, only select columns we like
         dataset = dataset.sort_index(axis = 0, ascending = True, na_position = "last", ignore_index = False) # sort indicies so they align with indicies in original dataset
         dataset.to_csv(path_or_buf = output_filepath, sep = ",", header = True, index = False, mode = "w") # write to file
+        del dataset # free up memory
 
         ##################################################
     
-    else:
+    ##################################################
+    
 
-        # LOAD IN ALREADY CALCULATE DATASET
-        ##################################################
+    # LOAD IN ALREADY CALCULATE DATASET
+    ##################################################
 
-        # load in dataset
-        dataset_deduplicated = pd.read_csv(filepath_or_buffer = output_filepath, sep = ",", header = 0, index_col = False)
-        dataset = dataset.merge(right = dataset_deduplicated, how = "left", on = "path", left_index = False, right_index = False) # add deduplicate columns
-        del dataset_deduplicated # free up memory
-
-        ##################################################
+    # load in dataset
+    dataset_deduplicated = pd.read_csv(filepath_or_buffer = output_filepath, sep = ",", header = 0, index_col = False)
+    dataset = dataset.merge(right = dataset_deduplicated, how = "left", on = "path", left_index = False, right_index = False) # add deduplicate columns
+    del dataset_deduplicated # free up memory
 
     ##################################################
     
