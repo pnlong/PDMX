@@ -223,7 +223,7 @@ if __name__ == "__main__":
             """Helper function for getting data values for a facet of the real dataset."""
             data = dataset_real
             if "rate" in facet:
-                data = data[data["rating"] > 0]
+                data = data[data["n_ratings"] > 0]
             if "deduplicate" in facet:
                 data = data[data["is_best_unique_arrangement"]]
             return data[mmt_statistic] # return the data for tbe MMT statistic
@@ -288,7 +288,7 @@ if __name__ == "__main__":
         dataset_facet = dataset[dataset["facet"] == facet]
         dataset_real_facet = dataset_real
         if "rate" in facet:
-            dataset_real_facet = dataset_real_facet[dataset_real_facet["rating"] > 0]
+            dataset_real_facet = dataset_real_facet[dataset_real_facet["n_ratings"] > 0]
         if "deduplicate" in facet:
             dataset_real_facet = dataset_real_facet[dataset_real_facet["is_best_unique_arrangement"]]
 

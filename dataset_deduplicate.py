@@ -433,7 +433,7 @@ if __name__ == "__main__":
 
         # filter dataset if needed
         if rated_only:
-            data = dataset[dataset["rating"] > 0]
+            data = dataset[dataset["n_ratings"] > 0]
         else:
             data = dataset
 
@@ -486,7 +486,7 @@ if __name__ == "__main__":
 
         # filter dataset if needed
         if rated_only:
-            data = dataset[dataset["rating"] > 0]
+            data = dataset[dataset["n_ratings"] > 0]
         else:
             data = dataset
 
