@@ -200,8 +200,8 @@ if __name__ == "__main__":
             data_mmt_statistic = data_mmt_statistic[~pd.isna(data_mmt_statistic["sem"])] # no na values
 
             # plot
-            axes[column].barh(y = y_values, width = data_mmt_statistic["mean"], color = "blue")
-            axes[column].errorbar(x = data_mmt_statistic["mean"], y = y_values, xerr = data_mmt_statistic["sem"], fmt = "o", color = "red")            
+            axes[column].barh(y = y_values, width = data_mmt_statistic["mean"], color = "tab:blue")
+            axes[column].errorbar(x = data_mmt_statistic["mean"], y = y_values, xerr = data_mmt_statistic["sem"], fmt = "o", color = "tab:red")            
 
             # y and x axis labels
             if mmt_statistic_column == MMT_STATISTIC_COLUMNS[0]:
