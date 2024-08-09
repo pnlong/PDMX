@@ -29,6 +29,7 @@ from sentence_transformers import SentenceTransformer
 
 from dataset_full import OUTPUT_DIR, DATASET_DIR_NAME, CHUNK_SIZE
 from dataset_full_analysis import PLOTS_DIR_NAME
+from remi_dataset import FACETS
 
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
 plt.style.use("default")
@@ -240,6 +241,7 @@ if __name__ == "__main__":
     output_filepath_embeddings = f"{extra_output_dir}/embeddings.csv"
     output_filepath_magnitudes = f"{extra_output_dir}/magnitudes.csv"
     output_filepath = f"{output_dir}/{basename(dirname(args.dataset_filepath))}_deduplicated.csv"
+    output_filepath_merged = f"{output_dir}/{basename(dirname(args.dataset_filepath))}.csv"
     output_filepath_plot = f"{output_dir}/{PLOTS_DIR_NAME}/duplicates.pdf"
 
     ##################################################
@@ -402,23 +404,27 @@ if __name__ == "__main__":
         del songs, best_path_groups
 
         # write to file
-        dataset = dataset[OUTPUT_COLUMNS] # reorder columns, only select columns we like
         dataset = dataset.sort_index(axis = 0, ascending = True, na_position = "last", ignore_index = False) # sort indicies so they align with indicies in original dataset
-        dataset.to_csv(path_or_buf = output_filepath, sep = ",", header = True, index = False, mode = "w") # write to file
-        del dataset # free up memory
+        dataset[OUTPUT_COLUMNS].to_csv(path_or_buf = output_filepath, sep = ",", header = True, index = False, mode = "w") # write to file
+
+        # write combined dataset
+        dataset[f"facet:{FACETS[0]}"] = True
+        dataset[f"facet:{FACETS[1]}"] = dataset["is_rated"]
+        dataset[f"facet:{FACETS[2]}"] = dataset["is_best_unique_arrangement"]
+        dataset[f"facet:{FACETS[3]}"] = (dataset["is_rated"] & dataset["is_best_unique_arrangement"])
+        dataset.to_csv(path_or_buf = output_filepath_merged, sep = ",", header = True, index = False, mode = "w") # write to file
 
         ##################################################
     
-    ##################################################
-    
+    else:
 
-    # LOAD IN ALREADY CALCULATE DATASET
-    ##################################################
+        # LOAD IN ALREADY CALCULATED DATASET
+        ##################################################
 
-    # load in dataset
-    dataset_deduplicated = pd.read_csv(filepath_or_buffer = output_filepath, sep = ",", header = 0, index_col = False)
-    dataset = dataset.merge(right = dataset_deduplicated, how = "left", on = "path", left_index = False, right_index = False) # add deduplicate columns
-    del dataset_deduplicated # free up memory
+        # load in dataset
+        dataset = pd.read_csv(filepath_or_buffer = output_filepath_merged, sep = ",", header = 0, index_col = False)
+
+        ##################################################
 
     ##################################################
     

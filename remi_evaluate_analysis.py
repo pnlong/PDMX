@@ -219,16 +219,8 @@ if __name__ == "__main__":
         bin_centers = [(bins[i] + bins[i + 1]) / 2 for i in range(len(bins) - 1)] # get centerpoints of each bin
         
         # get histograms and convert to fraction
-        def get_facet_values_for_real_dataset(facet: str) -> np.array:
-            """Helper function for getting data values for a facet of the real dataset."""
-            data = dataset_real
-            if "rate" in facet:
-                data = data[data["is_rated"]]
-            if "deduplicate" in facet:
-                data = data[data["is_best_unique_arrangement"]]
-            return data[mmt_statistic] # return the data for tbe MMT statistic
         data = {
-            realness_names[0]: np.array(list(map(lambda facet: np.histogram(a = get_facet_values_for_real_dataset(facet = facet), bins = bins)[0], FACETS))), # real
+            realness_names[0]: np.array(list(map(lambda facet: np.histogram(a = dataset_real[dataset_real[f"facet:{facet}"]][mmt_statistic], bins = bins)[0], FACETS))), # real
             realness_names[1]: np.array(list(map(lambda facet: np.histogram(a = dataset[dataset["facet"] == facet][mmt_statistic], bins = bins)[0], FACETS))), # generated
         }
         data = {realness_name: data_values / np.sum(a = data_values, axis = 1).reshape(-1, 1) for realness_name, data_values in data.items()} # normalize data such that it's like every facet has the same number of songs
@@ -286,11 +278,7 @@ if __name__ == "__main__":
 
         # get faceted dataset
         dataset_facet = dataset[dataset["facet"] == facet]
-        dataset_real_facet = dataset_real
-        if "rate" in facet:
-            dataset_real_facet = dataset_real_facet[dataset_real_facet["is_rated"]]
-        if "deduplicate" in facet:
-            dataset_real_facet = dataset_real_facet[dataset_real_facet["is_best_unique_arrangement"]]
+        dataset_real_facet = dataset_real[dataset_real[f"facet:{facet}"]]
 
         # go through different mmt statistics
         for mmt_statistic in dataset_full.MMT_STATISTIC_COLUMNS:

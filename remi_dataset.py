@@ -306,12 +306,7 @@ if __name__ == "__main__":
     for facet in FACETS:
 
         # filter dataset
-        data = dataset
-        if "rate" in facet:
-            data = data[data["is_rated"]]
-        if "deduplicate" in facet:
-            data = data[data["is_best_unique_arrangement"]]
-        data = data["output_path"].to_list() # filter down to only necessary column, output_path
+        data = dataset[dataset[f"facet:{facet}"]]["output_path"].to_list() # filter down to only necessary column, output_path
 
         # create subdirectory
         output_dir = f"{args.output_dir}/{facet}"
