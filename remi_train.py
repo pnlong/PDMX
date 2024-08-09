@@ -67,7 +67,7 @@ RELEVANT_PARTITIONS = list(remi_dataset.PARTITIONS.keys())[:-1]
 LOSS_OUTPUT_COLUMNS = ["step", "partition", "loss"]
 
 # wandb
-PROJECT_NAME = "PDMD"
+PROJECT_NAME = "PDMX"
 INFER_RUN_NAME_STRING = "-1"
 
 ##################################################
