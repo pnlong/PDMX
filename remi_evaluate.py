@@ -256,7 +256,7 @@ if __name__ == "__main__":
     # log statistics
     bar_width = 104
     results = pd.read_csv(filepath_or_buffer = output_filepath, sep = ",", na_values = utils.NA_STRING, header = 0, index_col = False) # load in previous values
-    for model in models:
+    for model in sorted(models, key = lambda model: int(model[:-1])):
         results_model = results[results["model"] == model]
         logging.info(f"\n{f' {model} ':=^{bar_width}}")
         for mmt_statistic in MMT_STATISTIC_COLUMNS:
