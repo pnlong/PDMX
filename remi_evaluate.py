@@ -260,7 +260,7 @@ if __name__ == "__main__":
         results_model = results[results["model"] == model]
         logging.info(f"\n{f' {model} ':=^{bar_width}}")
         for mmt_statistic in MMT_STATISTIC_COLUMNS:
-            logging.info(f"{mmt_statistic.replace('_', ' ').title()}: mean = {np.nanmean(a = results[mmt_statistic], axis = 0):.4f}, std = {np.nanstd(a = results[mmt_statistic], axis = 0):.4f}")
+            logging.info(f"{mmt_statistic.replace('_', ' ').title()}: mean = {np.nanmean(a = results_model[mmt_statistic], axis = 0):.4f}, std = {np.nanstd(a = results_model[mmt_statistic], axis = 0):.4f}")
     print("\n")
 
     ##################################################
