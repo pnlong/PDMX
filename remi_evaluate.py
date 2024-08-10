@@ -133,9 +133,9 @@ if __name__ == "__main__":
         starting_indicies = utils.rep(x = 0, times = len(model_dirs))
     else:
         previous = pd.read_csv(filepath_or_buffer = output_filepath, sep = ",", na_values = utils.NA_STRING, header = 0, index_col = False) # load in previous values
-        n_samples_to_calculate = previous.groupby(by = "model").size() # calculate number of samples already generated
-        n_samples_to_calculate = list(map(lambda model: max(args.n_samples - n_samples_to_calculate[model], 0), models)) # determine number of samples to calculate
-        starting_indicies = list(map(lambda model: max(map(lambda path: int(path[len(f"{args.input_dir}/{model_dir}/eval/"):-len(f".npy")]), previous[previous["model"] == model]["path"])) + 1, models)) # get the starting index for generation names for each model
+        n_samples_to_calculate = previous.groupby(by = "model").size().to_dict() # calculate number of samples already generated
+        n_samples_to_calculate = list(map(lambda model: max(args.n_samples - n_samples_to_calculate.get(model, 0), 0), models)) # determine number of samples to calculate
+        starting_indicies = list(map(lambda model: max(list(map(lambda path: int(path[len(f"{args.input_dir}/{model}/eval/"):-len(f".npy")]), previous[previous["model"] == model]["path"])) + [-1]) + 1, models)) # get the starting index for generation names for each model
         del previous
     del output_columns_must_be_written, n_lines_in_output # free up memory
 
