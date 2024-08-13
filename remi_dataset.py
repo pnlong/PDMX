@@ -24,6 +24,7 @@ import torch
 import torch.utils.data
 
 import dataset_full
+from dataset_deduplicate import FACETS
 from read_mscz.music import MusicExpress
 from read_mscz.read_mscz import read_musescore
 import remi_representation
@@ -39,13 +40,16 @@ import utils
 OUTPUT_DIR = "/data1/pnlong/musescore/remi"
 
 # facets of the dataset
-FACETS = ["all", "rated", "deduplicated", "rated_deduplicated"]
+FACET_HQ = f"{FACETS[-1]}_hq" # high quality facet name
 
 # partition names
 PARTITIONS = {"train": 0.9, "valid": 0.1, "test": 0.0} # no test partition
 
 # value for padding
 PAD_VALUE = 0
+
+# at what rating (strictly greater than) do we consider a song high quality?
+HIGH_QUALITY_RATING_THRESHOLD = 4.0
 
 ##################################################
 
@@ -190,7 +194,7 @@ class MusicDataset(torch.utils.data.Dataset):
 def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(prog = "Dataset", description = "Create and test PyTorch Dataset for MuseScore data.")
-    parser.add_argument("-d", "--dataset_filepath", default = f"{dataset_full.OUTPUT_DIR}/{dataset_full.DATASET_DIR_NAME}_full.csv", type = str, help = "Filepath to full dataset")
+    parser.add_argument("-d", "--dataset_filepath", default = f"{dataset_full.OUTPUT_DIR}/{dataset_full.DATASET_DIR_NAME}.csv", type = str, help = "Filepath to full dataset")
     parser.add_argument("-o", "--output_dir", default = OUTPUT_DIR, type = str, help = "Output directory for any relevant files")
     parser.add_argument("-u", "--use_csv", action = "store_true", help = "Whether to save outputs in CSV format (default to NPY format)")
     parser.add_argument("-rv", "--ratio_valid", default = PARTITIONS["valid"], type = float, help = "Ratio of validation files")
@@ -235,15 +239,6 @@ if __name__ == "__main__":
     # load in dataset
     logging.info("Loading in Dataset.")
     dataset = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)
-    dataset = dataset.merge(
-        right = pd.read_csv(
-            filepath_or_buffer = f"{args.dataset_filepath[:-len('_full.csv')]}_deduplicated.csv", # add deduplication information to dataset
-            sep = ",",
-            header = 0,
-            index_col = False),
-        how = "inner",
-        on = "path"
-    )
 
     ##################################################
 
@@ -293,6 +288,9 @@ if __name__ == "__main__":
     # PARTITION
     ##################################################
 
+    # get high quality facet
+    dataset[f"facet:{FACET_HQ}"] = (dataset[f"facet:{FACETS[-1]}"] & (dataset["rating"] > HIGH_QUALITY_RATING_THRESHOLD))
+
     # get partitions set up
     partitions = dict(zip(PARTITIONS.keys(), (1 - args.ratio_valid - args.ratio_test, args.ratio_valid, args.ratio_test)))
 
@@ -303,7 +301,7 @@ if __name__ == "__main__":
             output_file.write("\n".join(paths))
 
     # go through the different facets
-    for facet in FACETS:
+    for facet in (FACETS + [FACET_HQ]):
 
         # filter dataset
         data = dataset[dataset[f"facet:{facet}"]]["output_path"].to_list() # filter down to only necessary column, output_path

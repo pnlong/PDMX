@@ -29,7 +29,7 @@ from sentence_transformers import SentenceTransformer
 
 from dataset_full import OUTPUT_DIR, DATASET_DIR_NAME, CHUNK_SIZE
 from dataset_full_analysis import PLOTS_DIR_NAME
-from remi_dataset import FACETS
+import utils
 
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
 plt.style.use("default")
@@ -53,6 +53,9 @@ BEST_VERSION_METRIC_COLUMNS = ["rating", "n_ratings", "n_notes", "n_tokens"]
 
 # column names to include in the output
 OUTPUT_COLUMNS = ["path", "best_path", "is_best_path", "best_arrangement", "is_best_arrangement", "best_unique_arrangement", "is_best_unique_arrangement"]
+
+# facets of the dataset
+FACETS = ["all", "rated", "deduplicated", "rated_deduplicated"]
 
 # minimum similarity (0 to 1) between two song titles for them to be considered duplicates
 SIMILARITY_THRESHOLD = 0.8
@@ -405,14 +408,14 @@ if __name__ == "__main__":
 
         # write to file
         dataset = dataset.sort_index(axis = 0, ascending = True, na_position = "last", ignore_index = False) # sort indicies so they align with indicies in original dataset
-        dataset[OUTPUT_COLUMNS].to_csv(path_or_buf = output_filepath, sep = ",", header = True, index = False, mode = "w") # write to file
+        dataset[OUTPUT_COLUMNS].to_csv(path_or_buf = output_filepath, sep = ",", na_rep = utils.NA_STRING, header = True, index = False, mode = "w") # write to file
 
         # write combined dataset
         dataset[f"facet:{FACETS[0]}"] = True
         dataset[f"facet:{FACETS[1]}"] = dataset["is_rated"]
         dataset[f"facet:{FACETS[2]}"] = dataset["is_best_unique_arrangement"]
         dataset[f"facet:{FACETS[3]}"] = (dataset["is_rated"] & dataset["is_best_unique_arrangement"])
-        dataset.to_csv(path_or_buf = output_filepath_merged, sep = ",", header = True, index = False, mode = "w") # write to file
+        dataset.to_csv(path_or_buf = output_filepath_merged, sep = ",", na_rep = utils.NA_STRING, header = True, index = False, mode = "w") # write to file
 
         ##################################################
     
@@ -504,7 +507,6 @@ if __name__ == "__main__":
 
         # plot
         axes["rated" if rated_only else "all"].plot(percentiles, percentile_values, label = by_to_title[by])
-        
     
     # plot
     apply_log_scale = True

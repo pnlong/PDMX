@@ -16,9 +16,12 @@ software_dir="/home/pnlong/model_musescore"
 software="${software_dir}/remi_train.py"
 
 # defaults
-data_dir="/home/pnlong/musescore/remi/all"
+base_dir="/home/pnlong/musescore/remi"
+fine_tuning_facet_name="rated_deduplicated_hq"
+data_dir="${base_dir}/all"
 gpu=-1 # gpu number
 resume=""
+fine_tune=""
 
 # small model architecture, the default
 dim=512 # dimension
@@ -32,14 +35,17 @@ heads=8 # attention heads
 ##################################################
 
 # parse command line arguments
-usage="Usage: $(basename ${0}) [-d] (data directory) [-r] (resume?) [-sml] (small/medium/large) [-g] (gpu to use)"
-while getopts ':d:g:rsmlh' opt; do
+usage="Usage: $(basename ${0}) [-d] (data directory) [-r] (resume?) [-f] (fine tune?) [-sml] (small/medium/large) [-g] (gpu to use)"
+while getopts ':d:g:rfsmlh' opt; do
   case "${opt}" in
     d)
       data_dir="${OPTARG}"
       ;;
     r)
       resume="--resume -1"
+      ;;
+    f)
+      fine_tune="--fine_tune"
       ;;
     s)
       dim=512 # dimension
@@ -75,13 +81,20 @@ while getopts ':d:g:rsmlh' opt; do
 done
 
 # filepaths
-paths_train="${data_dir}/train.txt"
-paths_valid="${data_dir}/valid.txt"
 output_dir="${data_dir}"
 
-# constants
-batch_size=12 # decrease if gpu memory consumption is too high
-steps=100000 # in my experience >70000 is sufficient to train
+# conditional
+if [ -z "${fine_tune}" ]; then # normal training
+  paths_train="${data_dir}/train.txt"
+  paths_valid="${data_dir}/valid.txt"
+  steps=100000 # in my experience >70000 is sufficient to train
+  learning_rate=0.0005
+else # fine-tuning
+  paths_train="${base_dir}/${fine_tuning_facet_name}/train.txt"
+  paths_valid="${base_dir}/${fine_tuning_facet_name}/valid.txt"
+  steps=5000 # less steps needed for fine tuning
+  learning_rate=0.00005
+fi
 
 ##################################################
 
@@ -92,7 +105,7 @@ steps=100000 # in my experience >70000 is sufficient to train
 set -e # stop if there's an error
 
 # run program
-python ${software} --aug --paths_train ${paths_train} --paths_valid ${paths_valid} --output_dir ${output_dir} --batch_size ${batch_size} --steps ${steps} --dim ${dim} --layers ${layers} --heads ${heads} --gpu ${gpu} ${resume}
+python ${software} --aug --paths_train ${paths_train} --paths_valid ${paths_valid} --output_dir ${output_dir} --steps ${steps} --dim ${dim} --layers ${layers} --heads ${heads} --learning_rate ${learning_rate} --gpu ${gpu} ${fine_tune} ${resume}
 
 ##################################################
 

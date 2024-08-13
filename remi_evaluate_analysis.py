@@ -18,7 +18,8 @@ from os.path import exists
 from os import mkdir
 
 import dataset_full
-from remi_dataset import FACETS, OUTPUT_DIR
+from dataset_deduplicate import FACETS
+from remi_dataset import OUTPUT_DIR
 from remi_train import RELEVANT_PARTITIONS
 from remi_evaluate import OUTPUT_COLUMNS
 import utils
@@ -45,7 +46,7 @@ def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(prog = "Evaluate Analysis", description = "Analyze the evaluation a REMI-Style Model.")
     parser.add_argument("-i", "--input_dir", default = OUTPUT_DIR, type = str, help = "Directory containing facets (as subdirectories) to evaluate")
-    parser.add_argument("-d", "--dataset_filepath", default = f"{dataset_full.OUTPUT_DIR}/{dataset_full.DATASET_DIR_NAME}_full.csv", type = str, help = "Dataset from which facets are derived")
+    parser.add_argument("-d", "--dataset_filepath", default = f"{dataset_full.OUTPUT_DIR}/{dataset_full.DATASET_DIR_NAME}.csv", type = str, help = "Dataset from which facets are derived")
     parser.add_argument("-m", "--model", default = None, type = str, help = "Name of the model to evaluate for each different facet")
     return parser.parse_args(args = args, namespace = namespace)
 
@@ -62,6 +63,9 @@ def convert_to_fraction(data: np.array) -> np.array:
     bin_sums += (bin_sums == 0) # replace 0s with 1s to avoid divide by zero error
     data_matrix = data / bin_sums
     return data_matrix
+
+# make facet name fancy
+make_facet_name_fancy = lambda facet: facet.title().replace("_", " and ")
 
 ##################################################
 
@@ -97,7 +101,7 @@ if __name__ == "__main__":
     dataset_real = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)
     dataset_real = dataset_real.merge(
         right = pd.read_csv(
-            filepath_or_buffer = f"{args.dataset_filepath[:-len('_full.csv')]}_deduplicated.csv", # add deduplication information to dataset
+            filepath_or_buffer = f"{args.dataset_filepath[:-len('.csv')]}_deduplicated.csv", # add deduplication information to dataset
             sep = ",",
             header = 0,
             index_col = False),
@@ -123,7 +127,6 @@ if __name__ == "__main__":
     # plotting constants
     n_bins = 12
     range_multiplier_constant = 1.001
-    make_facet_name_fancy = lambda facet: facet.title().replace("_", " and ")
     realness_names = ["actual", "generated"]
     legend_title = "Facet"
     legend_title_fontsize = "large"

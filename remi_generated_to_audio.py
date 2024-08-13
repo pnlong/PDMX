@@ -10,8 +10,8 @@
 ##################################################
 
 import argparse
-from os.path import exists, dirname
-from os import mkdir
+from os.path import exists
+from os import makedirs
 import remi_representation
 import utils
 import numpy as np
@@ -52,9 +52,10 @@ if __name__ == "__main__":
     # output codes as audio
     if args.output_path is None:
         path_info = args.path[:-len(".npy")].split("/")[-4:]
-        output_path = f"/home/pnlong/musescore/remi/generated_audio/{path_info[0]}.{path_info[-1]}.wav"
-        if not exists(dirname(output_path)):
-            mkdir(dirname(output_path))
+        output_dir = f"/home/pnlong/musescore/remi/generated_audio/{path_info[1]}"
+        if not exists(output_dir):
+            makedirs(output_dir, exist_ok = True)
+        output_path = f"{output_dir}/{path_info[0]}.{path_info[-1]}.wav"
     music.write(path = output_path)
     print(f"Saved to {output_path}.")
 

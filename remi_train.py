@@ -25,6 +25,7 @@ import torch.utils.data
 from tqdm import tqdm
 import x_transformers
 
+from dataset_deduplicate import FACETS
 import remi_dataset
 import remi_representation
 import utils
@@ -36,10 +37,11 @@ import utils
 ##################################################
 
 # paths
-INPUT_DIR = f"{remi_dataset.OUTPUT_DIR}/{remi_dataset.FACETS[0]}"
+INPUT_DIR = f"{remi_dataset.OUTPUT_DIR}/{FACETS[0]}"
 PATHS_TRAIN = f"{INPUT_DIR}/train.txt"
 PATHS_VALID = f"{INPUT_DIR}/valid.txt"
 OUTPUT_DIR = INPUT_DIR
+FINE_TUNING_SUFFIX = "ft"
 
 # model constants
 MAX_SEQ_LEN = 1024
@@ -60,7 +62,7 @@ LEARNING_RATE_DECAY_MULTIPLIER = 0.1
 GRAD_NORM_CLIP = 1.0
 
 # data loader constants
-BATCH_SIZE = 8
+BATCH_SIZE = 12
 
 # more constants
 RELEVANT_PARTITIONS = list(remi_dataset.PARTITIONS.keys())[:-1]
@@ -103,6 +105,7 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("-pt", "--paths_train", default = PATHS_TRAIN, type = str, help = ".txt file with absolute filepaths to training dataset")
     parser.add_argument("-pv", "--paths_valid", default = PATHS_VALID, type = str, help = ".txt file with absolute filepaths to validation dataset")
     parser.add_argument("-o", "--output_dir", default = OUTPUT_DIR, type = str, help = "Output directory")
+    parser.add_argument("-ft", "--fine_tune", action = "store_true", help = "Whether this is fine tuning")
     # data
     parser.add_argument("--aug", action = argparse.BooleanOptionalAction, default = True, help = "Whether to use data augmentation")
     # model
@@ -125,7 +128,6 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("--lr_decay_multiplier", default = LEARNING_RATE_DECAY_MULTIPLIER, type = float, help = "Learning rate multiplier at the end")
     parser.add_argument("--grad_norm_clip", default = GRAD_NORM_CLIP, type = float, help = "Gradient norm clipping")
     # others
-    parser.add_argument("-bs", "--batch_size", default = BATCH_SIZE, type = int, help = "Batch size")
     parser.add_argument("-g", "--gpu", default = -1, type = int, help = "GPU number")
     parser.add_argument("-j", "--jobs", default = int(cpu_count() / 4), type = int, help = "Number of workers for data loading")
     parser.add_argument("-r", "--resume", default = None, type = str, help = "Provide the wandb run name/id to resume a run")
@@ -170,8 +172,8 @@ if __name__ == "__main__":
         "valid": remi_dataset.MusicDataset(paths = args.paths_valid, encoding = encoding, indexer = indexer, encode_fn = remi_representation.encode_notes, max_seq_len = args.max_seq_len, max_beat = args.max_beat, use_augmentation = False)
         }
     data_loader = {
-        "train": torch.utils.data.DataLoader(dataset = dataset["train"], batch_size = args.batch_size, shuffle = True, num_workers = args.jobs, collate_fn = dataset["train"].collate),
-        "valid": torch.utils.data.DataLoader(dataset = dataset["valid"], batch_size = args.batch_size, shuffle = False, num_workers = args.jobs, collate_fn = dataset["valid"].collate)
+        "train": torch.utils.data.DataLoader(dataset = dataset["train"], batch_size = BATCH_SIZE, shuffle = True, num_workers = args.jobs, collate_fn = dataset["train"].collate),
+        "valid": torch.utils.data.DataLoader(dataset = dataset["valid"], batch_size = BATCH_SIZE, shuffle = False, num_workers = args.jobs, collate_fn = dataset["valid"].collate)
     }
 
     # create the model
@@ -199,9 +201,19 @@ if __name__ == "__main__":
     output_parent_dir = args.output_dir
     output_dir_name = f"{model_size}M"
     output_dir = f"{output_parent_dir}/{output_dir_name}" # custom output directory based on arguments
+    original_output_dir_name, original_output_dir = output_dir_name, output_dir # save in case those values are changed
     if not exists(output_dir):
-        makedirs(output_dir)
-    checkpoints_dir = f"{output_dir}/checkpoints" # models will be stored in the output directory
+        if args.fine_tune:
+            raise NotADirectoryError(f"No {output_dir_name} model exists at {output_dir} to fine tune.")
+        else:
+            makedirs(output_dir)
+    elif args.fine_tune: # output_dir exists and we want to fine tune, then set the output directory to the fine tuning directory
+        output_dir_name += f"_{FINE_TUNING_SUFFIX}"
+        output_dir = f"{output_parent_dir}/{output_dir_name}"
+        if not exists(output_dir):
+            makedirs(output_dir)
+    checkpoints_dir, original_checkpoints_dir = f"{output_dir}/checkpoints", f"{original_output_dir}/checkpoints" # models will be stored in the output directory
+    checkpoints_dir_for_model_reloading = original_checkpoints_dir if (args.fine_tune and (not args.resume)) else checkpoints_dir
     if not exists(checkpoints_dir):
         mkdir(checkpoints_dir)
 
@@ -233,24 +245,33 @@ if __name__ == "__main__":
             print(logging_output.read())
 
     # load previous model and summarize if needed
-    best_model_filepath = {partition: f"{checkpoints_dir}/best_model.{partition}.pth" for partition in RELEVANT_PARTITIONS}
-    model_previously_created = args.resume and all(exists(filepath) for filepath in best_model_filepath.values())
-    if model_previously_created:
-        model.load_state_dict(torch.load(f = best_model_filepath["valid"]))
-    else:
+    def log_model_size():
+        """Log the size of the model."""
         logging.info(f"Number of parameters: {n_parameters:,}")
         logging.info(f"Number of trainable parameters: {n_parameters_trainable:,}")
+    best_model_filepath = {partition: f"{checkpoints_dir_for_model_reloading}/best_model.{partition}.pth" for partition in RELEVANT_PARTITIONS}
+    if args.fine_tune and args.resume and (not all(map(exists, best_model_filepath.values()))): # reset best model filepath if we are asking to resume a fine-tuning run that doesn't yet exist
+        best_model_filepath = {partition: f"{original_checkpoints_dir}/best_model.{partition}.pth" for partition in RELEVANT_PARTITIONS} # change back to default fine-tuning directory
+    if args.fine_tune and (not all(map(exists, best_model_filepath.values()))): # check if we can even fine tune and the state dict files exist
+        raise FileNotFoundError(f"Cannot fine tune {original_output_dir_name} model, since relevant state_dict files do not exist.")
+    if (args.resume or args.fine_tune) and all(map(exists, best_model_filepath.values())):
+        model.load_state_dict(torch.load(f = best_model_filepath["valid"]))
+        if args.fine_tune and log_hyperparameters:
+            log_model_size()
+    else:
+        log_model_size()
+    best_model_filepath = {partition: f"{checkpoints_dir}/best_model.{partition}.pth" for partition in RELEVANT_PARTITIONS} # reset in case output_dir and original_output_dir were different (account for fine tuning)
     
     # create the optimizer
     optimizer = torch.optim.Adam(params = model.parameters(), lr = args.learning_rate)
     best_optimizer_filepath = {partition: f"{checkpoints_dir}/best_optimizer.{partition}.pth" for partition in RELEVANT_PARTITIONS}
-    if args.resume and all(exists(filepath) for filepath in best_optimizer_filepath.values()):
+    if args.resume and all(map(exists, best_optimizer_filepath.values())):
         optimizer.load_state_dict(torch.load(f = best_optimizer_filepath["valid"]))
 
     # create the scheduler
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer = optimizer, lr_lambda = lambda step: get_lr_multiplier(step = step, warmup_steps = args.lr_warmup_steps, decay_end_steps = args.lr_decay_steps, decay_end_multiplier = args.lr_decay_multiplier))
     best_scheduler_filepath = {partition: f"{checkpoints_dir}/best_scheduler.{partition}.pth" for partition in RELEVANT_PARTITIONS}
-    if args.resume and all(exists(filepath) for filepath in best_scheduler_filepath.values()):
+    if args.resume and all(map(exists, best_scheduler_filepath.values())):
         scheduler.load_state_dict(torch.load(f = best_scheduler_filepath["valid"]))
 
     ##################################################
