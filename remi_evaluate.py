@@ -308,7 +308,7 @@ if __name__ == "__main__":
     ##################################################
 
     # log statistics
-    bar_width = 104
+    bar_width = 50
     results = pd.read_csv(filepath_or_buffer = output_filepath, sep = ",", na_values = utils.NA_STRING, header = 0, index_col = False) # load in previous values
     for model in sorted(models, key = lambda model: int(model.split("_")[0][:-1]) + (0.5 if remi_train.FINE_TUNING_SUFFIX in model else 0)):
         results_model = results[results["model"] == model]
@@ -316,7 +316,7 @@ if __name__ == "__main__":
         for mmt_statistic in dataset_full.MMT_STATISTIC_COLUMNS:
             logging.info(f"{mmt_statistic.replace('_', ' ').title()}: mean = {np.nanmean(a = results_model[mmt_statistic], axis = 0):.4f}, std = {np.nanstd(a = results_model[mmt_statistic], axis = 0):.4f}")
         logging.info(f"Perplexity: {perplexity_function(loss = sum(results_model['loss']) / n_batches):.4f}")
-    print("\n")
+    print("")
 
     ##################################################
 
