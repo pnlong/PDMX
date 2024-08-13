@@ -93,7 +93,7 @@ if __name__ == "__main__":
     args = parse_args()
 
     # get directories to eval
-    model_dirs = list(filter(lambda path: isdir(path) and path.split("_")[0].endswith("M"), map(lambda base: f"{args.input_dir}/{base}", listdir(args.input_dir))))
+    model_dirs = list(filter(lambda path: isdir(path) and basename(path).split("_")[0].endswith("M"), map(lambda base: f"{args.input_dir}/{base}", listdir(args.input_dir))))
     models = list(map(basename, model_dirs))
 
     # set up the logger
