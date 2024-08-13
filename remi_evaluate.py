@@ -310,7 +310,7 @@ if __name__ == "__main__":
         logging.info(f"\n{f' {model} ':=^{bar_width}}")
         for mmt_statistic in dataset_full.MMT_STATISTIC_COLUMNS:
             logging.info(f"{mmt_statistic.replace('_', ' ').title()}: mean = {np.nanmean(a = results_model[mmt_statistic], axis = 0):.4f}, std = {np.nanstd(a = results_model[mmt_statistic], axis = 0):.4f}")
-    logging.info(f"Perplexity: {perplexity_function(loss = sum(results_model['loss']) / n_batches):.4f}")
+        logging.info(f"Perplexity: {perplexity_function(loss = sum(results_model['loss']) / n_batches):.4f}")
     print("\n")
 
     ##################################################
