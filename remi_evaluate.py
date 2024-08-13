@@ -39,7 +39,7 @@ import utils
 ##################################################
 
 # default number of samples to evaluate
-N_SAMPLES = remi_train.BATCH_SIZE * 128
+N_SAMPLES = remi_train.BATCH_SIZE * 100
 
 # evaluation constants
 SEQ_LEN = 1024
@@ -273,7 +273,7 @@ if __name__ == "__main__":
                     # load in generated content
                     generated = remi_dataset.pad(data = list(map(np.load, generated_output_filepaths)))
 
-                # analyze 
+                # analyze
                 with multiprocessing.Pool(processes = args.jobs) as pool:
                     results = pool.map(func = evaluate, iterable = generated, chunksize = dataset_full.CHUNK_SIZE)
 
