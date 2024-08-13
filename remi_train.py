@@ -255,7 +255,7 @@ if __name__ == "__main__":
     if args.fine_tune and (not all(map(exists, best_model_filepath.values()))): # check if we can even fine tune and the state dict files exist
         raise FileNotFoundError(f"Cannot fine tune {original_output_dir_name} model, since relevant state_dict files do not exist.")
     if (args.resume or args.fine_tune) and all(map(exists, best_model_filepath.values())):
-        model.load_state_dict(torch.load(f = best_model_filepath["valid"]))
+        model.load_state_dict(torch.load(f = best_model_filepath["valid"], weights_only = True))
         if args.fine_tune and log_hyperparameters:
             log_model_size()
     else:
@@ -266,13 +266,13 @@ if __name__ == "__main__":
     optimizer = torch.optim.Adam(params = model.parameters(), lr = args.learning_rate)
     best_optimizer_filepath = {partition: f"{checkpoints_dir}/best_optimizer.{partition}.pth" for partition in RELEVANT_PARTITIONS}
     if args.resume and all(map(exists, best_optimizer_filepath.values())):
-        optimizer.load_state_dict(torch.load(f = best_optimizer_filepath["valid"]))
+        optimizer.load_state_dict(torch.load(f = best_optimizer_filepath["valid"], weights_only = True))
 
     # create the scheduler
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer = optimizer, lr_lambda = lambda step: get_lr_multiplier(step = step, warmup_steps = args.lr_warmup_steps, decay_end_steps = args.lr_decay_steps, decay_end_multiplier = args.lr_decay_multiplier))
     best_scheduler_filepath = {partition: f"{checkpoints_dir}/best_scheduler.{partition}.pth" for partition in RELEVANT_PARTITIONS}
     if args.resume and all(map(exists, best_scheduler_filepath.values())):
-        scheduler.load_state_dict(torch.load(f = best_scheduler_filepath["valid"]))
+        scheduler.load_state_dict(torch.load(f = best_scheduler_filepath["valid"], weights_only = True))
 
     ##################################################
 
