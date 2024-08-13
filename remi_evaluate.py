@@ -137,163 +137,168 @@ if __name__ == "__main__":
 
     # output file
     output_filepath = f"{args.input_dir}/evaluation.csv"
-    output_columns_must_be_written = (not exists(output_filepath)) or args.reset
     n_batches = int((N_SAMPLES - 1) / remi_train.BATCH_SIZE) + 1
-    if output_columns_must_be_written: # if column names need to be written
+    if (not exists(output_filepath)) or args.reset: # if column names need to be written
         pd.DataFrame(columns = OUTPUT_COLUMNS).to_csv(path_or_buf = output_filepath, sep = ",", na_rep = utils.NA_STRING, header = True, index = False, mode = "w")
-    del output_columns_must_be_written # free up memory
 
     ##################################################
 
 
-    # HELPER FUNCTION FOR EVALUATING
+    # EVALUATE IF WE HAVEN'T YET
     ##################################################
 
-    # helper function for evaluating a generated sequence
-    def evaluate(codes: Union[np.array, torch.tensor]) -> List[float]:
-        """Evaluate the results."""
+    if sum(1 for _ in open(output_filepath, "r")) < ((len(models) * N_SAMPLES) + 1): # if the output is complete, based on number of lines
 
-        # convert codes to a music object
-        music = remi_representation.decode(codes = codes, encoding = encoding, vocabulary = vocabulary) # convert to a MusicExpress object
-
-        # return a dictionary
-        if len(music.tracks) == 0:
-            return utils.rep(x = np.nan, times = len(dataset_full.MMT_STATISTIC_COLUMNS)) + [""]
-        else:
-            return [
-                dataset_full.pitch_class_entropy(music = music),
-                dataset_full.scale_consistency(music = music),
-                dataset_full.groove_consistency(music = music),
-                dataset_full.get_tracks_string(tracks = music.tracks),
-            ]
-
-    ##################################################
-
-
-    # REPEAT WITH EACH MODEL IN INPUT DIRECTORY
-    ##################################################
-
-    for model_name, model_dir in zip(models, model_dirs):
-
-        # LOAD MODEL
+        # HELPER FUNCTION FOR EVALUATING
         ##################################################
 
-        # get evaluation directory (where to output generations)
-        eval_dir = f"{model_dir}/eval"
-        if not exists(eval_dir):
-            mkdir(eval_dir)
+        # helper function for evaluating a generated sequence
+        def evaluate(codes: Union[np.array, torch.tensor]) -> List[float]:
+            """Evaluate the results."""
 
-        # load training configurations
-        train_args_filepath = f"{model_dir}/train_args.json"
-        train_args = utils.load_json(filepath = train_args_filepath)
-        del train_args_filepath
+            # convert codes to a music object
+            music = remi_representation.decode(codes = codes, encoding = encoding, vocabulary = vocabulary) # convert to a MusicExpress object
 
-        # load dataset and data loader
-        dataset = remi_dataset.MusicDataset(
-            paths = data_paths_filepath,
-            encoding = encoding,
-            indexer = indexer,
-            encode_fn = remi_representation.encode_notes,
-            max_seq_len = train_args["max_seq_len"],
-            max_beat = train_args["max_beat"],
-            use_augmentation = train_args["aug"],
-        )
-        data_loader = torch.utils.data.DataLoader(
-            dataset = dataset,
-            num_workers = args.jobs,
-            collate_fn = dataset.collate,
-            batch_size = remi_train.BATCH_SIZE,
-            shuffle = False
-        )
-        data_iter = iter(data_loader)
-
-        # create the model
-        model = x_transformers.TransformerWrapper(
-            num_tokens = len(indexer),
-            max_seq_len = train_args["max_seq_len"],
-            attn_layers = x_transformers.Decoder(
-                dim = train_args["dim"],
-                depth = train_args["layers"],
-                heads = train_args["heads"],
-                rotary_pos_emb = train_args["rel_pos_emb"],
-                emb_dropout = train_args["dropout"],
-                attn_dropout = train_args["dropout"],
-                ff_dropout = train_args["dropout"],
-            ),
-            use_abs_pos_emb = train_args["abs_pos_emb"],
-        ).to(device)
-        model = x_transformers.AutoregressiveWrapper(net = model)
-
-        # load the checkpoint
-        checkpoint_filepath = f"{model_dir}/checkpoints/best_model.valid.pth"
-        model_state_dict = torch.load(f = checkpoint_filepath, map_location = device, weights_only = True)
-        model.load_state_dict(state_dict = model_state_dict)
-        model.eval()
-        del checkpoint_filepath, model_state_dict # free up memory
+            # return a dictionary
+            if len(music.tracks) == 0:
+                return utils.rep(x = np.nan, times = len(dataset_full.MMT_STATISTIC_COLUMNS)) + [""]
+            else:
+                return [
+                    dataset_full.pitch_class_entropy(music = music),
+                    dataset_full.scale_consistency(music = music),
+                    dataset_full.groove_consistency(music = music),
+                    dataset_full.get_tracks_string(tracks = music.tracks),
+                ]
 
         ##################################################
 
 
-        # EVALUATE
+        # REPEAT WITH EACH MODEL IN INPUT DIRECTORY
         ##################################################
 
-        # iterate over the dataset
-        with torch.no_grad():
-            for i in tqdm(iterable = range(n_batches), desc = f"Evaluating the {model_name} Model"):
+        for model_name, model_dir in zip(models, model_dirs):
 
-                # get number of samples to calculate
-                n_samples_in_batch = (((N_SAMPLES - 1) % remi_train.BATCH_SIZE) + 1) if (i == (n_batches - 1)) else remi_train.BATCH_SIZE
+            # LOAD MODEL
+            ##################################################
 
-                # get output filepaths for generated sequences
-                generated_output_filepaths = list(map(lambda j: f"{eval_dir}/{(i * remi_train.BATCH_SIZE) + j}.npy", range(n_samples_in_batch)))
+            # get evaluation directory (where to output generations)
+            eval_dir = f"{model_dir}/eval"
+            if not exists(eval_dir):
+                mkdir(eval_dir)
 
-                # generate if needed
-                if (not all(map(exists, generated_output_filepaths))) or args.reset:
+            # load training configurations
+            train_args_filepath = f"{model_dir}/train_args.json"
+            train_args = utils.load_json(filepath = train_args_filepath)
+            del train_args_filepath
 
-                    # get start tokens
-                    prefix = torch.ones(size = (n_samples_in_batch, 1), dtype = torch.long, device = device) * sos
+            # load dataset and data loader
+            dataset = remi_dataset.MusicDataset(
+                paths = data_paths_filepath,
+                encoding = encoding,
+                indexer = indexer,
+                encode_fn = remi_representation.encode_notes,
+                max_seq_len = train_args["max_seq_len"],
+                max_beat = train_args["max_beat"],
+                use_augmentation = train_args["aug"],
+            )
+            data_loader = torch.utils.data.DataLoader(
+                dataset = dataset,
+                num_workers = args.jobs,
+                collate_fn = dataset.collate,
+                batch_size = remi_train.BATCH_SIZE,
+                shuffle = False
+            )
+            data_iter = iter(data_loader)
 
-                    # generate new samples; unconditioned generation
-                    generated = model.generate(
-                        prompts = prefix,
-                        seq_len = args.seq_len,
-                        eos_token = eos,
-                        temperature = args.temperature,
-                        filter_logits_fn = filter_logits_fn,
+            # create the model
+            model = x_transformers.TransformerWrapper(
+                num_tokens = len(indexer),
+                max_seq_len = train_args["max_seq_len"],
+                attn_layers = x_transformers.Decoder(
+                    dim = train_args["dim"],
+                    depth = train_args["layers"],
+                    heads = train_args["heads"],
+                    rotary_pos_emb = train_args["rel_pos_emb"],
+                    emb_dropout = train_args["dropout"],
+                    attn_dropout = train_args["dropout"],
+                    ff_dropout = train_args["dropout"],
+                ),
+                use_abs_pos_emb = train_args["abs_pos_emb"],
+            ).to(device)
+            model = x_transformers.AutoregressiveWrapper(net = model)
+
+            # load the checkpoint
+            checkpoint_filepath = f"{model_dir}/checkpoints/best_model.valid.pth"
+            model_state_dict = torch.load(f = checkpoint_filepath, map_location = device, weights_only = True)
+            model.load_state_dict(state_dict = model_state_dict)
+            model.eval()
+            del checkpoint_filepath, model_state_dict # free up memory
+
+            ##################################################
+
+
+            # EVALUATE
+            ##################################################
+
+            # iterate over the dataset
+            with torch.no_grad():
+                for i in tqdm(iterable = range(n_batches), desc = f"Evaluating the {model_name} Model"):
+
+                    # get number of samples to calculate
+                    n_samples_in_batch = (((N_SAMPLES - 1) % remi_train.BATCH_SIZE) + 1) if (i == (n_batches - 1)) else remi_train.BATCH_SIZE
+
+                    # get output filepaths for generated sequences
+                    generated_output_filepaths = list(map(lambda j: f"{eval_dir}/{(i * remi_train.BATCH_SIZE) + j}.npy", range(n_samples_in_batch)))
+
+                    # generate if needed
+                    if (not all(map(exists, generated_output_filepaths))) or args.reset:
+
+                        # get start tokens
+                        prefix = torch.ones(size = (n_samples_in_batch, 1), dtype = torch.long, device = device) * sos
+
+                        # generate new samples; unconditioned generation
+                        generated = model.generate(
+                            prompts = prefix,
+                            seq_len = args.seq_len,
+                            eos_token = eos,
+                            temperature = args.temperature,
+                            filter_logits_fn = filter_logits_fn,
+                        )
+                        generated = torch.cat(tensors = (prefix, generated), dim = 1).cpu().numpy()
+
+                        # save generation
+                        for j in range(len(generated)):
+                            np.save(file = generated_output_filepaths[j], arr = generated[j]) # save generation to file
+
+                    # reload generated files
+                    else:
+
+                        # load in generated content
+                        generated = remi_dataset.pad(data = list(map(np.load, generated_output_filepaths)))
+
+                    # analyze
+                    with multiprocessing.Pool(processes = args.jobs) as pool:
+                        results = pool.map(func = evaluate, iterable = generated, chunksize = dataset_full.CHUNK_SIZE)
+
+                    # get loss values for perplexity
+                    try:
+                        batch = next(data_iter)
+                    except (StopIteration):
+                        data_iter = iter(data_loader) # reinitialize dataset iterator if necessary
+                        batch = next(data_iter)
+                    loss_batch = model( # compute loss
+                        x = batch["seq"][:n_samples_in_batch].to(device),
+                        return_outputs = False,
+                        mask = batch["mask"][:n_samples_in_batch].to(device),
                     )
-                    generated = torch.cat(tensors = (prefix, generated), dim = 1).cpu().numpy()
+                    loss_batch = float(loss_batch) / n_samples_in_batch # divide by number of samples so we get per sample loss, instead of per batch loss
 
-                    # save generation
-                    for j in range(len(generated)):
-                        np.save(file = generated_output_filepaths[j], arr = generated[j]) # save generation to file
+                    # write results to file
+                    results = pd.DataFrame(data = map(lambda j: [model_name, generated_output_filepaths[j]] + results[j] + [loss_batch], range(n_samples_in_batch)), columns = OUTPUT_COLUMNS)
+                    results.to_csv(path_or_buf = output_filepath, sep = ",", na_rep = utils.NA_STRING, header = False, index = False, mode = "a")
+                    
+            ##################################################
 
-                # reload generated files
-                else:
-
-                    # load in generated content
-                    generated = remi_dataset.pad(data = list(map(np.load, generated_output_filepaths)))
-
-                # analyze
-                with multiprocessing.Pool(processes = args.jobs) as pool:
-                    results = pool.map(func = evaluate, iterable = generated, chunksize = dataset_full.CHUNK_SIZE)
-
-                # get loss values for perplexity
-                try:
-                    batch = next(data_iter)
-                except (StopIteration):
-                    data_iter = iter(data_loader) # reinitialize dataset iterator if necessary
-                    batch = next(data_iter)
-                loss_batch = model( # compute loss
-                    x = batch["seq"][:n_samples_in_batch].to(device),
-                    return_outputs = False,
-                    mask = batch["mask"][:n_samples_in_batch].to(device),
-                )
-                loss_batch = float(loss_batch) / n_samples_in_batch # divide by number of samples so we get per sample loss, instead of per batch loss
-
-                # write results to file
-                results = pd.DataFrame(data = map(lambda j: [model_name, generated_output_filepaths[j]] + results[j] + [loss_batch], range(n_samples_in_batch)), columns = OUTPUT_COLUMNS)
-                results.to_csv(path_or_buf = output_filepath, sep = ",", na_rep = utils.NA_STRING, header = False, index = False, mode = "a")
-                
         ##################################################
 
     ##################################################
