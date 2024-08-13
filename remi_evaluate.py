@@ -226,7 +226,7 @@ if __name__ == "__main__":
 
         # load the checkpoint
         checkpoint_filepath = f"{model_dir}/checkpoints/best_model.valid.pth"
-        model_state_dict = torch.load(f = checkpoint_filepath, map_location = device)
+        model_state_dict = torch.load(f = checkpoint_filepath, map_location = device, weights_only = True)
         model.load_state_dict(state_dict = model_state_dict)
         model.eval()
         del checkpoint_filepath, model_state_dict # free up memory
