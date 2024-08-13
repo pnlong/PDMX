@@ -96,22 +96,16 @@ if __name__ == "__main__":
         data["facet"] = utils.rep(x = facet, times = len(data))
         dataset = pd.concat(objs = (dataset, data[COLUMNS]), axis = 0, ignore_index = True)
     del data
+    output_filepath_dataset = f"{args.input_dir}/evaluation.csv"
+    if not exists(output_filepath_dataset):
+        dataset.to_csv(path_or_buf = output_filepath_dataset, sep = ",", na_rep = utils.NA_STRING, header = True, index = False, mode = "w")
 
     # load in dataset
     dataset_real = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)
-    dataset_real = dataset_real.merge(
-        right = pd.read_csv(
-            filepath_or_buffer = f"{args.dataset_filepath[:-len('.csv')]}_deduplicated.csv", # add deduplication information to dataset
-            sep = ",",
-            header = 0,
-            index_col = False),
-        how = "inner",
-        on = "path"
-    )
 
     # determine model to analyze; assumes the same models have been created for each facet
     models = set(pd.unique(values = dataset["model"]))
-    model = (str(max(map(lambda model: int(model[:-1]), models))) + "M") if args.model is None else args.model
+    model = (str(max(map(lambda model: int(model.split("_")[0][:-1]), models))) + "M") if args.model is None else args.model
     if model not in models:
         raise RuntimeError(f"`{model}` is not a valid model.")
 

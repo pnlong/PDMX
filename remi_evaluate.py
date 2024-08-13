@@ -40,6 +40,7 @@ import utils
 
 # default number of samples to evaluate
 N_SAMPLES = remi_train.BATCH_SIZE * 100
+N_BATCHES = int((N_SAMPLES - 1) / remi_train.BATCH_SIZE) + 1
 
 # evaluation constants
 SEQ_LEN = 1024
@@ -57,6 +58,10 @@ OUTPUT_COLUMNS = ["model", "path"] + dataset_full.MMT_STATISTIC_COLUMNS + ["trac
 
 # perplexity function
 perplexity_function = lambda loss: math.exp(-math.log(loss))
+
+# convert a list of losses into a single perplexity value
+def loss_to_perplexity(losses: List[float]) -> float:
+    return perplexity_function(loss = sum(losses) / N_BATCHES)
 
 ##################################################
 
@@ -137,7 +142,6 @@ if __name__ == "__main__":
 
     # output file
     output_filepath = f"{args.input_dir}/evaluation.csv"
-    n_batches = int((N_SAMPLES - 1) / remi_train.BATCH_SIZE) + 1
     if (not exists(output_filepath)) or args.reset: # if column names need to be written
         pd.DataFrame(columns = OUTPUT_COLUMNS).to_csv(path_or_buf = output_filepath, sep = ",", na_rep = utils.NA_STRING, header = True, index = False, mode = "w")
 
@@ -242,10 +246,10 @@ if __name__ == "__main__":
 
             # iterate over the dataset
             with torch.no_grad():
-                for i in tqdm(iterable = range(n_batches), desc = f"Evaluating the {model_name} Model"):
+                for i in tqdm(iterable = range(N_BATCHES), desc = f"Evaluating the {model_name} Model"):
 
                     # get number of samples to calculate
-                    n_samples_in_batch = (((N_SAMPLES - 1) % remi_train.BATCH_SIZE) + 1) if (i == (n_batches - 1)) else remi_train.BATCH_SIZE
+                    n_samples_in_batch = (((N_SAMPLES - 1) % remi_train.BATCH_SIZE) + 1) if (i == (N_BATCHES - 1)) else remi_train.BATCH_SIZE
 
                     # get output filepaths for generated sequences
                     generated_output_filepaths = list(map(lambda j: f"{eval_dir}/{(i * remi_train.BATCH_SIZE) + j}.npy", range(n_samples_in_batch)))
@@ -315,7 +319,7 @@ if __name__ == "__main__":
         logging.info(f"\n{f' {model} ':=^{bar_width}}")
         for mmt_statistic in dataset_full.MMT_STATISTIC_COLUMNS:
             logging.info(f"{mmt_statistic.replace('_', ' ').title()}: mean = {np.nanmean(a = results_model[mmt_statistic], axis = 0):.4f}, std = {np.nanstd(a = results_model[mmt_statistic], axis = 0):.4f}")
-        logging.info(f"Perplexity: {perplexity_function(loss = sum(results_model['loss']) / n_batches):.4f}")
+        logging.info(f"Perplexity: {loss_to_perplexity(losses = results_model['loss']):.4f}")
     print("")
 
     ##################################################
