@@ -40,8 +40,9 @@ import utils
 ##################################################
 
 # default number of samples to evaluate
-N_SAMPLES = remi_train.BATCH_SIZE * 100
-N_BATCHES = int((N_SAMPLES - 1) / remi_train.BATCH_SIZE) + 1
+BATCH_SIZE = remi_train.BATCH_SIZE
+N_SAMPLES = 1200
+N_BATCHES = int((N_SAMPLES - 1) / BATCH_SIZE) + 1
 
 # evaluation constants
 SEQ_LEN = 1024
@@ -214,7 +215,7 @@ if __name__ == "__main__":
                 dataset = dataset,
                 num_workers = args.jobs,
                 collate_fn = dataset.collate,
-                batch_size = remi_train.BATCH_SIZE,
+                batch_size = BATCH_SIZE,
                 shuffle = False
             ) for dataset in datasets]
             data_iters = [iter(data_loader) for data_loader in data_loaders]
@@ -254,13 +255,13 @@ if __name__ == "__main__":
                 for i in tqdm(iterable = range(N_BATCHES), desc = f"Evaluating the {model_name} Model"):
 
                     # get number of samples to calculate
-                    n_samples_in_batch = (((N_SAMPLES - 1) % remi_train.BATCH_SIZE) + 1) if (i == (N_BATCHES - 1)) else remi_train.BATCH_SIZE
+                    n_samples_in_batch = (((N_SAMPLES - 1) % BATCH_SIZE) + 1) if (i == (N_BATCHES - 1)) else BATCH_SIZE
 
                     # GENERATE, EVALUATE MMT STATISTICS
                     ##################################################
 
                     # get output filepaths for generated sequences
-                    generated_output_filepaths = list(map(lambda j: f"{eval_dir}/{(i * remi_train.BATCH_SIZE) + j}.npy", range(n_samples_in_batch)))
+                    generated_output_filepaths = list(map(lambda j: f"{eval_dir}/{(i * BATCH_SIZE) + j}.npy", range(n_samples_in_batch)))
 
                     # generate if needed
                     if (not all(map(exists, generated_output_filepaths))) or args.reset:
