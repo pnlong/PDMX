@@ -106,7 +106,7 @@ if __name__ == "__main__":
     # output perplexity
     loss_facet_columns = list(filter(lambda column: column.startswith("loss:"), dataset.columns))
     perplexity = dataset[["facet", "model"] + loss_facet_columns].groupby(by = ["facet", "model"]).agg(loss_to_perplexity) # group by model and facet
-    perplexity = perplexity.rename(columns = dict(zip(loss_facet_columns, map(lambda loss_facet_column: loss_facet_column[len("loss:"):], loss_facet_columns)))) # rename columns
+    perplexity = perplexity.rename(columns = dict(zip(loss_facet_columns, map(lambda loss_facet_column: loss_facet_column[len("loss:"):].replace(f"{FACETS[-1]}-", ""), loss_facet_columns)))) # rename columns
     logging.info(perplexity.to_string())
     del perplexity
 
