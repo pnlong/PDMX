@@ -40,7 +40,7 @@ import utils
 ##################################################
 
 # default number of samples to evaluate
-BATCH_SIZE = 1 # remi_train.BATCH_SIZE
+BATCH_SIZE = remi_train.BATCH_SIZE # 1
 N_SAMPLES = 1200
 N_BATCHES = int((N_SAMPLES - 1) / BATCH_SIZE) + 1
 
