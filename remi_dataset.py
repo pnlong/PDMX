@@ -40,7 +40,8 @@ import utils
 OUTPUT_DIR = "/data1/pnlong/musescore/remi"
 
 # facets of the dataset
-FACET_HQ = f"{FACETS[-1]}_hq" # high quality facet name
+HQ_RATING_THRESHOLDS = [3.0, 3.5, 4.0, 4.5]
+FACETS_HQ = list(map(lambda hq_rating_threshold: f"{FACETS[-1]}-{hq_rating_threshold:.1f}", HQ_RATING_THRESHOLDS)) # high quality facet names
 
 # partition names
 PARTITIONS = {"train": 0.9, "valid": 0.1, "test": 0.0} # no test partition
@@ -289,7 +290,8 @@ if __name__ == "__main__":
     ##################################################
 
     # get high quality facet
-    dataset[f"facet:{FACET_HQ}"] = (dataset[f"facet:{FACETS[-1]}"] & (dataset["rating"] > HIGH_QUALITY_RATING_THRESHOLD))
+    for hq_rating_threshold, facet_hq in zip(HQ_RATING_THRESHOLDS, FACETS_HQ):
+        dataset[f"facet:{facet_hq}"] = (dataset[f"facet:{FACETS[-1]}"] & (dataset["rating"] > hq_rating_threshold))
 
     # get partitions set up
     partitions = dict(zip(PARTITIONS.keys(), (1 - args.ratio_valid - args.ratio_test, args.ratio_valid, args.ratio_test)))
@@ -301,7 +303,7 @@ if __name__ == "__main__":
             output_file.write("\n".join(paths))
 
     # go through the different facets
-    for facet in (FACETS + [FACET_HQ]):
+    for facet in (FACETS + FACETS_HQ):
 
         # filter dataset
         data = dataset[dataset[f"facet:{facet}"]]["output_path"].to_list() # filter down to only necessary column, output_path

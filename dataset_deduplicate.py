@@ -481,14 +481,12 @@ if __name__ == "__main__":
         os.mkdir(dirname(output_filepath_plot))
 
     # create plot
-    bys = ["path", "arrangement", "unique_arrangement"]
-    by_to_title = dict(zip(bys, ["Title", "Title and Instrumentation", "Unique Arrangements"]))
-    fig, axes = plt.subplot_mosaic(mosaic = [["all", "rated"]], constrained_layout = True, figsize = (6, 4))
+    fig, axes = plt.subplot_mosaic(mosaic = [["duplicates"]], constrained_layout = True, figsize = (4, 4))
     fig.suptitle("Deduplication", fontweight = "bold")
 
     # helper function to plot quantile plot
     percentile_step = 0.005
-    def make_quantile_plot(by: str, rated_only: bool = False, apply_log_scale: bool = True) -> None:
+    def make_quantile_plot(rated_only: bool = False, apply_log_scale: bool = True) -> None:
         """
         Helper function to create a quantile plot.
         """
@@ -501,33 +499,26 @@ if __name__ == "__main__":
 
         # get percentiles
         percentiles = np.arange(start = 0, stop = 100 + percentile_step, step = percentile_step)
-        percentile_values = np.percentile(a = data.groupby(by = f"best_{by}").size(), q = percentiles)
-        if apply_log_scale:
-            percentile_values = np.log10(percentile_values) # apply log scale
+        percentile_values = np.percentile(a = data.groupby(by = "best_unique_arrangement").size(), q = percentiles)
 
         # plot
-        axes["rated" if rated_only else "all"].plot(percentiles, percentile_values, label = by_to_title[by])
+        axes["duplicates"].plot(percentiles, percentile_values, label = "Rated" if rated_only else "All")
     
     # plot
     apply_log_scale = True
-    for by in bys:
-        make_quantile_plot(by = by, rated_only = False, apply_log_scale = apply_log_scale)
-        make_quantile_plot(by = by, rated_only = True, apply_log_scale = apply_log_scale)
-    axes["all"].set_title("All Songs")
-    axes["rated"].set_title("Rated Songs")
-    percentile_label = "Percentile (%)"
-    axes["all"].set_xlabel(percentile_label)
-    axes["rated"].set_xlabel(percentile_label)
-    del percentile_label
-    min_percentile = 50 # information below 50th percentile is unnecessary
-    axes["all"].set_xlim(left = min_percentile)
-    axes["rated"].set_xlim(left = min_percentile)
-    del min_percentile
-    axes["all"].set_ylabel("log(Count)" if apply_log_scale else "Count")
-    axes["rated"].sharey(other = axes["all"])
-    axes["all"].grid()
-    axes["rated"].grid()
-    axes["all"].legend()
+    make_quantile_plot(rated_only = False, apply_log_scale = apply_log_scale)
+    make_quantile_plot(rated_only = True, apply_log_scale = apply_log_scale)
+    axes["duplicates"].set_xlabel("Percentile (%)")
+    axes["duplicates"].set_xlim(left = 50) # information below 50th percentile is unnecessary
+    axes["duplicates"].set_ylabel("Number of Duplicates")
+    if apply_log_scale:
+        axes["duplicates"].set_yscale("log") # use log scale
+        yticks = axes["duplicates"].get_yticks()
+        axes["duplicates"].set_yticks(ticks = yticks, labels = list(map(lambda ytick: f"{int(ytick):,}", yticks)))
+        axes["duplicates"].set_ylim(bottom = 0.8, top = 1000)
+        del yticks # free up memory
+    axes["duplicates"].grid()
+    axes["duplicates"].legend()
 
     # save image
     fig.savefig(output_filepath_plot, dpi = 200, transparent = True, bbox_inches = "tight")
