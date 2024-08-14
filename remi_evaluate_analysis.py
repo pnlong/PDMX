@@ -105,10 +105,10 @@ if __name__ == "__main__":
 
     # output mmt statistics and perplexity
     bar_width = 100
-    logging.info("\n" + f"{' MMT STATISTICS ':=^{bar_width}}") # mmt statistics
+    logging.info("\n" + f"{' MMT STATISTICS ':=^{bar_width}}" + "\n") # mmt statistics
     mmt_statistics = dataset[["facet", "model"] + dataset_full.MMT_STATISTIC_COLUMNS].groupby(by = ["facet", "model"]).mean()
     logging.info(mmt_statistics.to_string())
-    logging.info("\n" + f"{' PERPLEXITY ':=^{bar_width}}") # perplexity
+    logging.info("\n" + f"{' PERPLEXITY ':=^{bar_width}}" + "\n") # perplexity
     loss_facet_columns = list(filter(lambda column: column.startswith("loss:"), dataset.columns))
     perplexity = dataset[["facet", "model"] + loss_facet_columns].groupby(by = ["facet", "model"]).agg(loss_to_perplexity) # group by model and facet
     perplexity = perplexity.rename(columns = dict(zip(loss_facet_columns, map(lambda loss_facet_column: loss_facet_column[len("loss:"):].replace(f"{FACETS[-1]}-", ""), loss_facet_columns)))) # rename columns
