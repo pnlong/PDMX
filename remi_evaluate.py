@@ -40,7 +40,7 @@ import utils
 ##################################################
 
 # default number of samples to evaluate
-BATCH_SIZE = remi_train.BATCH_SIZE
+BATCH_SIZE = 1 # remi_train.BATCH_SIZE
 N_SAMPLES = 1200
 N_BATCHES = int((N_SAMPLES - 1) / BATCH_SIZE) + 1
 
@@ -53,13 +53,16 @@ FILTER = "top_k"
 LOSS_FACETS = (FACETS[0], remi_dataset.FACET_HQ)
 
 # output columns
-OUTPUT_COLUMNS = ["model", "path"] + dataset_full.MMT_STATISTIC_COLUMNS + ["tracks"] + list(map(lambda loss_facet: f"loss:{loss_facet}", LOSS_FACETS))
+OUTPUT_COLUMNS = ["model", "rating", "path"] + dataset_full.MMT_STATISTIC_COLUMNS + ["tracks"] + list(map(lambda loss_facet: f"loss:{loss_facet}", LOSS_FACETS))
 
 ##################################################
 
 
 # HELPER FUNCTIONS
 ##################################################
+
+# get the base stem of a filepath
+basestem = lambda path: ".".join(basename(path).split(".")[:-1])
 
 # perplexity function
 perplexity_function = lambda loss: math.exp(-math.log(loss))
@@ -78,6 +81,7 @@ def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(prog = "Evaluate", description = "Evaluate a REMI-Style Model.")
     parser.add_argument("-i", "--input_dir", default = remi_train.OUTPUT_DIR, type = str, help = "Dataset facet directory containing the model(s) (as subdirectories) to evaluate")
+    parser.add_argument("-d", "--dataset_filepath", default = f"{dataset_full.OUTPUT_DIR}/{dataset_full.DATASET_DIR_NAME}.csv", type = str, help = "Dataset from which facets are derived")
     # model
     parser.add_argument("--seq_len", default = SEQ_LEN, type = int, help = "Sequence length to generate")
     parser.add_argument("--temperature", nargs = "+", default = TEMPERATURE, type = float, help = f"Sampling temperature (default: {TEMPERATURE})")
@@ -145,6 +149,12 @@ if __name__ == "__main__":
         filter_logits_fn = x_transformers.autoregressive_wrapper.top_a
     else:
         raise ValueError("Unknown logits filter.")
+    
+    # path basename to rating mapping
+    path_to_rating = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)
+    path_to_rating = path_to_rating.set_index(keys = "path", drop = True)["rating"] # convert to series
+    path_to_rating.index = path_to_rating.index.map(basestem, na_action = "ignore") # remove filetype, keep just basename
+    path_to_rating = path_to_rating.to_dict() # convert to dictionary
 
     # output file
     output_filepath = f"{args.input_dir}/evaluation.csv"
@@ -301,6 +311,7 @@ if __name__ == "__main__":
 
                     # initialize loss_batch array
                     loss_batch = utils.rep(x = 0.0, times = len(LOSS_FACETS))
+                    ratings = utils.rep(x = 0.0, times = n_samples_in_batch)
 
                     # calculate loss for each loss facet
                     for j in range(len(LOSS_FACETS)):
@@ -323,6 +334,10 @@ if __name__ == "__main__":
                         loss_batch[j] = float(loss_batch_facet) / n_samples_in_batch # divide by number of samples so we get per sample loss, instead of per batch loss
                         del loss_batch_facet # free up memory
 
+                        # get ratings
+                        if j == len(LOSS_FACETS) - 1:
+                            ratings = list(map(lambda path: path_to_rating.get(basestem(path), 0), batch["name"][:n_samples_in_batch]))
+
                     ##################################################
 
 
@@ -330,7 +345,7 @@ if __name__ == "__main__":
                     ##################################################
 
                     # write results to file
-                    results = pd.DataFrame(data = map(lambda j: [model_name, generated_output_filepaths[j]] + results[j] + loss_batch, range(n_samples_in_batch)), columns = OUTPUT_COLUMNS)
+                    results = pd.DataFrame(data = map(lambda j: [model_name, ratings[j], generated_output_filepaths[j]] + results[j] + loss_batch, range(n_samples_in_batch)), columns = OUTPUT_COLUMNS)
                     results.to_csv(path_or_buf = output_filepath, sep = ",", na_rep = utils.NA_STRING, header = False, index = False, mode = "a")
                     
                     ##################################################
