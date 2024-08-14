@@ -13,7 +13,7 @@ import argparse
 import logging
 import pprint
 import sys
-from os.path import exists, basename, isdir
+from os.path import exists, dirname, basename, isdir
 from os import mkdir, listdir
 from typing import Union, List
 import multiprocessing
@@ -27,6 +27,7 @@ from tqdm import tqdm
 import x_transformers
 
 import dataset_full
+from dataset_deduplicate import FACETS
 import remi_representation
 import remi_dataset
 import remi_train
@@ -47,8 +48,11 @@ SEQ_LEN = 1024
 TEMPERATURE = 1.0
 FILTER = "top_k"
 
+# facets to use as loss sets
+LOSS_FACETS = (FACETS[0], remi_dataset.FACET_HQ)
+
 # output columns
-OUTPUT_COLUMNS = ["model", "path"] + dataset_full.MMT_STATISTIC_COLUMNS + ["tracks", "loss"]
+OUTPUT_COLUMNS = ["model", "path"] + dataset_full.MMT_STATISTIC_COLUMNS + ["tracks"] + list(map(lambda loss_facet: f"loss:{loss_facet}", LOSS_FACETS))
 
 ##################################################
 
@@ -113,7 +117,8 @@ if __name__ == "__main__":
     del args_output_filepath
 
     # data paths filepath
-    data_paths_filepath = f"{args.input_dir}/" + ("test" if exists(f"{args.input_dir}/test.txt") else "valid") + ".txt"
+    data_paths_dirs = list(map(lambda loss_facet: f"{dirname(args.input_dir)}/{loss_facet}", LOSS_FACETS))
+    data_paths_filepaths = list(map(lambda data_paths_dir: data_paths_dir + "/" + ("test" if exists(f"{data_paths_dir}/test.txt") else "valid") + ".txt", data_paths_dirs))
 
     # get the specified device
     device = torch.device(f"cuda:{abs(args.gpu)}" if (torch.cuda.is_available() and args.gpu != -1) else "cpu")
@@ -196,7 +201,7 @@ if __name__ == "__main__":
             del train_args_filepath
 
             # load dataset and data loader
-            dataset = remi_dataset.MusicDataset(
+            datasets = [remi_dataset.MusicDataset(
                 paths = data_paths_filepath,
                 encoding = encoding,
                 indexer = indexer,
@@ -204,15 +209,15 @@ if __name__ == "__main__":
                 max_seq_len = train_args["max_seq_len"],
                 max_beat = train_args["max_beat"],
                 use_augmentation = train_args["aug"],
-            )
-            data_loader = torch.utils.data.DataLoader(
+            ) for data_paths_filepath in data_paths_filepaths]
+            data_loaders = [torch.utils.data.DataLoader(
                 dataset = dataset,
                 num_workers = args.jobs,
                 collate_fn = dataset.collate,
                 batch_size = remi_train.BATCH_SIZE,
                 shuffle = False
-            )
-            data_iter = iter(data_loader)
+            ) for dataset in datasets]
+            data_iters = [iter(data_loader) for data_loader in data_loaders]
 
             # create the model
             model = x_transformers.TransformerWrapper(
@@ -251,6 +256,9 @@ if __name__ == "__main__":
                     # get number of samples to calculate
                     n_samples_in_batch = (((N_SAMPLES - 1) % remi_train.BATCH_SIZE) + 1) if (i == (N_BATCHES - 1)) else remi_train.BATCH_SIZE
 
+                    # GENERATE, EVALUATE MMT STATISTICS
+                    ##################################################
+
                     # get output filepaths for generated sequences
                     generated_output_filepaths = list(map(lambda j: f"{eval_dir}/{(i * remi_train.BATCH_SIZE) + j}.npy", range(n_samples_in_batch)))
 
@@ -284,23 +292,48 @@ if __name__ == "__main__":
                     with multiprocessing.Pool(processes = args.jobs) as pool:
                         results = pool.map(func = evaluate, iterable = generated, chunksize = dataset_full.CHUNK_SIZE)
 
-                    # get loss values for perplexity
-                    try:
-                        batch = next(data_iter)
-                    except (StopIteration):
-                        data_iter = iter(data_loader) # reinitialize dataset iterator if necessary
-                        batch = next(data_iter)
-                    loss_batch = model( # compute loss
-                        x = batch["seq"][:n_samples_in_batch].to(device),
-                        return_outputs = False,
-                        mask = batch["mask"][:n_samples_in_batch].to(device),
-                    )
-                    loss_batch = float(loss_batch) / n_samples_in_batch # divide by number of samples so we get per sample loss, instead of per batch loss
+                    ##################################################
+
+
+                    # LOSS FOR PERPLEXITY
+                    ##################################################
+
+                    # initialize loss_batch array
+                    loss_batch = utils.rep(x = 0.0, times = len(LOSS_FACETS))
+
+                    # calculate loss for each loss facet
+                    for j in range(len(LOSS_FACETS)):
+
+                        # get batch
+                        try:
+                            batch = next(data_iters[j])
+                        except (StopIteration):
+                            data_iters[j] = iter(data_loaders[j]) # reinitialize dataset iterator if necessary
+                            batch = next(data_iters[j])
+
+                        # get loss value through forward pass
+                        loss_batch_facet = model(
+                            x = batch["seq"][:n_samples_in_batch].to(device),
+                            return_outputs = False,
+                            mask = batch["mask"][:n_samples_in_batch].to(device),
+                        )
+
+                        # convert to non-torch number
+                        loss_batch[j] = float(loss_batch_facet) / n_samples_in_batch # divide by number of samples so we get per sample loss, instead of per batch loss
+                        del loss_batch_facet # free up memory
+
+                    ##################################################
+
+
+                    # OUTPUT RESULTS
+                    ##################################################
 
                     # write results to file
-                    results = pd.DataFrame(data = map(lambda j: [model_name, generated_output_filepaths[j]] + results[j] + [loss_batch], range(n_samples_in_batch)), columns = OUTPUT_COLUMNS)
+                    results = pd.DataFrame(data = map(lambda j: [model_name, generated_output_filepaths[j]] + results[j] + loss_batch, range(n_samples_in_batch)), columns = OUTPUT_COLUMNS)
                     results.to_csv(path_or_buf = output_filepath, sep = ",", na_rep = utils.NA_STRING, header = False, index = False, mode = "a")
                     
+                    ##################################################
+
             ##################################################
 
         ##################################################
@@ -319,7 +352,8 @@ if __name__ == "__main__":
         logging.info(f"\n{f' {model} ':=^{bar_width}}")
         for mmt_statistic in dataset_full.MMT_STATISTIC_COLUMNS:
             logging.info(f"{mmt_statistic.replace('_', ' ').title()}: mean = {np.nanmean(a = results_model[mmt_statistic], axis = 0):.4f}, std = {np.nanstd(a = results_model[mmt_statistic], axis = 0):.4f}")
-        logging.info(f"Perplexity: {loss_to_perplexity(losses = results_model['loss']):.4f}")
+        for loss_facet in LOSS_FACETS:
+            logging.info(f"Perplexity ({loss_facet.replace('_', ' and ').title()}): {loss_to_perplexity(losses = results_model[f'loss:{loss_facet}']):.4f}")
     print("")
 
     ##################################################

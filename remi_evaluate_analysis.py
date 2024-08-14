@@ -90,16 +90,19 @@ if __name__ == "__main__":
     logging.basicConfig(level = logging.INFO, format = "%(message)s")
 
     # create full dataset
-    dataset = pd.DataFrame(columns = COLUMNS)
-    for facet in FACETS:
-        data = pd.read_csv(filepath_or_buffer = f"{args.input_dir}/{facet}/evaluation.csv", sep = ",", header = 0, index_col = False)
-        data["facet"] = utils.rep(x = facet, times = len(data))
-        dataset = pd.concat(objs = (dataset, data[COLUMNS]), axis = 0, ignore_index = True)
-    del data
     output_filepath_dataset = f"{args.input_dir}/evaluation.csv"
-    if not exists(output_filepath_dataset):
-        dataset.to_csv(path_or_buf = output_filepath_dataset, sep = ",", na_rep = utils.NA_STRING, header = True, index = False, mode = "w")
-
+    if exists(output_filepath_dataset):
+        dataset = pd.read_csv(filepath_or_buffer = output_filepath_dataset, sep = ",", header = 0, index_col = False)
+    else:
+        dataset = pd.DataFrame(columns = COLUMNS)
+        for facet in FACETS:
+            data = pd.read_csv(filepath_or_buffer = f"{args.input_dir}/{facet}/evaluation.csv", sep = ",", header = 0, index_col = False)
+            data["facet"] = utils.rep(x = facet, times = len(data))
+            dataset = pd.concat(objs = (dataset, data[COLUMNS]), axis = 0, ignore_index = True)
+        del data
+        dataset = dataset.sort_values(by = ["facet", "model"], axis = 0, ascending = True, ignore_index = True)
+        dataset.to_csv(path_or_buf = output_filepath_dataset, sep = ",", na_rep = utils.NA_STRING, header = True, index = False, mode = "w") # output dataset
+    
     # load in dataset
     dataset_real = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)
 
