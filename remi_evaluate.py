@@ -108,6 +108,7 @@ if __name__ == "__main__":
 
     # get directories to eval
     model_dirs = list(filter(lambda path: isdir(path) and basename(path).split("_")[0].endswith("M"), map(lambda base: f"{args.input_dir}/{base}", listdir(args.input_dir))))
+    model_dirs = sorted(model_dirs, key = lambda model_dir: int(basename(model_dir).split("_")[0][:-1]) + (0.5 if remi_train.FINE_TUNING_SUFFIX in model else 0)) # order from least to greatest
     models = list(map(basename, model_dirs))
 
     # set up the logger
@@ -351,6 +352,9 @@ if __name__ == "__main__":
 
             ##################################################
 
+            # free up memory
+            del model, datasets, data_loaders, data_iters
+
         ##################################################
 
     ##################################################
@@ -362,7 +366,7 @@ if __name__ == "__main__":
     # log statistics
     bar_width = 50
     results = pd.read_csv(filepath_or_buffer = output_filepath, sep = ",", na_values = utils.NA_STRING, header = 0, index_col = False) # load in previous values
-    for model in sorted(models, key = lambda model: int(model.split("_")[0][:-1]) + (0.5 if remi_train.FINE_TUNING_SUFFIX in model else 0)):
+    for model in models:
         results_model = results[results["model"] == model]
         logging.info(f"\n{f' {model} ':=^{bar_width}}")
         for mmt_statistic in dataset_full.MMT_STATISTIC_COLUMNS:
