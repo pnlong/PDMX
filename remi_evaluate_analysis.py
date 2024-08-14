@@ -103,12 +103,18 @@ if __name__ == "__main__":
         dataset = dataset.sort_values(by = ["facet", "model"], axis = 0, ascending = True, ignore_index = True)
         dataset.to_csv(path_or_buf = output_filepath_dataset, sep = ",", na_rep = utils.NA_STRING, header = True, index = False, mode = "w") # output dataset
 
-    # output perplexity
+    # output mmt statistics and perplexity
+    bar_width = 100
+    logging.info("\n" + f"{' MMT STATISTICS ':=^{bar_width}}") # mmt statistics
+    mmt_statistics = dataset[["facet", "model"] + dataset_full.MMT_STATISTIC_COLUMNS].groupby(by = ["facet", "model"]).mean()
+    logging.info(mmt_statistics.to_string())
+    logging.info("\n" + f"{' PERPLEXITY ':=^{bar_width}}") # perplexity
     loss_facet_columns = list(filter(lambda column: column.startswith("loss:"), dataset.columns))
     perplexity = dataset[["facet", "model"] + loss_facet_columns].groupby(by = ["facet", "model"]).agg(loss_to_perplexity) # group by model and facet
     perplexity = perplexity.rename(columns = dict(zip(loss_facet_columns, map(lambda loss_facet_column: loss_facet_column[len("loss:"):].replace(f"{FACETS[-1]}-", ""), loss_facet_columns)))) # rename columns
     logging.info(perplexity.to_string())
-    del perplexity
+    logging.info("\n" + "".join(("=" for _ in range(bar_width))) + "\n")
+    del mmt_statistics, perplexity
 
     # load in dataset
     dataset_real = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)
