@@ -21,7 +21,7 @@ import dataset_full
 from dataset_deduplicate import FACETS
 from remi_dataset import OUTPUT_DIR
 from remi_train import RELEVANT_PARTITIONS
-from remi_evaluate import OUTPUT_COLUMNS
+from remi_evaluate import OUTPUT_COLUMNS, loss_to_perplexity
 import utils
 
 plt.style.use("default")
@@ -102,7 +102,14 @@ if __name__ == "__main__":
         del data
         dataset = dataset.sort_values(by = ["facet", "model"], axis = 0, ascending = True, ignore_index = True)
         dataset.to_csv(path_or_buf = output_filepath_dataset, sep = ",", na_rep = utils.NA_STRING, header = True, index = False, mode = "w") # output dataset
-    
+
+    # output perplexity
+    loss_facet_columns = list(filter(lambda column: column.startswith("loss:"), dataset.columns))
+    perplexity = dataset[["facet", "model", ]].groupby(by = ["facet", "model"]).agg(loss_to_perplexity) # group by model and facet
+    perplexity = perplexity.rename(columns = dict(zip(loss_facet_columns, map(lambda loss_facet_column: loss_facet_column[len("loss:"):], loss_facet_columns)))) # rename columns
+    logging.info(perplexity.to_string())
+    del perplexity
+
     # load in dataset
     dataset_real = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)
 
