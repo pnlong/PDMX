@@ -294,7 +294,7 @@ if __name__ == "__main__":
         if hq_rating_threshold > 0:
             dataset[f"facet:{facet_hq}"] = (dataset[f"facet:{FACETS[-1]}"] & (dataset["rating"] > hq_rating_threshold))
         else:
-            dataset[f"facet:{facet_hq}"] = (dataset["is_best_unique_arrangement"] & (dataset["rating"] == 0))
+            dataset[f"facet:{facet_hq}"] = (dataset["rating"] == 0)
 
     # get partitions set up
     partitions = dict(zip(PARTITIONS.keys(), (1 - args.ratio_valid - args.ratio_test, args.ratio_valid, args.ratio_test)))
