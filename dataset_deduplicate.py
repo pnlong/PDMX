@@ -27,7 +27,7 @@ import logging
 
 from sentence_transformers import SentenceTransformer
 
-from dataset_full import OUTPUT_DIR, DATASET_DIR_NAME, CHUNK_SIZE
+from dataset_full import OUTPUT_DIR, DATASET_DIR_NAME, CHUNK_SIZE, MMT_STATISTIC_COLUMNS
 from dataset_full_analysis import PLOTS_DIR_NAME
 import utils
 
@@ -435,8 +435,14 @@ if __name__ == "__main__":
     # OUTPUT STATISTICS
     ##################################################
 
-    # helper function to output statistics
+    # bar
     bar_width = 104 # how wide are the separation bars
+
+    # output mmt statistics of real data facets
+    logging.info(f"\n{' MMT STATISTICS ':=^{bar_width}}\n")
+    logging.info(pd.DataFrame(data = list(map(lambda facet: dataset[dataset[f"facet:{facet}"]][MMT_STATISTIC_COLUMNS].mean(), FACETS)), index = FACETS).to_string())
+
+    # helper function to output statistics
     def output_statistics(rated_only: bool = False) -> None:
         """Helper function to output statistics."""
 
