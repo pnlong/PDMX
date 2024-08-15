@@ -111,7 +111,7 @@ if __name__ == "__main__":
     logging.info(f"\n{' PERPLEXITY ':=^{bar_width}}\n") # perplexity
     loss_facet_columns = list(filter(lambda column: column.startswith("loss:"), dataset.columns))
     perplexity = dataset[["facet", "model"] + loss_facet_columns].groupby(by = ["facet", "model"]).agg(loss_to_perplexity) # group by model and facet
-    perplexity = perplexity.rename(columns = dict(zip(loss_facet_columns, map(lambda loss_facet_column: loss_facet_column[len("loss:"):].replace(f"{FACETS[-1]}-", ""), loss_facet_columns)))) # rename columns
+    perplexity = perplexity.rename(columns = dict(zip(loss_facet_columns, map(lambda loss_facet_column: loss_facet_column[len("loss:"):].replace(f"{FACETS[-1]}", "").replace("-", "").replace("_", ""), loss_facet_columns)))) # rename columns
     logging.info(perplexity.to_string())
     logging.info("\n" + "".join(("=" for _ in range(bar_width))) + "\n")
     del mmt_statistics, perplexity
