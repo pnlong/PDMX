@@ -40,8 +40,8 @@ import utils
 OUTPUT_DIR = "/data1/pnlong/musescore/remi"
 
 # facets of the dataset
-HQ_RATING_THRESHOLDS = [3.0, 3.5, 4.0, 4.5]
-FACETS_HQ = list(map(lambda hq_rating_threshold: f"{FACETS[-1]}-{hq_rating_threshold:.1f}", HQ_RATING_THRESHOLDS)) # high quality facet names
+HQ_RATING_THRESHOLDS = [0, 3.0, 3.5, 4.0, 4.5]
+FACETS_HQ = list(map(lambda hq_rating_threshold: f"{FACETS[-1]}-{hq_rating_threshold:.1f}" if (hq_rating_threshold > 0) else "not_rated_deduplicated", HQ_RATING_THRESHOLDS)) # high quality facet names
 
 # partition names
 PARTITIONS = {"train": 0.9, "valid": 0.1, "test": 0.0} # no test partition
@@ -291,8 +291,11 @@ if __name__ == "__main__":
 
     # get high quality facet
     for hq_rating_threshold, facet_hq in zip(HQ_RATING_THRESHOLDS, FACETS_HQ):
-        dataset[f"facet:{facet_hq}"] = (dataset[f"facet:{FACETS[-1]}"] & (dataset["rating"] > hq_rating_threshold))
-
+        if hq_rating_threshold > 0:
+            dataset[f"facet:{facet_hq}"] = (dataset[f"facet:{FACETS[-1]}"] & (dataset["rating"] > hq_rating_threshold))
+        else:
+            dataset[f"facet:{facet_hq}"] = (dataset["is_best_unique_arrangement"] & (dataset["rating"] == 0))
+            
     # get partitions set up
     partitions = dict(zip(PARTITIONS.keys(), (1 - args.ratio_valid - args.ratio_test, args.ratio_valid, args.ratio_test)))
 
