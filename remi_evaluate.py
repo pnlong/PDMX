@@ -108,7 +108,7 @@ if __name__ == "__main__":
 
     # get directories to eval
     model_dirs = list(filter(lambda path: isdir(path) and basename(path).split("_")[0].endswith("M"), map(lambda base: f"{args.input_dir}/{base}", listdir(args.input_dir))))
-    model_dirs = sorted(model_dirs, key = lambda model_dir: int(basename(model_dir).split("_")[0][:-1]) + (0.5 if remi_train.FINE_TUNING_SUFFIX in model else 0)) # order from least to greatest
+    model_dirs = sorted(model_dirs, key = lambda model_dir: int(basename(model_dir).split("_")[0][:-1]) + (0.5 if remi_train.FINE_TUNING_SUFFIX in basename(model_dir) else 0)) # order from least to greatest
     models = list(map(basename, model_dirs))
 
     # set up the logger
