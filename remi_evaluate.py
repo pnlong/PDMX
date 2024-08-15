@@ -371,8 +371,7 @@ if __name__ == "__main__":
         logging.info(f"\n{f' {model} ':=^{bar_width}}")
         for mmt_statistic in dataset_full.MMT_STATISTIC_COLUMNS:
             logging.info(f"{mmt_statistic.replace('_', ' ').title()}: mean = {np.nanmean(a = results_model[mmt_statistic], axis = 0):.4f}, std = {np.nanstd(a = results_model[mmt_statistic], axis = 0):.4f}")
-        for loss_facet in LOSS_FACETS:
-            logging.info(f"Perplexity ({loss_facet.replace('-', ', ').replace('_', ' and ').title()}): {loss_to_perplexity(losses = results_model[f'loss:{loss_facet}']):.4f}")
+        logging.info(f"Perplexity (All): {loss_to_perplexity(losses = results_model[f'loss:all']):.4f}")
     print("")
 
     ##################################################
