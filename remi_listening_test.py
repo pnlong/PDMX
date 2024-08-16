@@ -122,16 +122,16 @@ if __name__ == "__main__":
 
     # use multiprocessing
     with multiprocessing.Pool(processes = args.jobs) as pool:
-        _ = tqdm(iterable = pool.imap_unordered(func = generated_to_audio,
-                                                iterable = zip(
-                                                    paths,
-                                                    map(get_output_path, paths),
-                                                    utils.rep(x = encoding, times = len(paths)),
-                                                    utils.rep(x = encoding, times = len(paths)),
-                                                ),
-                                                chunksize = CHUNK_SIZE),
-                 desc = f"Generating Audio",
-                 total = len(paths))
+        _ = list(tqdm(iterable = pool.starmap(func = generated_to_audio,
+                                              iterable = zip(
+                                                paths,
+                                                map(get_output_path, paths),
+                                                utils.rep(x = encoding, times = len(paths)),
+                                                utils.rep(x = encoding, times = len(paths)),
+                                              ),
+                                              chunksize = CHUNK_SIZE),
+                      desc = f"Generating Audio",
+                      total = len(paths)))
 
     ##################################################
 
