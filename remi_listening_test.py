@@ -114,7 +114,11 @@ if __name__ == "__main__":
         Get paths for a given model and facet combination.
         """
         subset = dataset[(dataset["model"] == model) & (dataset["facet"] == facet)]
-        return random.sample(population = subset["path"].to_list(), k = args.number_of_samples_per_group)
+        paths = subset["path"].to_list()
+        if len(subset) > args.number_of_samples_per_group:
+            return random.sample(population = paths, k = args.number_of_samples_per_group)
+        else:
+            return paths
     paths = []
     for model in set(dataset["model"]):
         for facet in set(dataset["facet"]):
