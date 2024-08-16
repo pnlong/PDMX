@@ -19,6 +19,28 @@ import numpy as np
 ##################################################
 
 
+# GENERATE AUDIO GIVEN CODES
+##################################################
+
+def generated_to_audio(path: str, output_path: str, encoding: dict, vocabulary: dict) -> None:
+    """
+    Generate audio sample from codes. 
+    """
+
+    # load codes
+    codes = np.load(file = path)
+
+    # convert codes to a music object
+    music = remi_representation.decode(codes = codes, encoding = encoding, vocabulary = vocabulary) # convert to a MusicExpress object
+
+    # write as audio (actually, can write as whatever kind of file we want)
+    music.write(path = output_path)
+
+    return
+
+##################################################
+
+
 # ARGUMENTS
 ##################################################
 
@@ -30,6 +52,7 @@ def parse_args(args = None, namespace = None):
     return parser.parse_args(args = args, namespace = namespace)
 
 ##################################################
+
 
 # MAIN METHOD
 ##################################################
@@ -43,20 +66,17 @@ if __name__ == "__main__":
     encoding = remi_representation.get_encoding() # load the encoding
     vocabulary = utils.inverse_dict(remi_representation.Indexer(data = encoding["event_code_map"]).get_dict()) # for decoding
 
-    # load codes
-    codes = np.load(file = args.path)
-
-    # convert codes to a music object
-    music = remi_representation.decode(codes = codes, encoding = encoding, vocabulary = vocabulary) # convert to a MusicExpress object
-
     # output codes as audio
-    if args.output_path is None:
+    output_path = args.output_path
+    if output_path is None:
         path_info = args.path[:-len(".npy")].split("/")[-4:]
         output_dir = f"/home/pnlong/musescore/remi/generated_audio/{path_info[1]}"
         if not exists(output_dir):
             makedirs(output_dir, exist_ok = True)
         output_path = f"{output_dir}/{path_info[0]}.{path_info[-1]}.wav"
-    music.write(path = output_path)
+
+    # generate audio
+    generated_to_audio(path = args.path, output_path = output_path, encoding = encoding, vocabulary = vocabulary)
     print(f"Saved to {output_path}.")
 
 ##################################################
