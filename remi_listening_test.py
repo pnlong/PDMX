@@ -127,7 +127,7 @@ if __name__ == "__main__":
                                                 paths,
                                                 map(get_output_path, paths),
                                                 utils.rep(x = encoding, times = len(paths)),
-                                                utils.rep(x = encoding, times = len(paths)),
+                                                utils.rep(x = vocabulary, times = len(paths)),
                                               ),
                                               chunksize = CHUNK_SIZE),
                       desc = f"Generating Audio",
