@@ -48,6 +48,7 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("-o", "--output_dir", default = OUTPUT_DIR, type = str, help = "Output directory where audio samples will be stored.")
     parser.add_argument("-m", "--model_size", default = MODEL_SIZE, type = str, help = "Model size from which to generate listening samples.")
     parser.add_argument("-n", "--number_of_samples_per_group", default = NUMBER_OF_SAMPLES_PER_GROUP, type = int, help = "Number of samples per group to generate.")
+    parser.add_argument("-j", "--jobs", default = int(multiprocessing.cpu_count() / 4), type = int, help = "Number of jobs.")
     return parser.parse_args(args = args, namespace = namespace)
 
 ##################################################
@@ -113,7 +114,7 @@ if __name__ == "__main__":
         Get paths for a given model and facet combination.
         """
         subset = dataset[(dataset["model"] == model) & (dataset["facet"] == facet)]
-        return random.sample(population = subset["path"], k = args.number_of_samples_per_group)
+        return random.sample(population = subset["path"].to_list(), k = args.number_of_samples_per_group)
     paths = []
     for model in set(dataset["model"]):
         for facet in set(dataset["facet"]):
