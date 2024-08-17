@@ -12,9 +12,11 @@
 import argparse
 from os.path import exists
 from os import makedirs
+import logging
+import numpy as np
+
 import remi_representation
 import utils
-import numpy as np
 
 ##################################################
 
@@ -61,6 +63,9 @@ if __name__ == "__main__":
 
     # parse the command-line arguments
     args = parse_args()
+
+    # set up logger
+    logging.basicConfig(level = logging.INFO, format = "%(message)s")
     
     # get variables
     encoding = remi_representation.get_encoding() # load the encoding
@@ -77,6 +82,6 @@ if __name__ == "__main__":
 
     # generate audio
     generated_to_audio(path = args.path, output_path = output_path, encoding = encoding, vocabulary = vocabulary)
-    print(f"Saved to {output_path}.")
+    logging.info(f"Saved to {output_path}.")
 
 ##################################################
