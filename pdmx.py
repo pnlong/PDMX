@@ -76,7 +76,7 @@ if __name__ == "__main__":
     metadata_dir = f"{output_dir}/metadata"
     if not exists(metadata_dir):
         mkdir(metadata_dir)
-    facets_dir = f"{output_dir}/facet_paths"
+    facets_dir = f"{output_dir}/subset_paths"
     if not exists(facets_dir):
         mkdir(facets_dir)
 
@@ -132,11 +132,14 @@ if __name__ == "__main__":
         
     # remove unnecessary columns
     dataset = dataset.drop(columns = ["path_output", "metadata_output"])
+    facet_columns = list(filter(lambda column: column.startswith("facet:"), dataset.columns))
+    subset_columns = list(map(lambda facet_column: facet_column.replace("facet", "subset"), facet_columns))
+    dataset = dataset.rename(columns = dict(zip(facet_columns, subset_columns))) # rename facet to subset columns
     dataset.to_csv(path_or_buf = output_filepath, sep = ",", na_rep = utils.NA_STRING, header = True, index = False, mode = "w")
 
     # text files with paths for each facet
-    for column in filter(lambda column: column.startswith("facet:"), dataset.columns):
-        with open(f"{facets_dir}/{column[len('facet:'):]}.txt", "w") as output_file:
+    for column in subset_columns:
+        with open(f"{facets_dir}/{column.split(':')[-1]}.txt", "w") as output_file:
             output_file.write("\n".join(dataset[dataset[column]]["path"]))
     
     ##################################################
