@@ -440,7 +440,11 @@ if __name__ == "__main__":
 
     # output mmt statistics of real data facets
     logging.info(f"\n{' MMT STATISTICS ':=^{bar_width}}\n")
-    logging.info(pd.DataFrame(data = list(map(lambda facet: dataset[dataset[f"facet:{facet}"]][MMT_STATISTIC_COLUMNS].mean(), FACETS)), index = FACETS).to_string())
+    faceted = pd.concat(objs = list(map(lambda facet: dataset[dataset[f"facet:{facet}"]][MMT_STATISTIC_COLUMNS].assign(facet = facet), FACETS)), axis = 0)
+    faceted = faceted.groupby(by = "facet").agg(["mean", "sem"])
+    logging.info(faceted.to_string())
+    del faceted
+    # logging.info(pd.DataFrame(data = list(map(lambda facet: dataset[dataset[f"facet:{facet}"]][MMT_STATISTIC_COLUMNS].mean(), FACETS)), index = FACETS).to_string())
 
     # helper function to output statistics
     def output_statistics(rated_only: bool = False) -> None:
