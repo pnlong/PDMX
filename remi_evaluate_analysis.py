@@ -105,16 +105,17 @@ if __name__ == "__main__":
 
     # output mmt statistics and perplexity
     bar_width = 100
+    correct_model = list(map(lambda model: model.startswith(args.model), dataset["model"]))
     logging.info(f"\n{' MMT STATISTICS ':=^{bar_width}}\n") # mmt statistics
-    mmt_statistics = dataset[["facet", "model"] + dataset_full.MMT_STATISTIC_COLUMNS].groupby(by = ["facet", "model"]).mean()
+    mmt_statistics = dataset[["facet", "model"] + dataset_full.MMT_STATISTIC_COLUMNS][correct_model].groupby(by = ["model", "facet"]).mean()
     logging.info(mmt_statistics.to_string())
     logging.info(f"\n{' PERPLEXITY ':=^{bar_width}}\n") # perplexity
     loss_facet_columns = list(filter(lambda column: column.startswith("loss:"), dataset.columns))
-    perplexity = dataset[["facet", "model"] + loss_facet_columns].groupby(by = ["facet", "model"]).agg(loss_to_perplexity) # group by model and facet
+    perplexity = dataset[["facet", "model"] + loss_facet_columns][correct_model].groupby(by = ["model", "facet"]).agg(loss_to_perplexity) # group by model and facet
     perplexity = perplexity.rename(columns = dict(zip(loss_facet_columns, map(lambda loss_facet_column: loss_facet_column[len("loss:"):].replace(f"{FACETS[-1]}", "").replace("-", "").replace("_", ""), loss_facet_columns)))) # rename columns
     logging.info(perplexity.to_string())
     logging.info("\n" + "".join(("=" for _ in range(bar_width))) + "\n")
-    del mmt_statistics, perplexity
+    del correct_model, mmt_statistics, perplexity
 
     # load in dataset
     dataset_real = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)
