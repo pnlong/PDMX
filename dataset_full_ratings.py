@@ -29,7 +29,8 @@ plt.rcParams["mathtext.fontset"] = "dejavuserif"
 # CONSTANTS
 ##################################################
 
-
+GREY = "#7b7d7b"
+LIGHT_GREY = "#bfbfbf"
 
 ##################################################
 
@@ -114,9 +115,9 @@ if __name__ == "__main__":
         # data_mmt_statistic = data_mmt_statistic[~pd.isna(data_mmt_statistic["sem"])] # no na values
 
         # plot
-        axes[mmt_statistic_column].bar(x = x_values, height = data_mmt_statistic["mean"], width = dataset_full_analysis.RATING_ROUND_TO_THE_NEAREST * width_proportion, align = "center", color = "tab:blue")
+        axes[mmt_statistic_column].bar(x = x_values, height = data_mmt_statistic["mean"], width = dataset_full_analysis.RATING_ROUND_TO_THE_NEAREST * width_proportion, align = "center", color = LIGHT_GREY if args.error_bars else GREY)
         if args.error_bars:
-            axes[mmt_statistic_column].errorbar(x = x_values, y = data_mmt_statistic["mean"], yerr = data_mmt_statistic["sem"], fmt = "o", color = "tab:red")            
+            axes[mmt_statistic_column].errorbar(x = x_values, y = data_mmt_statistic["mean"], yerr = data_mmt_statistic["sem"], fmt = "o", color = GREY)            
 
         # y and x axis labels
         if (not args.column) or (args.column and (mmt_statistic_column == dataset_full.MMT_STATISTIC_COLUMNS[-1])):
