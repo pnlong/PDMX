@@ -39,20 +39,6 @@ COLUMNS = ["facet"] + OUTPUT_COLUMNS
 ##################################################
 
 
-# ARGUMENTS
-##################################################
-
-def parse_args(args = None, namespace = None):
-    """Parse command-line arguments."""
-    parser = argparse.ArgumentParser(prog = "Evaluate Analysis", description = "Analyze the evaluation a REMI-Style Model.")
-    parser.add_argument("-i", "--input_dir", default = OUTPUT_DIR, type = str, help = "Directory containing facets (as subdirectories) to evaluate")
-    parser.add_argument("-d", "--dataset_filepath", default = f"{dataset_full.OUTPUT_DIR}/{dataset_full.DATASET_DIR_NAME}.csv", type = str, help = "Dataset from which facets are derived")
-    parser.add_argument("-m", "--model", default = None, type = str, help = "Name of the model to evaluate for each different facet")
-    return parser.parse_args(args = args, namespace = namespace)
-
-##################################################
-
-
 # HELPER FUNCTIONS
 ##################################################
 
@@ -66,6 +52,20 @@ def convert_to_fraction(data: np.array) -> np.array:
 
 # make facet name fancy
 make_facet_name_fancy = lambda facet: facet.title().replace("_", " and ")
+
+##################################################
+
+
+# ARGUMENTS
+##################################################
+
+def parse_args(args = None, namespace = None):
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(prog = "Evaluate Analysis", description = "Analyze the evaluation a REMI-Style Model.")
+    parser.add_argument("-i", "--input_dir", default = OUTPUT_DIR, type = str, help = "Directory containing facets (as subdirectories) to evaluate")
+    parser.add_argument("-d", "--dataset_filepath", default = f"{dataset_full.OUTPUT_DIR}/{dataset_full.DATASET_DIR_NAME}.csv", type = str, help = "Dataset from which facets are derived")
+    parser.add_argument("-m", "--model", default = None, type = str, help = "Name of the model to evaluate for each different facet")
+    return parser.parse_args(args = args, namespace = namespace)
 
 ##################################################
 
