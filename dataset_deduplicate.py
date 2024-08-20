@@ -439,12 +439,13 @@ if __name__ == "__main__":
     bar_width = 104 # how wide are the separation bars
 
     # output mmt statistics of real data facets
+    float_formatter = lambda num: f"{num:.2f}"
     logging.info(f"\n{' MMT STATISTICS ':=^{bar_width}}\n")
     faceted = pd.concat(objs = list(map(lambda facet: dataset[dataset[f"facet:{facet}"]][MMT_STATISTIC_COLUMNS].assign(facet = facet), FACETS)), axis = 0)
     faceted = faceted.groupby(by = "facet").agg(["mean", "sem"])
-    logging.info(faceted.to_string())
+    logging.info(faceted.to_string(float_format = float_formatter))
     del faceted
-    # logging.info(pd.DataFrame(data = list(map(lambda facet: dataset[dataset[f"facet:{facet}"]][MMT_STATISTIC_COLUMNS].mean(), FACETS)), index = FACETS).to_string())
+    # logging.info(pd.DataFrame(data = list(map(lambda facet: dataset[dataset[f"facet:{facet}"]][MMT_STATISTIC_COLUMNS].mean(), FACETS)), index = FACETS).to_string(float_format = float_formatter))
 
     # helper function to output statistics
     def output_statistics(rated_only: bool = False) -> None:
