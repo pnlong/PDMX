@@ -17,7 +17,7 @@ software="${software_dir}/remi_train.py"
 
 # defaults
 base_dir="/home/pnlong/musescore/remi"
-fine_tuning_facet_name="rated_deduplicated_hq"
+fine_tuning_facet_name="rated_deduplicated-4.0"
 data_dir="${base_dir}/all"
 gpu=-1 # gpu number
 resume=""

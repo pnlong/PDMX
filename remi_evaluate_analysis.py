@@ -25,8 +25,8 @@ from remi_evaluate import OUTPUT_COLUMNS, loss_to_perplexity
 import utils
 
 plt.style.use("default")
-plt.rcParams["font.family"] = "serif"
-plt.rcParams["mathtext.fontset"] = "dejavuserif"
+# plt.rcParams["font.family"] = "serif"
+# plt.rcParams["mathtext.fontset"] = "dejavuserif"
 
 ##################################################
 

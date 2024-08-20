@@ -21,8 +21,8 @@ import logging
 import dataset_full
 
 plt.style.use("default")
-plt.rcParams["font.family"] = "serif"
-plt.rcParams["mathtext.fontset"] = "dejavuserif"
+# plt.rcParams["font.family"] = "serif"
+# plt.rcParams["mathtext.fontset"] = "dejavuserif"
 
 ##################################################
 

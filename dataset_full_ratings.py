@@ -20,8 +20,8 @@ import dataset_full
 import dataset_full_analysis
 
 plt.style.use("default")
-plt.rcParams["font.family"] = "serif"
-plt.rcParams["mathtext.fontset"] = "dejavuserif"
+# plt.rcParams["font.family"] = "serif"
+# plt.rcParams["mathtext.fontset"] = "dejavuserif"
 
 ##################################################
 

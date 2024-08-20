@@ -24,8 +24,8 @@ import remi_evaluate_analysis
 from pdmx import DATASET_NAME
 
 plt.style.use("default")
-plt.rcParams["font.family"] = "serif"
-plt.rcParams["mathtext.fontset"] = "dejavuserif"
+# plt.rcParams["font.family"] = "serif"
+# plt.rcParams["mathtext.fontset"] = "dejavuserif"
 
 ##################################################
 
