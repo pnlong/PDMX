@@ -119,7 +119,7 @@ if __name__ == "__main__":
     yticks = 10 ** np.arange(start = 0, stop = 3, step = 1)
     for i, facet in enumerate(FACETS):
         axes["genres"].bar(x = xticks + offset[i], height = data[facet], width = width, align = "center", log = True, label = facet)
-    axes["genres"].set_xlabel(f"Top {TOP_N} Genres")
+    axes["genres"].set_xlabel("Genres")
     axes["genres"].set_xticks(ticks = xticks, labels = list(map(lambda i: genres[i], xticks)), fontsize = axis_tick_fontsize, rotation = 0) # get genre names
     axes["genres"].set_ylabel("Percent of Songs (%)")
     # axes["genres"].yaxis.grid(True)
