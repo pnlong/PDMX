@@ -24,6 +24,7 @@ sys.path.insert(0, dirname(dirname(realpath(__file__))))
 from make_dataset.full import DATASET_DIR_NAME, MMT_STATISTIC_COLUMNS
 from make_dataset.full import OUTPUT_DIR as DATASET_OUTPUT_DIR
 from make_dataset.deduplicate import FACETS
+from make_dataset.quality import make_facet_name_fancy, PLOTS_DIR_NAME
 from dataset import OUTPUT_DIR
 from train import RELEVANT_PARTITIONS
 from evaluate import OUTPUT_COLUMNS, loss_to_perplexity
@@ -55,9 +56,6 @@ def convert_to_fraction(data: np.array) -> np.array:
     data_matrix = data / bin_sums
     return data_matrix
 
-# make facet name fancy
-make_facet_name_fancy = lambda facet: facet.title().replace("_", " and ")
-
 ##################################################
 
 
@@ -87,7 +85,7 @@ if __name__ == "__main__":
     args = parse_args()
 
     # create output directory
-    output_dir = f"{args.input_dir}/plots"
+    output_dir = f"{args.input_dir}/{PLOTS_DIR_NAME}"
     if not exists(output_dir):
         mkdir(output_dir)
 
@@ -255,7 +253,7 @@ if __name__ == "__main__":
         axes_names = list(map(lambda realness_name: f"{realness_name}.{mmt_statistic}", realness_names))
         for realness_name, axes_name in zip(realness_names, axes_names):
             for i, facet in enumerate(FACETS):
-                axes[axes_name].bar(bin_centers, data[realness_name][i], width = bin_width, bottom = np.sum(a = data[realness_name][:i, :], axis = 0), label = facet)
+                axes[axes_name].bar(x = bin_centers, height = data[realness_name][i], width = bin_width, bottom = np.sum(a = data[realness_name][:i, :], axis = 0), label = facet)
             axes[axes_name].set_xlabel(mmt_statistic.replace("_", " ").title())
             axes[axes_name].set_xlim(left = bins[0], right = bins[-1])
             axes[axes_name].set_ylabel("")

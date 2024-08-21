@@ -29,7 +29,10 @@ sys.path.insert(0, dirname(dirname(realpath(__file__))))
 
 from make_dataset.full import CHUNK_SIZE
 from make_dataset.ratings import GREY, LIGHT_GREY
+from make_dataset.genres import FACETS_FOR_PLOTTING
+from make_dataset.quality import PLOTS_DIR_NAME
 from dataset import OUTPUT_DIR as DATASET_OUTPUT_DIR
+from train import FINE_TUNING_SUFFIX
 from representation import Indexer, get_encoding
 from generated_to_audio import generated_to_audio
 import utils
@@ -189,10 +192,36 @@ if __name__ == "__main__":
     ##################################################
 
 
-    # MAKE PLOT
+    # MEAN OPINION SCORE PLOT
     ##################################################
 
+    # load in data
+    listening_test = pd.read_csv(filepath_or_buffer = "", sep = ",", header = 0, index_col = False)
 
+    # wrangle data, expecting multiindex (facet: str, fine_tuned: bool)
+    listening_test = listening_test
+
+    # create plot
+    fig, axes = plt.subplot_mosaic(mosaic = [["plot"]], constrained_layout = True, figsize = (5, 2.5))
+
+    # plot
+    axis_tick_fontsize = "small"
+    total_bar_width = 0.8
+    individual_bar_width = total_bar_width / 2
+    for i, facet in enumerate(FACETS_FOR_PLOTTING):
+        axes["plot"].bar(x = i - (0.5 * individual_bar_width), height = listening_test.at[(facet, False)], width = individual_bar_width, align = "center", label = "Base", color = LIGHT_GREY) # not fine tuned
+        axes["plot"].bar(x = i + (0.5 * individual_bar_width), height = listening_test.at[(facet, True)], width = individual_bar_width, align = "center", label = "Fine Tuned", color = GREY) # fine tuned
+    axes["plot"].set_xlabel("Subset")
+    axes["genres"].set_xticks(ticks = list(range(len(FACETS_FOR_PLOTTING))), labels = FACETS_FOR_PLOTTING, fontsize = axis_tick_fontsize, rotation = 0) # get subset names
+    axes["plot"].set_ylabel("Mean Opinion Score")
+    axes["plot"].legend()
+
+    # save plot
+    output_filepath = f"{dirname(args.dataset_filepath)}/{PLOTS_DIR_NAME}/listening_test.pdf" # get output filepath
+    if not exists(dirname(output_filepath)): # make sure output directory exists
+        mkdir(dirname(output_filepath))
+    fig.savefig(output_filepath, dpi = 200, transparent = True, bbox_inches = "tight") # save image
+    logging.info(f"MOS plot saved to {output_filepath}.")
 
     ##################################################
 

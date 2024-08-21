@@ -22,9 +22,8 @@ sys.path.insert(0, dirname(realpath(__file__)))
 sys.path.insert(0, dirname(dirname(realpath(__file__))))
 
 from full import OUTPUT_DIR, DATASET_DIR_NAME, LIST_FEATURE_JOIN_STRING
-from quality import PLOTS_DIR_NAME
+from quality import PLOTS_DIR_NAME, make_facet_name_fancy
 from deduplicate import FACETS
-from model_remi.analysis import make_facet_name_fancy
 
 plt.style.use("default")
 # plt.rcParams["font.family"] = "serif"
@@ -38,6 +37,10 @@ plt.style.use("default")
 
 # display the top `n` genres
 TOP_N = 10
+
+# facets for plotting, as the order is different in paper
+FACETS_FOR_PLOTTING = FACETS.copy()
+FACETS_FOR_PLOTTING[1], FACETS_FOR_PLOTTING[2] = FACETS_FOR_PLOTTING[2], FACETS_FOR_PLOTTING[1]
 
 ##################################################
 
@@ -79,12 +82,12 @@ if __name__ == "__main__":
     dataset = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)
 
     # wrangle genres column
-    dataset = dataset[["genres"] + list(map(lambda facet: f"facet:{facet}", FACETS))] # extract only necessary columns
+    dataset = dataset[["genres"] + list(map(lambda facet: f"facet:{facet}", FACETS_FOR_PLOTTING))] # extract only necessary columns
     dataset["genres"] = list(map(lambda genres_string: genres_string.split(LIST_FEATURE_JOIN_STRING)[0] if not pd.isna(genres_string) else None, dataset["genres"]))
 
     # get some statistics
     logging.info("Percent of songs with at least one genre, by facet:")
-    for facet in FACETS:
+    for facet in FACETS_FOR_PLOTTING:
         logging.info(f"- {make_facet_name_fancy(facet = facet)}: {100 * (sum((~pd.isna(dataset['genres'])) * dataset[f'facet:{facet}']) / sum(dataset[f'facet:{facet}'])):.2f}%")
 
     # get the top-n most common genres in entire dataset
@@ -94,10 +97,10 @@ if __name__ == "__main__":
     logging.info(f"{len(counts)} distinct genres.")
     counts = convert_counts(counts = counts.head(n = TOP_N)) # get top n results
     genres = list(counts.index) # get the genres from most common to n-th most common
-    data[FACETS[0]] = list(counts.values)
+    data[FACETS_FOR_PLOTTING[0]] = list(counts.values)
 
     # for other facets, get the fraction of each genre
-    for facet in FACETS[1:]:
+    for facet in FACETS_FOR_PLOTTING[1:]:
         counts = convert_counts(counts = dataset[dataset[f"facet:{facet}"]]["genres"].value_counts())
         data[facet] = list(map(lambda genre: counts[genre] if (genre in counts.index) else 0.0, genres))
 
@@ -116,11 +119,11 @@ if __name__ == "__main__":
     # plot by facet
     axis_tick_fontsize = "small"
     total_width = 0.8
-    width = total_width / len(FACETS)
+    width = total_width / len(FACETS_FOR_PLOTTING)
     offset = np.arange(start = 0.5 * (width - total_width), stop = 0.5 * total_width , step = width) # offsets
     xticks = np.arange(len(genres))
     yticks = 10 ** np.arange(start = 0, stop = 3, step = 1)
-    for i, facet in enumerate(FACETS):
+    for i, facet in enumerate(FACETS_FOR_PLOTTING):
         axes["genres"].bar(x = xticks + offset[i], height = data[facet], width = width, align = "center", log = True, label = facet)
     # axes["genres"].set_xlabel("Genres")
     axes["genres"].set_xticks(ticks = xticks, labels = list(map(lambda i: genres[i], xticks)), fontsize = axis_tick_fontsize, rotation = 0) # get genre names

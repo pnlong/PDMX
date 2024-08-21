@@ -56,6 +56,9 @@ def discretize_rating(rating: float) -> float:
     # round to the nearest 1/5
     return RATING_ROUND_TO_THE_NEAREST * round(rating / RATING_ROUND_TO_THE_NEAREST)
 
+# make facet name fancy
+make_facet_name_fancy = lambda facet: facet.title().replace("_", " and ")
+
 ##################################################
 
 
@@ -168,7 +171,7 @@ if __name__ == "__main__":
 
     # determine string for how to refer the facet
     facet_name = df["all"].index.name
-    facet_name_fancy = " ".join(facet_name.split("_")).title()    
+    facet_name_fancy = make_facet_name_fancy(facet = facet_name)
 
     # create plot
     fig, axes = plt.subplot_mosaic(mosaic = [list(map(lambda column: f"{column}.{key}", MMT_STATISTIC_COLUMNS)) for key in df.keys()], constrained_layout = True, figsize = (12, 8))
