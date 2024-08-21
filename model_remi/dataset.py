@@ -30,8 +30,8 @@ sys.path.insert(0, dirname(dirname(realpath(__file__))))
 from make_dataset.full import DATASET_DIR_NAME, CHUNK_SIZE
 from make_dataset.full import OUTPUT_DIR as DATASET_OUTPUT_DIR
 from make_dataset.deduplicate import FACETS
-from read_mscz.music import MusicExpress
-from read_mscz.read_mscz import read_musescore
+from read_musescore.music import MusicRender
+from read_musescore.read_musescore import read_musescore
 from representation import Indexer, get_encoding, extract_notes, encode_notes, save_csv_notes, MAX_BEAT, RESOLUTION
 import utils
 
@@ -268,7 +268,7 @@ if __name__ == "__main__":
         if path.endswith("mscz"): # musescore file
             music = read_musescore(path = path, resolution = RESOLUTION)
         elif path.endswith("json"): # music object file
-            music = MusicExpress().load_json(path = path)
+            music = MusicRender().load_json(path = path)
         else:
             raise ValueError(f"Unknown filetype `{path.split('.')[-1]}`.")
 

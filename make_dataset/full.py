@@ -29,8 +29,8 @@ import sys
 sys.path.insert(0, dirname(realpath(__file__)))
 sys.path.insert(0, dirname(dirname(realpath(__file__))))
 
-from read_mscz.read_mscz import read_musescore, get_musescore_version
-from read_mscz.music import MusicExpress
+from read_musescore.read_musescore import read_musescore, get_musescore_version
+from read_musescore.music import MusicRender
 import model_remi.representation
 import utils
 
@@ -65,7 +65,7 @@ CHUNK_SIZE = 1
 # MMT-STYLE SONG STATISTICS
 ##################################################
 
-def pitch_class_entropy(music: MusicExpress) -> float:
+def pitch_class_entropy(music: MusicRender) -> float:
     """Return the entropy of the normalized note pitch class histogram.
     Copied from https://salu133445.github.io/muspy/_modules/muspy/metrics/metrics.html#pitch_class_entropy
 
@@ -79,7 +79,7 @@ def pitch_class_entropy(music: MusicExpress) -> float:
 
     Parameters
     ----------
-    music : :class:`read_mscz.MusicExpress`
+    music : :class:`read_musescore.MusicRender`
         Music object to evaluate.
 
     Returns
@@ -112,7 +112,7 @@ def pitch_class_entropy(music: MusicExpress) -> float:
     prob = counter / denominator
     return muspy.metrics.metrics._entropy(prob = prob)
 
-def scale_consistency(music: MusicExpress) -> float:
+def scale_consistency(music: MusicRender) -> float:
     """Return the largest pitch-in-scale rate.
     Copied from https://salu133445.github.io/muspy/_modules/muspy/metrics/metrics.html#scale_consistency
 
@@ -126,7 +126,7 @@ def scale_consistency(music: MusicExpress) -> float:
 
     Parameters
     ----------
-    music : :class:`read_mscz.MusicExpress`
+    music : :class:`read_musescore.MusicRender`
         Music object to evaluate.
 
     Returns
@@ -156,7 +156,7 @@ def scale_consistency(music: MusicExpress) -> float:
                 max_in_scale_rate = rate
     return max_in_scale_rate
 
-def groove_consistency(music: MusicExpress) -> float:
+def groove_consistency(music: MusicRender) -> float:
     """Return the groove consistency.
     Copied from https://salu133445.github.io/muspy/_modules/muspy/metrics/metrics.html#groove_consistency
 
@@ -177,7 +177,7 @@ def groove_consistency(music: MusicExpress) -> float:
 
     Parameters
     ----------
-    music : :class:`read_mscz.MusicExpress`
+    music : :class:`read_musescore.MusicRender`
         Music object to evaluate.
     measure_resolution : int
         Time steps per measure.

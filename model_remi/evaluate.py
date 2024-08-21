@@ -182,7 +182,7 @@ if __name__ == "__main__":
             """Evaluate the results."""
 
             # convert codes to a music object
-            music = decode(codes = codes, encoding = encoding, vocabulary = vocabulary) # convert to a MusicExpress object
+            music = decode(codes = codes, encoding = encoding, vocabulary = vocabulary) # convert to a MusicRender object
 
             # return a dictionary
             if len(music.tracks) == 0:

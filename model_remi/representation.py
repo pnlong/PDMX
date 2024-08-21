@@ -20,9 +20,9 @@ import sys
 sys.path.insert(0, dirname(realpath(__file__)))
 sys.path.insert(0, dirname(dirname(realpath(__file__))))
 
-from read_mscz.music import MusicExpress
-from read_mscz.classes import Tempo, Track, Note
-from read_mscz.read_mscz import read_musescore
+from read_musescore.music import MusicRender
+from read_musescore.classes import Tempo, Track, Note
+from read_musescore.read_musescore import read_musescore
 
 ##################################################
 
@@ -420,7 +420,7 @@ def load_encoding(filepath: str) -> dict:
 ##################################################
 
 # extract notes from a music object
-def extract_notes(music: MusicExpress, resolution: int = RESOLUTION) -> np.array:
+def extract_notes(music: MusicRender, resolution: int = RESOLUTION) -> np.array:
     """Return a music object as a note sequence.
 
     Each row of the output is a note specified as follows.
@@ -494,7 +494,7 @@ def encode_notes(notes: np.array, encoding: dict, indexer: Indexer) -> np.array:
     return np.array(codes)
 
 # combine extract and encode notes into a single function
-def encode(music: MusicExpress, encoding: dict, indexer: Indexer) -> np.array:
+def encode(music: MusicRender, encoding: dict, indexer: Indexer) -> np.array:
     """Encode a MusPy music object into a sequence of codes.
 
     Each row of the input is encoded as follows.
@@ -584,11 +584,11 @@ def decode_notes(data: List[str], encoding: dict, vocabulary: dict) -> List[tupl
     return notes
 
 # reconstruct note events sequence as a music object
-def reconstruct(notes: List[tuple], resolution: int = RESOLUTION) -> MusicExpress:
+def reconstruct(notes: List[tuple], resolution: int = RESOLUTION) -> MusicRender:
     """Reconstruct a note sequence to a music object."""
 
     # construct the music object
-    music = MusicExpress(resolution = resolution, tempos = [Tempo(time = 0, qpm = 100)])
+    music = MusicRender(resolution = resolution, tempos = [Tempo(time = 0, qpm = 100)])
 
     # append the tracks
     programs = sorted(set(note[-1] for note in notes))
@@ -605,7 +605,7 @@ def reconstruct(notes: List[tuple], resolution: int = RESOLUTION) -> MusicExpres
     return music
 
 # combine decode and reconstruct into a single function
-def decode(codes: List[str], encoding: dict, vocabulary: dict) -> MusicExpress:
+def decode(codes: List[str], encoding: dict, vocabulary: dict) -> MusicRender:
     """Decode codes into a MusPy Music object.
 
     Each row of the input is encoded as follows.

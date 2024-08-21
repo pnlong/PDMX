@@ -37,7 +37,7 @@ def generated_to_audio(path: str, output_path: str, encoding: dict, vocabulary: 
     codes = np.load(file = path)
 
     # convert codes to a music object
-    music = decode(codes = codes, encoding = encoding, vocabulary = vocabulary) # convert to a MusicExpress object
+    music = decode(codes = codes, encoding = encoding, vocabulary = vocabulary) # convert to a MusicRender object
 
     # write as audio (actually, can write as whatever kind of file we want)
     music.write(path = output_path)

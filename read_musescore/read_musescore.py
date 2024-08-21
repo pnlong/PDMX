@@ -5,7 +5,7 @@
 # Create an object that can read musescore files (.mscz) into a prettier, pythonic format.
 # Copied from https://github.com/salu133445/muspy/blob/main/muspy/inputs/musescore.py
 
-# python /home/pnlong/parse_musescore/read_mscz/read_mscz.py
+# python /home/pnlong/parse_musescore/read_musescore/read_musescore.py
 
 # IMPORTS / CONSTANTS
 ##################################################
@@ -16,7 +16,7 @@ from collections import OrderedDict
 from fractions import Fraction
 from functools import reduce
 from operator import attrgetter
-from os.path import dirname, join, basename
+from os.path import dirname, join, basename, realpath
 from typing import Dict, List, Optional, Tuple, TypeVar, Union
 from xml.etree.ElementTree import Element
 from zipfile import ZipFile
@@ -24,9 +24,12 @@ from re import sub
 import numpy as np
 from muspy.utils import CIRCLE_OF_FIFTHS, MODE_CENTERS, NOTE_TYPE_MAP, TONAL_PITCH_CLASSES
 
-# MusicExpress imports
-from .classes import *
-from .music import MusicExpress
+# MusicRender imports
+import sys
+sys.path.insert(0, dirname(realpath(__file__)))
+sys.path.insert(0, dirname(dirname(realpath(__file__))))
+from classes import *
+from music import MusicRender
 
 # create type variable
 T = TypeVar("T")
@@ -407,7 +410,7 @@ def get_beats(downbeat_times: List[int], measure_indicies: List[int], time_signa
 
     Returns
     -------
-    list of :class:`read_mscz.Beat`
+    list of :class:`read_musescore.Beat`
         Computed beats.
 
     """
@@ -1140,8 +1143,8 @@ def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], ti
 # MY BETTER READ MUSESCORE FUNCTION, EXTRACTS EXPRESSIVE FEATURES
 ##################################################
 
-def read_musescore(path: str, resolution: int = None, compressed: bool = None, timeout: int = None) -> MusicExpress:
-    """Read the a MuseScore file into a MusicExpress object, paying close attention to details such as articulation and expressive features.
+def read_musescore(path: str, resolution: int = None, compressed: bool = None, timeout: int = None) -> MusicRender:
+    """Read the a MuseScore file into a MusicRender object, paying close attention to details such as articulation and expressive features.
 
     Parameters
     ----------
@@ -1156,8 +1159,8 @@ def read_musescore(path: str, resolution: int = None, compressed: bool = None, t
 
     Returns
     -------
-    :class:`MusicExpress`
-        Converted MusicExpress object.
+    :class:`MusicRender`
+        Converted MusicRender object.
 
     """
 
@@ -1189,7 +1192,7 @@ def read_musescore(path: str, resolution: int = None, compressed: bool = None, t
     # get all the staff elements
     staffs = score.findall(path = "Staff")
     if len(staffs) == 0: # Return empty music object with metadata if no staff is found
-        return MusicExpress(metadata = metadata, resolution = resolution)
+        return MusicRender(metadata = metadata, resolution = resolution)
 
     # parse measure ordering from the meta staff, expanding all repeats and jumps
     measure_indicies = get_measure_ordering(elem = staffs[0], timeout = timeout) # feed in the first staff, since measure ordering are constant across all staffs
@@ -1244,7 +1247,7 @@ def read_musescore(path: str, resolution: int = None, compressed: bool = None, t
         track.lyrics.sort(key = attrgetter("time"))
         track.annotations.sort(key = attrgetter("time"))
 
-    return MusicExpress(metadata = metadata, resolution = resolution, tempos = tempos, key_signatures = key_signatures, time_signatures = time_signatures, barlines = barlines, beats = beats, tracks = tracks, annotations = annotations)
+    return MusicRender(metadata = metadata, resolution = resolution, tempos = tempos, key_signatures = key_signatures, time_signatures = time_signatures, barlines = barlines, beats = beats, tracks = tracks, annotations = annotations)
 
 ##################################################
 

@@ -27,8 +27,13 @@ import numpy as np
 from warnings import warn
 from copy import deepcopy
 
-from .classes import *
-from .output import write_midi, write_audio, write_musicxml, get_expressive_features_per_note, VELOCITY_INCREASE_FACTOR, ACCENT_VELOCITY_INCREASE_FACTOR, PEDAL_DURATION_CHANGE_FACTOR, STACCATO_DURATION_CHANGE_FACTOR, FERMATA_TEMPO_SLOWDOWN
+from os.path import dirname, realpath
+import sys
+sys.path.insert(0, dirname(realpath(__file__)))
+sys.path.insert(0, dirname(dirname(realpath(__file__))))
+
+from classes import *
+from output import write_midi, write_audio, write_musicxml, get_expressive_features_per_note, VELOCITY_INCREASE_FACTOR, ACCENT_VELOCITY_INCREASE_FACTOR, PEDAL_DURATION_CHANGE_FACTOR, STACCATO_DURATION_CHANGE_FACTOR, FERMATA_TEMPO_SLOWDOWN
 
 ##################################################
 
@@ -68,30 +73,30 @@ def to_dict(obj) -> dict:
 # BETTER MUSIC CLASS
 ##################################################
 
-class MusicExpress(muspy.music.Music):
+class MusicRender(muspy.music.Music):
     """A universal container for symbolic music, better suited for storing expressive features than MusPy.
 
     Attributes
     ----------
-    metadata : :class:`read_mscz.Metadata`, default: `Metadata()`
+    metadata : :class:`read_musescore.Metadata`, default: `Metadata()`
         Metadata.
     resolution : int, default: `muspy.DEFAULT_RESOLUTION` (24)
         Time steps per quarter note.
-    tempos : list of :class:`read_mscz.Tempo`, default: []
+    tempos : list of :class:`read_musescore.Tempo`, default: []
         Tempo changes.
-    key_signatures : list of :class:`read_mscz.KeySignature`, default: []
+    key_signatures : list of :class:`read_musescore.KeySignature`, default: []
         Key signatures changes.
-    time_signatures : list of :class:`read_mscz.TimeSignature`, default: []
+    time_signatures : list of :class:`read_musescore.TimeSignature`, default: []
         Time signature changes.
-    barlines : list of :class:`read_mscz.Barline`, default: []
+    barlines : list of :class:`read_musescore.Barline`, default: []
         Barlines.
-    beats : list of :class:`read_mscz.Beat`, default: []
+    beats : list of :class:`read_musescore.Beat`, default: []
         Beats.
-    lyrics : list of :class:`read_mscz.Lyric`, default: []
+    lyrics : list of :class:`read_musescore.Lyric`, default: []
         Lyrics.
-    annotations : list of :class:`read_mscz.Annotation`, default: []
+    annotations : list of :class:`read_musescore.Annotation`, default: []
         Annotations.
-    tracks : list of :class:`read_mscz.Track`, default: []
+    tracks : list of :class:`read_musescore.Track`, default: []
         Music tracks.
     song_length : int
         The length of the song (in time steps).
@@ -102,7 +107,7 @@ class MusicExpress(muspy.music.Music):
 
     Note
     ----
-    Indexing a MusicExpress object returns the track of a certain index. That is, ``music[idx]`` returns ``music.tracks[idx]``. Length of a Music object is the number of tracks. That is, ``len(music)`` returns ``len(music.tracks)``.
+    Indexing a MusicRender object returns the track of a certain index. That is, ``music[idx]`` returns ``music.tracks[idx]``. Length of a Music object is the number of tracks. That is, ``len(music)`` returns ``len(music.tracks)``.
 
     """
 
@@ -154,7 +159,7 @@ class MusicExpress(muspy.music.Music):
     ##################################################
 
     def print(self, output_filepath: str = None, remove_empty_lines: bool = True):
-        """Print the MusicExpress object in a pretty way.
+        """Print the MusicRender object in a pretty way.
         
         Parameters
         ---------
@@ -360,7 +365,7 @@ class MusicExpress(muspy.music.Music):
                 - add start time (in metrical time)
                 - convert time from seconds to minutes
                 - multiply by qpm value to convert to quarter beats since start time
-                - multiply by MusicExpress resolution
+                - multiply by MusicRender resolution
             """
             return lambda time: int(start_time + ((((time - start_time_seconds) / 60) * qpm) * self.resolution))
 
@@ -572,7 +577,7 @@ class MusicExpress(muspy.music.Music):
     ##################################################
 
     def trim(self, start: int = 0, end: int = -1):
-        """Trim the MusicExpress object.
+        """Trim the MusicRender object.
 
         Parameters
         ----------
@@ -636,7 +641,7 @@ class MusicExpress(muspy.music.Music):
     ##################################################
 
     def write(self, path: str, kind: str = None, **kwargs):
-        """Write a MusicExpress object in various file formats.
+        """Write a MusicRender object in various file formats.
 
         Parameters
         ----------
@@ -812,7 +817,7 @@ def load_annotation(annotation: dict):
             raise KeyError("Unknown annotation type.")
 
 
-def load_json(path: str) -> MusicExpress:
+def load_json(path: str) -> MusicRender:
     """Load a Music object from a JSON file.
 
     Parameters
@@ -915,8 +920,8 @@ def load_json(path: str) -> MusicExpress:
             ) for annotation in track["annotations"]]
     ) for track in data["tracks"]]
 
-    # return a MusicExpress object
-    return MusicExpress(
+    # return a MusicRender object
+    return MusicRender(
         metadata = metadata,
         resolution = int(data["resolution"]),
         tempos = tempos,

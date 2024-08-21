@@ -24,7 +24,7 @@ sys.path.insert(0, dirname(dirname(realpath(__file__))))
 
 from full import DATASET_DIR_NAME, MUSESCORE_DIR, CHUNK_SIZE
 from full import OUTPUT_DIR as DATASET_OUTPUT_DIR
-from read_mscz.read_mscz import read_musescore
+from read_musescore.read_musescore import read_musescore
 import utils
 
 ##################################################

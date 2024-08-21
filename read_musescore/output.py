@@ -2,7 +2,7 @@
 # Phillip Long
 # December 1, 2023
 
-# Functions for outputting a MusicExpress object to different file formats.
+# Functions for outputting a MusicRender object to different file formats.
 
 # python ./output.py
 
@@ -12,7 +12,7 @@
 
 import subprocess
 from os import rename
-from os.path import exists, expanduser
+from os.path import exists, expanduser, dirname, realpath
 from re import sub
 from typing import Tuple, Dict, List, Callable
 from numpy import linspace
@@ -22,7 +22,10 @@ from itertools import groupby
 from warnings import warn
 
 # general
-from .classes import *
+import sys
+sys.path.insert(0, dirname(realpath(__file__)))
+sys.path.insert(0, dirname(dirname(realpath(__file__))))
+from classes import *
 from utils import unique
 
 # midi
@@ -55,7 +58,7 @@ from music21.exceptions21 import StreamException
 
 FERMATA_TEMPO_SLOWDOWN = 3 # factor by which to slow down the tempo when there is a fermata
 N_NOTES = 128 # number of notes for midi
-RESOLUTION = 12 # resolution for MusicExpress
+RESOLUTION = 12 # resolution for MusicRender
 PEDAL_DURATION_CHANGE_FACTOR = 3 # factor by which the sustain pedal increases the duration of each note
 STACCATO_DURATION_CHANGE_FACTOR = 5 # factor by which a staccato decreases the duration of a note
 VELOCITY_INCREASE_FACTOR = 2 # factor by which to increase velocity when an expressive feature GRADUALLY increases velocity
@@ -100,7 +103,7 @@ def to_mido_note_on_note_off(note: Note, channel: int, use_note_off_message: boo
 
     Parameters
     ----------
-    note : :class:`read_mscz.Note` object
+    note : :class:`read_musescore.Note` object
         Note object to convert.
     channel : int
         Channel of the .mid message.
@@ -165,12 +168,12 @@ def to_delta_time(midi_track: MidiTrack, ticks_per_beat: int, absolute_time: boo
         time = time_
 
 
-def to_mido_meta_track(music: "MusicExpress") -> MidiTrack:
+def to_mido_meta_track(music: "MusicRender") -> MidiTrack:
     """Return a mido MidiTrack containing metadata of a Music object.
 
     Parameters
     ----------
-    music : :class:`read_mscz.MusicExpress` object
+    music : :class:`read_musescore.MusicRender` object
         Music object to convert.
 
     Returns
@@ -344,14 +347,14 @@ def get_expressive_features_per_note(note_times: list, all_annotations: list) ->
     return expressive_features
 
 
-def to_mido_track(track: Track, music: "MusicExpress", channel: int = None, use_note_off_message: bool = False) -> MidiTrack:
+def to_mido_track(track: Track, music: "MusicRender", channel: int = None, use_note_off_message: bool = False) -> MidiTrack:
     """Return a Track object as a mido MidiTrack object.
 
     Parameters
     ----------
-    track : :class:`read_mscz.Track` object
+    track : :class:`read_musescore.Track` object
         Track object to convert.
-    music : :class:`read_mscz.MusicExpress` object
+    music : :class:`read_musescore.MusicRender` object
         Music object that `track` belongs to.
     channel : int, optional
         Channel number. Defaults to 10 for drums and 0 for other instruments.
@@ -452,14 +455,14 @@ def to_mido_track(track: Track, music: "MusicExpress", channel: int = None, use_
     return midi_track
 
 
-def write_midi(path: str, music: "MusicExpress", use_note_off_message: bool = False):
+def write_midi(path: str, music: "MusicRender", use_note_off_message: bool = False):
     """Write a Music object to a .mid file using mido as backend.
 
     Parameters
     ----------
     path : str
         Path to write the .mid file.
-    music : :class:`read_mscz.MusicExpress` object
+    music : :class:`read_musescore.MusicRender` object
         Music object to write.
     use_note_off_message : bool, default: False
         Whether to use note-off messages. If False, note-on messages with zero velocity are used instead. The advantage to using note-on messages at zero velocity is that it can avoid sending additional status bytes when Running Status is employed.
@@ -497,7 +500,7 @@ def write_midi(path: str, music: "MusicExpress", use_note_off_message: bool = Fa
 # WRITE AUDIO
 ##################################################
 
-def write_audio(path: str, music: "MusicExpress", audio_format: str = "auto", soundfont_path: str = None, rate: int = 44100, gain: float = 1, options: str = None):
+def write_audio(path: str, music: "MusicRender", audio_format: str = "auto", soundfont_path: str = None, rate: int = 44100, gain: float = 1, options: str = None):
     """Write a Music object to an audio file.
 
     Supported formats include WAV, AIFF, FLAC and OGA.
@@ -506,7 +509,7 @@ def write_audio(path: str, music: "MusicExpress", audio_format: str = "auto", so
     ----------
     path : str
         Path to write the audio file.
-    music : :class:`read_mscz.MusicExpress`
+    music : :class:`read_musescore.MusicRender`
         Music object to write.
     audio_format : str, default: 'auto'
         File format to write. Defaults to infer from the extension.
@@ -533,7 +536,7 @@ def write_audio(path: str, music: "MusicExpress", audio_format: str = "auto", so
         # ensure we are operating on a copy of music
         music = deepcopy(music)
 
-        # write the MusicExpress object to a temporary .mid file
+        # write the MusicRender object to a temporary .mid file
         midi_path = f"{temp_dir}/temp.mid"
         write_midi(path = midi_path, music = music)
 
@@ -552,14 +555,14 @@ PITCH_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 #     octave, pitch_class = divmod(note_number, 12)
 #     return PITCH_NAMES[pitch_class] + str(octave - 1)
 
-def write_musicxml(path: str, music: "MusicExpress", compressed: bool = None):
+def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
     """Write a Music object to a MusicXML file.
 
     Parameters
     ----------
     path : str
         Path to write the MusicXML file.
-    music : :class:`read_mscz.MusicExpress`
+    music : :class:`read_musescore.MusicRender`
         Music object to write.
     compressed : bool, optional
         Whether to write to a compressed MusicXML file. If None, infer
@@ -856,7 +859,7 @@ def write_musicxml(path: str, music: "MusicExpress", compressed: bool = None):
 
 if __name__ == "__main__":
 
-    from read_mscz.read_mscz import read_musescore
+    from read_musescore.read_musescore import read_musescore
     prefix = "/data2/pnlong/musescore/test_data/test2/QmbbxbpgJHyNRzjkbyxdoV5saQ9HY38MauKMd5CijTPFiF"
     music = read_musescore(path = f"{prefix}.mscz")
     music.write(path = f"{prefix}.xml") # tests xml output
