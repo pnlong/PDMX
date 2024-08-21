@@ -446,7 +446,7 @@ if __name__ == "__main__":
     faceted[MMT_STATISTIC_COLUMNS[2]] *= 100 # convert groove consistency to percentage
     faceted = faceted.groupby(by = "facet").agg(["mean", "sem"])
     logging.info(faceted.to_string(float_format = float_formatter))
-    logging.info("".join(("=" for _ in range(bar_width))))
+    logging.info("\n" + "".join(("=" for _ in range(bar_width))) + "\n")
     for facet in faceted.index:
         logging.info(" & ".join((f"${faceted.at[facet, (mmt_statistic, 'mean')]:.2f} \pm {faceted.at[facet, (mmt_statistic, 'sem')]:.2f}$" for mmt_statistic in MMT_STATISTIC_COLUMNS)))
     del faceted
