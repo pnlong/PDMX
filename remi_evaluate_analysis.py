@@ -108,8 +108,13 @@ if __name__ == "__main__":
     correct_model = list(map(lambda model: model.startswith(args.model), dataset["model"]))
     float_formatter = lambda num: f"{num:.2f}"
     logging.info(f"\n{' MMT STATISTICS ':=^{bar_width}}\n") # mmt statistics
+    dataset[dataset_full.MMT_STATISTIC_COLUMNS[1]] *= 100 # convert scale consistency to percentage
+    dataset[dataset_full.MMT_STATISTIC_COLUMNS[2]] *= 100 # convert groove consistency to percentage
     mmt_statistics = dataset[["facet", "model"] + dataset_full.MMT_STATISTIC_COLUMNS][correct_model].groupby(by = ["model", "facet"]).agg(["mean", "sem"])
     logging.info(mmt_statistics.to_string(float_format = float_formatter))
+    logging.info("".join(("=" for _ in range(bar_width))))
+    for facet, model in mmt_statistics.index:
+        logging.info(" & ".join((f"${mmt_statistics.at[(facet, model), (mmt_statistic, 'mean')]:.2f} \pm {mmt_statistics.at[(facet, model), (mmt_statistic, 'sem')]:.2f}$" for mmt_statistic in dataset_full.MMT_STATISTIC_COLUMNS)))
     logging.info(f"\n{' PERPLEXITY ':=^{bar_width}}\n") # perplexity
     loss_facet_columns = list(filter(lambda column: column.startswith("loss:"), dataset.columns))
     perplexity = dataset[["facet", "model"] + loss_facet_columns][correct_model].groupby(by = ["model", "facet"]).agg(loss_to_perplexity) # group by model and facet

@@ -442,8 +442,13 @@ if __name__ == "__main__":
     float_formatter = lambda num: f"{num:.2f}"
     logging.info(f"\n{' MMT STATISTICS ':=^{bar_width}}\n")
     faceted = pd.concat(objs = list(map(lambda facet: dataset[dataset[f"facet:{facet}"]][MMT_STATISTIC_COLUMNS].assign(facet = facet), FACETS)), axis = 0)
+    faceted[MMT_STATISTIC_COLUMNS[1]] *= 100 # convert scale consistency to percentage
+    faceted[MMT_STATISTIC_COLUMNS[2]] *= 100 # convert groove consistency to percentage
     faceted = faceted.groupby(by = "facet").agg(["mean", "sem"])
     logging.info(faceted.to_string(float_format = float_formatter))
+    logging.info("".join(("=" for _ in range(bar_width))))
+    for facet in faceted.index:
+        logging.info(" & ".join((f"${faceted.at[facet, (mmt_statistic, 'mean')]:.2f} \pm {faceted.at[facet, (mmt_statistic, 'sem')]:.2f}$" for mmt_statistic in MMT_STATISTIC_COLUMNS)))
     del faceted
     # logging.info(pd.DataFrame(data = list(map(lambda facet: dataset[dataset[f"facet:{facet}"]][MMT_STATISTIC_COLUMNS].mean(), FACETS)), index = FACETS).to_string(float_format = float_formatter))
 
