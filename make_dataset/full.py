@@ -4,16 +4,15 @@
 
 # Parse through all musescore (.mscz) files and determine which are in the public domain.
 
-# python /home/pnlong/model_musescore/dataset_full.py
+# python /home/pnlong/model_musescore/make_dataset/full.py
 
 
 # IMPORTS
 ##################################################
 
 import glob
-from os.path import isfile, exists, basename, dirname
-from os import makedirs, mkdir
-from shutil import copyfile
+from os.path import isfile, exists, basename, dirname, realpath
+from os import makedirs
 import random
 import pandas as pd
 import numpy as np
@@ -26,9 +25,13 @@ import json
 import math
 import muspy
 
+import sys
+sys.path.insert(0, dirname(realpath(__file__)))
+sys.path.insert(0, dirname(dirname(realpath(__file__))))
+
 from read_mscz.read_mscz import read_musescore, get_musescore_version
 from read_mscz.music import MusicExpress
-import remi_representation
+import remi.representation
 import utils
 
 ##################################################
@@ -438,12 +441,12 @@ def get_full_dataset(path: str) -> None:
     ##################################################
 
     # encode then decode
-    notes = remi_representation.extract_notes(music = music, resolution = encoding["resolution"])
+    notes = remi.representation.extract_notes(music = music, resolution = encoding["resolution"])
     notes = notes[notes[:, 0] < encoding["max_beat"]] # filter so that all beats are in the vocabulary
     notes[:, 2] = np.clip(a = notes[:, 2], a_min = 0, a_max = 127) # remove unknown pitches
-    codes = remi_representation.encode_notes(notes = notes, encoding = encoding, indexer = indexer)
-    notes = remi_representation.decode_notes(data = codes, encoding = encoding, vocabulary = vocabulary)
-    music = remi_representation.reconstruct(notes = notes, resolution = encoding["resolution"])
+    codes = remi.representation.encode_notes(notes = notes, encoding = encoding, indexer = indexer)
+    notes = remi.representation.decode_notes(data = codes, encoding = encoding, vocabulary = vocabulary)
+    music = remi.representation.reconstruct(notes = notes, resolution = encoding["resolution"])
 
     # extract MMT-style statistics
     results.update(dict(zip(MMT_STATISTIC_COLUMNS, (
@@ -497,8 +500,8 @@ if __name__ == "__main__":
     METADATA = {path : path_metadata if not pd.isna(path_metadata) else None for path, path_metadata in zip(METADATA["data_path"], METADATA["metadata_path"])}
 
     # for encoding and decoding
-    encoding = remi_representation.get_encoding() # load the encoding
-    indexer = remi_representation.Indexer(data = encoding["event_code_map"])# get the indexer
+    encoding = remi.representation.get_encoding() # load the encoding
+    indexer = remi.representation.Indexer(data = encoding["event_code_map"])# get the indexer
     vocabulary = utils.inverse_dict(indexer.get_dict()) # for decoding
 
     # set up logging

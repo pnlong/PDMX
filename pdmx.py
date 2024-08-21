@@ -18,7 +18,8 @@ from tqdm import tqdm
 import multiprocessing
 import logging
 
-import dataset_full
+from make_dataset.full import DATASET_DIR_NAME, MUSESCORE_DIR, CHUNK_SIZE
+from make_dataset.full import OUTPUT_DIR as DATASET_OUTPUT_DIR
 from read_mscz.read_mscz import read_musescore
 import utils
 
@@ -46,7 +47,7 @@ COMPRESS_JSON_MUSIC_FILES = False
 def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(prog = DATASET_NAME, description = f"Create {DATASET_NAME} Dataset.")
-    parser.add_argument("-d", "--dataset_filepath", type = str, default = f"{dataset_full.OUTPUT_DIR}/{dataset_full.DATASET_DIR_NAME}.csv", help = "Filepath to full dataset.")
+    parser.add_argument("-d", "--dataset_filepath", type = str, default = f"{DATASET_OUTPUT_DIR}/{DATASET_DIR_NAME}.csv", help = "Filepath to full dataset.")
     parser.add_argument("-o", "--output_dir", type = str, default = OUTPUT_DIR, help = "Output directory")
     parser.add_argument("-j", "--jobs", type = int, default = int(multiprocessing.cpu_count() / 4), help = "Number of Jobs")
     return parser.parse_args(args = args, namespace = namespace)
@@ -85,8 +86,8 @@ if __name__ == "__main__":
 
     # load in dataset
     dataset = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)
-    dataset["path_output"] = list(map(lambda path: data_dir + ".".join(path[len(f"{dataset_full.MUSESCORE_DIR}/data"):].split(".")[:-1]) + ".json", dataset["path"]))
-    dataset["metadata_output"] = list(map(lambda path: metadata_dir + path[len(f"{dataset_full.MUSESCORE_DIR}/metadata"):] if (not pd.isna(path)) else None, dataset["metadata"]))
+    dataset["path_output"] = list(map(lambda path: data_dir + ".".join(path[len(f"{MUSESCORE_DIR}/data"):].split(".")[:-1]) + ".json", dataset["path"]))
+    dataset["metadata_output"] = list(map(lambda path: metadata_dir + path[len(f"{MUSESCORE_DIR}/metadata"):] if (not pd.isna(path)) else None, dataset["metadata"]))
 
     # create necessary directory trees if required
     data_subdirectories = set(map(dirname, dataset["path_output"]))
@@ -126,7 +127,7 @@ if __name__ == "__main__":
     with multiprocessing.Pool(processes = args.jobs) as pool:
         _ = list(tqdm(iterable = pool.imap_unordered(func = get_file,
                                                      iterable = dataset.index,
-                                                     chunksize = dataset_full.CHUNK_SIZE),
+                                                     chunksize = CHUNK_SIZE),
                             desc = f"Creating {DATASET_NAME}",
                             total = len(dataset)))
         

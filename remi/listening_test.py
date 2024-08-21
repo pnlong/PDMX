@@ -4,14 +4,14 @@
 
 # Generate audio samples for listening test.
 
-# python /home/pnlong/model_musescore/remi_listening_test.py
+# python /home/pnlong/model_musescore/remi/listening_test.py
 
 # IMPORTS
 ##################################################
 
 import argparse
 import logging
-from os.path import exists, basename, dirname
+from os.path import exists, basename, dirname, realpath
 from os import mkdir, makedirs, chdir, remove
 from shutil import rmtree
 import pandas as pd
@@ -22,10 +22,14 @@ import random
 from itertools import product
 import subprocess
 
-from dataset_full import CHUNK_SIZE
-import remi_dataset
-import remi_representation
-from remi_generated_to_audio import generated_to_audio
+import sys
+sys.path.insert(0, dirname(realpath(__file__)))
+sys.path.insert(0, dirname(dirname(realpath(__file__))))
+
+from make_dataset.full import CHUNK_SIZE
+from dataset import OUTPUT_DIR as DATASET_OUTPUT_DIR
+from representation import Indexer, get_encoding
+from generated_to_audio import generated_to_audio
 import utils
 
 ##################################################
@@ -34,7 +38,7 @@ import utils
 # CONSTANTS
 ##################################################
 
-OUTPUT_DIR = f"{remi_dataset.OUTPUT_DIR}/listening_test" # where to output generated samples
+OUTPUT_DIR = f"{DATASET_OUTPUT_DIR}/listening_test" # where to output generated samples
 MODEL_SIZE = "65M" # model size to evaluate
 N_SAMPLES_PER_GROUP = 10
 
@@ -47,7 +51,7 @@ N_SAMPLES_PER_GROUP = 10
 def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(prog = "Listening Test", description = "Generate audio samples for a listening test.")
-    parser.add_argument("-d", "--dataset_filepath", default = f"{remi_dataset.OUTPUT_DIR}/evaluation.csv", type = str, help = "Dataset with evaluated samples for all subsets and models.")
+    parser.add_argument("-d", "--dataset_filepath", default = f"{DATASET_OUTPUT_DIR}/evaluation.csv", type = str, help = "Dataset with evaluated samples for all subsets and models.")
     parser.add_argument("-o", "--output_dir", default = OUTPUT_DIR, type = str, help = "Output directory where audio samples will be stored.")
     parser.add_argument("-m", "--model_size", default = MODEL_SIZE, type = str, help = "Model size from which to generate listening samples.")
     parser.add_argument("-n", "--n_samples_per_group", default = N_SAMPLES_PER_GROUP, type = int, help = "Number of samples per group to generate.")
@@ -84,8 +88,8 @@ if __name__ == "__main__":
         mkdir(args.output_dir)
     
     # get variables
-    encoding = remi_representation.get_encoding() # load the encoding
-    vocabulary = utils.inverse_dict(remi_representation.Indexer(data = encoding["event_code_map"]).get_dict()) # for decoding
+    encoding = get_encoding() # load the encoding
+    vocabulary = utils.inverse_dict(Indexer(data = encoding["event_code_map"]).get_dict()) # for decoding
 
     # load in dataset
     dataset = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)

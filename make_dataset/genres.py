@@ -4,7 +4,7 @@
 
 # Create genres plot for paper.
 
-# python /home/pnlong/model_musescore/dataset_full_genres.py
+# python /home/pnlong/model_musescore/make_dataset/genres.py
 
 # IMPORTS
 ##################################################
@@ -13,15 +13,18 @@ import argparse
 import pandas as pd
 import matplotlib.pyplot as plt
 import logging
-from os.path import dirname, exists
+from os.path import dirname, exists, realpath
 from os import mkdir
 import numpy as np
 
-import dataset_full
-import dataset_full_analysis
-from dataset_deduplicate import FACETS
-import remi_evaluate_analysis
-from pdmx import DATASET_NAME
+import sys
+sys.path.insert(0, dirname(realpath(__file__)))
+sys.path.insert(0, dirname(dirname(realpath(__file__))))
+
+from full import OUTPUT_DIR, DATASET_DIR_NAME, LIST_FEATURE_JOIN_STRING
+from full_analysis import PLOTS_DIR_NAME
+from deduplicate import FACETS
+from remi.analysis import make_facet_name_fancy
 
 plt.style.use("default")
 # plt.rcParams["font.family"] = "serif"
@@ -45,7 +48,7 @@ TOP_N = 10
 def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(prog = "Genres", description = "Create genres plot for paper.")
-    parser.add_argument("-d", "--dataset_filepath", type = str, default = f"{dataset_full.OUTPUT_DIR}/{dataset_full.DATASET_DIR_NAME}.csv", help = "Filepath to full dataset.")
+    parser.add_argument("-d", "--dataset_filepath", type = str, default = f"{OUTPUT_DIR}/{DATASET_DIR_NAME}.csv", help = "Filepath to full dataset.")
     return parser.parse_args(args = args, namespace = namespace)
 
 ##################################################
@@ -77,12 +80,12 @@ if __name__ == "__main__":
 
     # wrangle genres column
     dataset = dataset[["genres"] + list(map(lambda facet: f"facet:{facet}", FACETS))] # extract only necessary columns
-    dataset["genres"] = list(map(lambda genres_string: genres_string.split(dataset_full.LIST_FEATURE_JOIN_STRING)[0] if not pd.isna(genres_string) else None, dataset["genres"]))
+    dataset["genres"] = list(map(lambda genres_string: genres_string.split(LIST_FEATURE_JOIN_STRING)[0] if not pd.isna(genres_string) else None, dataset["genres"]))
 
     # get some statistics
     logging.info("Percent of songs with at least one genre, by facet:")
     for facet in FACETS:
-        logging.info(f"- {remi_evaluate_analysis.make_facet_name_fancy(facet = facet)}: {100 * (sum((~pd.isna(dataset['genres'])) * dataset[f'facet:{facet}']) / sum(dataset[f'facet:{facet}'])):.2f}%")
+        logging.info(f"- {make_facet_name_fancy(facet = facet)}: {100 * (sum((~pd.isna(dataset['genres'])) * dataset[f'facet:{facet}']) / sum(dataset[f'facet:{facet}'])):.2f}%")
 
     # get the top-n most common genres in entire dataset
     convert_counts = lambda counts: 100 * (counts / sum(counts)) # convert counts to a percentage
@@ -128,12 +131,12 @@ if __name__ == "__main__":
     # add legend
     handles, labels = axes["genres"].get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
-    axes["genres"].legend(handles = by_label.values(), labels = list(map(remi_evaluate_analysis.make_facet_name_fancy, by_label.keys())),
+    axes["genres"].legend(handles = by_label.values(), labels = list(map(make_facet_name_fancy, by_label.keys())),
                           fontsize = "small", title_fontsize = "medium", alignment = "center",
                           ncol = 1, title = "Subset")
 
     # save image
-    output_filepath = f"{dirname(args.dataset_filepath)}/{dataset_full_analysis.PLOTS_DIR_NAME}/genres.pdf" # get output filepath
+    output_filepath = f"{dirname(args.dataset_filepath)}/{PLOTS_DIR_NAME}/genres.pdf" # get output filepath
     if not exists(dirname(output_filepath)): # make sure output directory exists
         mkdir(dirname(output_filepath))
     fig.savefig(output_filepath, dpi = 200, transparent = True, bbox_inches = "tight") # save image

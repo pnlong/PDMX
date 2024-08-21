@@ -22,11 +22,11 @@ from xml.etree.ElementTree import Element
 from zipfile import ZipFile
 from re import sub
 import numpy as np
+from muspy.utils import CIRCLE_OF_FIFTHS, MODE_CENTERS, NOTE_TYPE_MAP, TONAL_PITCH_CLASSES
 
-# muspy imports
+# MusicExpress imports
 from .classes import *
 from .music import MusicExpress
-from muspy.utils import CIRCLE_OF_FIFTHS, MODE_CENTERS, NOTE_TYPE_MAP, TONAL_PITCH_CLASSES
 
 # create type variable
 T = TypeVar("T")

@@ -7,7 +7,7 @@
 # In other words, we group songs with duplicate artists and titles together,
 # and from that grouping, we choose the best version within that group.
 
-# python /home/pnlong/model_musescore/dataset_deduplicate.py
+# python /home/pnlong/model_musescore/make_dataset/deduplicate.py
 
 # IMPORTS
 ##################################################
@@ -18,7 +18,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from re import sub
 import os
-from os.path import dirname, basename, exists
+from os.path import dirname, basename, exists, realpath
 from tqdm import tqdm
 import multiprocessing
 from typing import List
@@ -27,8 +27,12 @@ import logging
 
 from sentence_transformers import SentenceTransformer
 
-from dataset_full import OUTPUT_DIR, DATASET_DIR_NAME, CHUNK_SIZE, MMT_STATISTIC_COLUMNS
-from dataset_full_analysis import PLOTS_DIR_NAME
+import sys
+sys.path.insert(0, dirname(realpath(__file__)))
+sys.path.insert(0, dirname(dirname(realpath(__file__))))
+
+from full import OUTPUT_DIR, DATASET_DIR_NAME, CHUNK_SIZE, MMT_STATISTIC_COLUMNS
+from full_analysis import PLOTS_DIR_NAME
 import utils
 
 os.environ["TOKENIZERS_PARALLELISM"] = "true"

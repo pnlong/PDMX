@@ -11,14 +11,18 @@
 
 import argparse
 import glob
-from os.path import isfile
+from os.path import isfile, dirname, realpath
 from tqdm import tqdm
 import multiprocessing
 import json
 import pandas as pd
 import logging
 
-from dataset_full import MUSESCORE_DIR, INPUT_DIR, CHUNK_SIZE
+import sys
+sys.path.insert(0, dirname(realpath(__file__)))
+sys.path.insert(0, dirname(dirname(realpath(__file__))))
+
+from full import MUSESCORE_DIR, INPUT_DIR, CHUNK_SIZE
 import utils
 
 ############################################### ###

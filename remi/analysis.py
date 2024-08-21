@@ -4,7 +4,7 @@
 
 # Analyze the evaluation a REMI-Style model.
 
-# python /home/pnlong/model_musescore/remi_evaluate_analysis.py
+# python /home/pnlong/model_musescore/remi/analysis.py
 
 # IMPORTS
 ##################################################
@@ -14,14 +14,19 @@ import logging
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-from os.path import exists
+from os.path import exists, realpath, dirname
 from os import mkdir
 
-import dataset_full
-from dataset_deduplicate import FACETS
-from remi_dataset import OUTPUT_DIR
-from remi_train import RELEVANT_PARTITIONS
-from remi_evaluate import OUTPUT_COLUMNS, loss_to_perplexity
+import sys
+sys.path.insert(0, dirname(realpath(__file__)))
+sys.path.insert(0, dirname(dirname(realpath(__file__))))
+
+from make_dataset.full import DATASET_DIR_NAME, MMT_STATISTIC_COLUMNS
+from make_dataset.full import OUTPUT_DIR as DATASET_OUTPUT_DIR
+from make_dataset.deduplicate import FACETS
+from dataset import OUTPUT_DIR
+from train import RELEVANT_PARTITIONS
+from evaluate import OUTPUT_COLUMNS, loss_to_perplexity
 import utils
 
 plt.style.use("default")
@@ -63,7 +68,7 @@ def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(prog = "Evaluate Analysis", description = "Analyze the evaluation a REMI-Style Model.")
     parser.add_argument("-i", "--input_dir", default = OUTPUT_DIR, type = str, help = "Directory containing facets (as subdirectories) to evaluate")
-    parser.add_argument("-d", "--dataset_filepath", default = f"{dataset_full.OUTPUT_DIR}/{dataset_full.DATASET_DIR_NAME}.csv", type = str, help = "Dataset from which facets are derived")
+    parser.add_argument("-d", "--dataset_filepath", default = f"{DATASET_OUTPUT_DIR}/{DATASET_DIR_NAME}.csv", type = str, help = "Dataset from which facets are derived")
     parser.add_argument("-m", "--model", default = None, type = str, help = "Name of the model to evaluate for each different facet")
     return parser.parse_args(args = args, namespace = namespace)
 
@@ -108,13 +113,13 @@ if __name__ == "__main__":
     correct_model = list(map(lambda model: model.startswith(args.model), dataset["model"]))
     float_formatter = lambda num: f"{num:.2f}"
     logging.info(f"\n{' MMT STATISTICS ':=^{bar_width}}\n") # mmt statistics
-    dataset[dataset_full.MMT_STATISTIC_COLUMNS[1]] *= 100 # convert scale consistency to percentage
-    dataset[dataset_full.MMT_STATISTIC_COLUMNS[2]] *= 100 # convert groove consistency to percentage
-    mmt_statistics = dataset[["facet", "model"] + dataset_full.MMT_STATISTIC_COLUMNS][correct_model].groupby(by = ["model", "facet"]).agg(["mean", "sem"])
+    dataset[MMT_STATISTIC_COLUMNS[1]] *= 100 # convert scale consistency to percentage
+    dataset[MMT_STATISTIC_COLUMNS[2]] *= 100 # convert groove consistency to percentage
+    mmt_statistics = dataset[["facet", "model"] + MMT_STATISTIC_COLUMNS][correct_model].groupby(by = ["model", "facet"]).agg(["mean", "sem"])
     logging.info(mmt_statistics.to_string(float_format = float_formatter))
     logging.info("\n" + "".join(("=" for _ in range(bar_width))) + "\n")
     for facet, model in mmt_statistics.index:
-        logging.info(" & ".join((f"${mmt_statistics.at[(facet, model), (mmt_statistic, 'mean')]:.2f} \pm {mmt_statistics.at[(facet, model), (mmt_statistic, 'sem')]:.2f}$" for mmt_statistic in dataset_full.MMT_STATISTIC_COLUMNS)))
+        logging.info(" & ".join((f"${mmt_statistics.at[(facet, model), (mmt_statistic, 'mean')]:.2f} \pm {mmt_statistics.at[(facet, model), (mmt_statistic, 'sem')]:.2f}$" for mmt_statistic in MMT_STATISTIC_COLUMNS)))
     logging.info(f"\n{' PERPLEXITY ':=^{bar_width}}\n") # perplexity
     loss_facet_columns = list(filter(lambda column: column.startswith("loss:"), dataset.columns))
     perplexity = dataset[["facet", "model"] + loss_facet_columns][correct_model].groupby(by = ["model", "facet"]).agg(loss_to_perplexity) # group by model and facet
@@ -158,7 +163,7 @@ if __name__ == "__main__":
     ##################################################
 
     # create plot
-    fig, axes = plt.subplot_mosaic(mosaic = [dataset_full.MMT_STATISTIC_COLUMNS[:-1], [dataset_full.MMT_STATISTIC_COLUMNS[-1], "legend"]], constrained_layout = True, figsize = (8, 6))
+    fig, axes = plt.subplot_mosaic(mosaic = [MMT_STATISTIC_COLUMNS[:-1], [MMT_STATISTIC_COLUMNS[-1], "legend"]], constrained_layout = True, figsize = (8, 6))
     fig.suptitle(f"Evaluating {model} Model Performance", fontweight = "bold")
 
     # plotting function
@@ -193,11 +198,11 @@ if __name__ == "__main__":
         axes[mmt_statistic].grid()
 
     # plot plots
-    for mmt_statistic_column in dataset_full.MMT_STATISTIC_COLUMNS:
+    for mmt_statistic_column in MMT_STATISTIC_COLUMNS:
         plot_mmt_statistic(mmt_statistic = mmt_statistic_column)
 
     # plot legend
-    handles, labels = axes[dataset_full.MMT_STATISTIC_COLUMNS[0]].get_legend_handles_labels()
+    handles, labels = axes[MMT_STATISTIC_COLUMNS[0]].get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     axes["legend"].legend(handles = by_label.values(), labels = list(map(make_facet_name_fancy, by_label.keys())),
                           loc = "center", fontsize = legend_fontsize, title_fontsize = legend_title_fontsize, alignment = "center",
@@ -218,9 +223,9 @@ if __name__ == "__main__":
     # create plot
     fig, axes = plt.subplot_mosaic(
         mosaic = (
-            utils.rep(x = list(map(lambda mmt_statistic: f"{realness_names[0]}.{mmt_statistic}", dataset_full.MMT_STATISTIC_COLUMNS)), times = plot_to_legend_ratio) +
-            utils.rep(x = list(map(lambda mmt_statistic: f"{realness_names[1]}.{mmt_statistic}", dataset_full.MMT_STATISTIC_COLUMNS)), times = plot_to_legend_ratio) +
-            [utils.rep(x = "legend", times = len(dataset_full.MMT_STATISTIC_COLUMNS))]
+            utils.rep(x = list(map(lambda mmt_statistic: f"{realness_names[0]}.{mmt_statistic}", MMT_STATISTIC_COLUMNS)), times = plot_to_legend_ratio) +
+            utils.rep(x = list(map(lambda mmt_statistic: f"{realness_names[1]}.{mmt_statistic}", MMT_STATISTIC_COLUMNS)), times = plot_to_legend_ratio) +
+            [utils.rep(x = "legend", times = len(MMT_STATISTIC_COLUMNS))]
         ),
         constrained_layout = True, figsize = (10, 7))
     fig.suptitle(f"Comparing Facets in Actual versus Generated Music")
@@ -258,16 +263,16 @@ if __name__ == "__main__":
             axes[axes_name].grid()
 
         # add title if needed
-        if mmt_statistic == dataset_full.MMT_STATISTIC_COLUMNS[1]:
+        if mmt_statistic == MMT_STATISTIC_COLUMNS[1]:
             axes[axes_names[0]].set_title("\nActual Data\n", fontweight = "bold")
             axes[axes_names[1]].set_title(f"\nGenerated by {model} Model\n", fontweight = "bold")
 
     # plot plots
-    for mmt_statistic in dataset_full.MMT_STATISTIC_COLUMNS:
+    for mmt_statistic in MMT_STATISTIC_COLUMNS:
         plot_mmt_statistic_stacked(mmt_statistic = mmt_statistic)
 
     # plot legend
-    handles, labels = axes[f"{realness_names[0]}.{dataset_full.MMT_STATISTIC_COLUMNS[0]}"].get_legend_handles_labels()
+    handles, labels = axes[f"{realness_names[0]}.{MMT_STATISTIC_COLUMNS[0]}"].get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     axes["legend"].legend(handles = by_label.values(), labels = list(map(make_facet_name_fancy, by_label.keys())),
                           loc = "center", fontsize = legend_fontsize, title_fontsize = legend_title_fontsize, alignment = "center",
@@ -291,7 +296,7 @@ if __name__ == "__main__":
 
         # create plot
         fig, axes = plt.subplot_mosaic(
-            mosaic = utils.rep(x = dataset_full.MMT_STATISTIC_COLUMNS, times = plot_to_legend_ratio * 2) + [utils.rep(x = "legend", times = len(dataset_full.MMT_STATISTIC_COLUMNS))],
+            mosaic = utils.rep(x = MMT_STATISTIC_COLUMNS, times = plot_to_legend_ratio * 2) + [utils.rep(x = "legend", times = len(MMT_STATISTIC_COLUMNS))],
             constrained_layout = True,
             figsize = (12, 5))
         fig.suptitle(f"Comparing {make_facet_name_fancy(facet = facet)} Facet in Actual versus Generated Music")
@@ -301,7 +306,7 @@ if __name__ == "__main__":
         dataset_real_facet = dataset_real[dataset_real[f"facet:{facet}"]]
 
         # go through different mmt statistics
-        for mmt_statistic in dataset_full.MMT_STATISTIC_COLUMNS:
+        for mmt_statistic in MMT_STATISTIC_COLUMNS:
 
             # # get the range of data
             # data_values = pd.concat(objs = (dataset_facet[mmt_statistic], dataset_real_facet[mmt_statistic]), axis = 0)
@@ -325,11 +330,11 @@ if __name__ == "__main__":
             axes[mmt_statistic].hist(dataset_facet[mmt_statistic], label = realness_names[1], density = True, alpha = alpha)
             axes[mmt_statistic].set_xlabel(mmt_statistic.replace("_", " ").title())
             axes[mmt_statistic].grid()
-            if mmt_statistic == dataset_full.MMT_STATISTIC_COLUMNS[0]: # add y label if necessary
+            if mmt_statistic == MMT_STATISTIC_COLUMNS[0]: # add y label if necessary
                 axes[mmt_statistic].set_ylabel("Density")
 
         # plot legend
-        handles, labels = axes[dataset_full.MMT_STATISTIC_COLUMNS[0]].get_legend_handles_labels()
+        handles, labels = axes[MMT_STATISTIC_COLUMNS[0]].get_legend_handles_labels()
         by_label = dict(zip(labels, handles))
         axes["legend"].legend(handles = by_label.values(), labels = list(map(make_facet_name_fancy, by_label.keys())),
                               loc = "center", fontsize = legend_fontsize, alignment = "center", ncol = len(realness_names))

@@ -14,8 +14,8 @@
 
 # IMPORTS
 ##################################################
+
 import muspy
-from .classes import *
 from collections import OrderedDict
 from typing import List
 from re import sub
@@ -27,7 +27,9 @@ import numpy as np
 from warnings import warn
 from copy import deepcopy
 
+from .classes import *
 from .output import write_midi, write_audio, write_musicxml, get_expressive_features_per_note, VELOCITY_INCREASE_FACTOR, ACCENT_VELOCITY_INCREASE_FACTOR, PEDAL_DURATION_CHANGE_FACTOR, STACCATO_DURATION_CHANGE_FACTOR, FERMATA_TEMPO_SLOWDOWN
+
 ##################################################
 
 

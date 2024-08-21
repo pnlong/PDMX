@@ -13,7 +13,7 @@ import argparse
 import logging
 import pprint
 import sys
-from os.path import exists, basename
+from os.path import exists, basename, dirname, realpath
 from os import makedirs, mkdir
 from multiprocessing import cpu_count # for calculating num_workers
 import wandb
@@ -25,9 +25,14 @@ import torch.utils.data
 from tqdm import tqdm
 import x_transformers
 
-from dataset_deduplicate import FACETS
-import remi_dataset
-import remi_representation
+import sys
+sys.path.insert(0, dirname(realpath(__file__)))
+sys.path.insert(0, dirname(dirname(realpath(__file__))))
+
+from make_dataset.deduplicate import FACETS
+from dataset import PARTITIONS, MusicDataset
+from dataset import OUTPUT_DIR as DATASET_OUTPUT_DIR
+from representation import Indexer, get_encoding, encode_notes
 import utils
 
 ##################################################
@@ -37,7 +42,7 @@ import utils
 ##################################################
 
 # paths
-INPUT_DIR = f"{remi_dataset.OUTPUT_DIR}/{FACETS[0]}"
+INPUT_DIR = f"{DATASET_OUTPUT_DIR}/{FACETS[0]}"
 PATHS_TRAIN = f"{INPUT_DIR}/train.txt"
 PATHS_VALID = f"{INPUT_DIR}/valid.txt"
 OUTPUT_DIR = INPUT_DIR
@@ -65,7 +70,7 @@ GRAD_NORM_CLIP = 1.0
 BATCH_SIZE = 12
 
 # more constants
-RELEVANT_PARTITIONS = list(remi_dataset.PARTITIONS.keys())[:-1]
+RELEVANT_PARTITIONS = list(PARTITIONS.keys())[:-1]
 LOSS_OUTPUT_COLUMNS = ["step", "partition", "loss"]
 
 # wandb
@@ -160,16 +165,16 @@ if __name__ == "__main__":
     print(f"Using device: {device}")
 
     # load the encoding
-    encoding = remi_representation.get_encoding()
+    encoding = get_encoding()
 
     # load the indexer
-    indexer = remi_representation.Indexer(data = encoding["event_code_map"])
+    indexer = Indexer(data = encoding["event_code_map"])
 
     # create the dataset and data loader
     print(f"Creating the data loader...")
     dataset = {
-        "train": remi_dataset.MusicDataset(paths = args.paths_train, encoding = encoding, indexer = indexer, encode_fn = remi_representation.encode_notes, max_seq_len = args.max_seq_len, max_beat = args.max_beat, use_augmentation = args.aug),
-        "valid": remi_dataset.MusicDataset(paths = args.paths_valid, encoding = encoding, indexer = indexer, encode_fn = remi_representation.encode_notes, max_seq_len = args.max_seq_len, max_beat = args.max_beat, use_augmentation = False)
+        "train": MusicDataset(paths = args.paths_train, encoding = encoding, indexer = indexer, encode_fn = encode_notes, max_seq_len = args.max_seq_len, max_beat = args.max_beat, use_augmentation = args.aug),
+        "valid": MusicDataset(paths = args.paths_valid, encoding = encoding, indexer = indexer, encode_fn = encode_notes, max_seq_len = args.max_seq_len, max_beat = args.max_beat, use_augmentation = False)
         }
     data_loader = {
         "train": torch.utils.data.DataLoader(dataset = dataset["train"], batch_size = BATCH_SIZE, shuffle = True, num_workers = args.jobs, collate_fn = dataset["train"].collate),

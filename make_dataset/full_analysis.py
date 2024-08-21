@@ -4,7 +4,7 @@
 
 # Analyze full dataset to see if there are differences between different facets.
 
-# python /home/pnlong/model_musescore/dataset_full_analysis.py
+# python /home/pnlong/model_musescore/make_dataset/full_analysis.py
 
 # IMPORTS
 ##################################################
@@ -13,12 +13,16 @@ import argparse
 import pandas as pd
 from typing import Union, List
 from utils import rep
-from os.path import exists, dirname
+from os.path import exists, dirname, realpath
 from os import mkdir
 import matplotlib.pyplot as plt
 import logging
 
-import dataset_full
+import sys
+sys.path.insert(0, dirname(realpath(__file__)))
+sys.path.insert(0, dirname(dirname(realpath(__file__))))
+
+from full import MMT_STATISTIC_COLUMNS, DATASET_DIR_NAME, OUTPUT_DIR
 
 plt.style.use("default")
 # plt.rcParams["font.family"] = "serif"
@@ -67,14 +71,14 @@ def group_by(df: pd.DataFrame, by: Union[str, List[str]]) -> pd.DataFrame:
     # only select relevant columns
     if isinstance(by, str):
         by = [by]
-    df = df[by + dataset_full.MMT_STATISTIC_COLUMNS]
+    df = df[by + MMT_STATISTIC_COLUMNS]
 
     # get sizes by group
     sizes = df.groupby(by = by).size().to_frame(name = "n")
     sizes["fraction"] = sizes["n"] / sum(sizes["n"])
 
     # perform groupby
-    agg_dict = dict(zip(dataset_full.MMT_STATISTIC_COLUMNS, rep(x = ["mean", "sem"], times = len(dataset_full.MMT_STATISTIC_COLUMNS))))
+    agg_dict = dict(zip(MMT_STATISTIC_COLUMNS, rep(x = ["mean", "sem"], times = len(MMT_STATISTIC_COLUMNS))))
     df = df.groupby(by = by).agg(agg_dict)
     df[sizes.columns] = sizes
 
@@ -99,7 +103,7 @@ def group_by(df: pd.DataFrame, by: Union[str, List[str]]) -> pd.DataFrame:
 def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(prog = "Analyze Dataset", description = "Analyze full dataset for music-quality differences within variables.")
-    parser.add_argument("-d", "--dataset_filepath", type = str, default = f"{dataset_full.OUTPUT_DIR}/{dataset_full.DATASET_DIR_NAME}.csv", help = "Filepath to full dataset.")
+    parser.add_argument("-d", "--dataset_filepath", type = str, default = f"{OUTPUT_DIR}/{DATASET_DIR_NAME}.csv", help = "Filepath to full dataset.")
     parser.add_argument("-b", "--by", action = "store", type = str, nargs = "+", help = "Variable(s) on which to facet.")
     return parser.parse_args(args = args, namespace = namespace)
 
@@ -167,7 +171,7 @@ if __name__ == "__main__":
     facet_name_fancy = " ".join(facet_name.split("_")).title()    
 
     # create plot
-    fig, axes = plt.subplot_mosaic(mosaic = [list(map(lambda column: f"{column}.{key}", dataset_full.MMT_STATISTIC_COLUMNS)) for key in df.keys()], constrained_layout = True, figsize = (12, 8))
+    fig, axes = plt.subplot_mosaic(mosaic = [list(map(lambda column: f"{column}.{key}", MMT_STATISTIC_COLUMNS)) for key in df.keys()], constrained_layout = True, figsize = (12, 8))
     plt.set_loglevel("WARNING")
     fig.suptitle(facet_name_fancy)
     margin_proportion = 0.2 # what fraction of the range do we extend on both sides
@@ -179,7 +183,7 @@ if __name__ == "__main__":
         y_values = list(map(str, data.index))
 
         # make plots
-        for mmt_statistic_column in dataset_full.MMT_STATISTIC_COLUMNS:
+        for mmt_statistic_column in MMT_STATISTIC_COLUMNS:
 
             # variables
             statistic_fancy = " ".join(mmt_statistic_column.split("_")).title() # stylize the name of the mmt statistic
@@ -194,10 +198,10 @@ if __name__ == "__main__":
             axes[column].errorbar(x = data_mmt_statistic["mean"], y = y_values, xerr = data_mmt_statistic["sem"], fmt = "o", color = "tab:red")            
 
             # y and x axis labels
-            if mmt_statistic_column == dataset_full.MMT_STATISTIC_COLUMNS[0]:
+            if mmt_statistic_column == MMT_STATISTIC_COLUMNS[0]:
                 axes[column].set_ylabel(facet_name_fancy)
             else:
-                axes[column].sharey(other = axes[f"{dataset_full.MMT_STATISTIC_COLUMNS[0]}.{key}"])
+                axes[column].sharey(other = axes[f"{MMT_STATISTIC_COLUMNS[0]}.{key}"])
             axes[column].set_xlabel(statistic_fancy)
 
             # add margin
@@ -206,14 +210,14 @@ if __name__ == "__main__":
             axes[column].set_xlim(left = min_val - margin, right = max_val + margin)
 
             # add title (if necessary) and grid
-            if mmt_statistic_column == dataset_full.MMT_STATISTIC_COLUMNS[1]:
+            if mmt_statistic_column == MMT_STATISTIC_COLUMNS[1]:
                 axes[column].set_title(f"\n{key.title()} Songs\n", fontweight = "bold")
             axes[column].grid()
 
         # rotate y-axis ticks if necessary
         # if (facet_name.count(", ") > 0):
         #    for key in df.keys():
-        #        for mmt_statistic_column in dataset_full.MMT_STATISTIC_COLUMNS:
+        #        for mmt_statistic_column in MMT_STATISTIC_COLUMNS:
         #           column = f"{mmt_statistic_column}.{key}"
         #           axes[column].set_yticks(axes[column].get_xticks())
         #           axes[column].set_yticklabels(axes[column].get_xticklabels(), rotation = 20, ha = "right")

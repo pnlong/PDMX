@@ -4,7 +4,7 @@
 
 # Data Loader for REMI-Style Encoding.
 
-# python /home/pnlong/model_musescore/remi_dataset.py
+# python /home/pnlong/model_musescore/remi/dataset.py
 
 # IMPORTS
 ##################################################
@@ -14,7 +14,7 @@ import logging
 import multiprocessing
 from tqdm import tqdm
 from typing import List, Callable
-from os.path import exists, basename
+from os.path import exists, basename, dirname, realpath
 from os import makedirs, mkdir
 import random
 
@@ -23,11 +23,16 @@ import pandas as pd
 import torch
 import torch.utils.data
 
-import dataset_full
-from dataset_deduplicate import FACETS
+import sys
+sys.path.insert(0, dirname(realpath(__file__)))
+sys.path.insert(0, dirname(dirname(realpath(__file__))))
+
+from make_dataset.full import DATASET_DIR_NAME, CHUNK_SIZE
+from make_dataset.full import OUTPUT_DIR as DATASET_OUTPUT_DIR
+from make_dataset.deduplicate import FACETS
 from read_mscz.music import MusicExpress
 from read_mscz.read_mscz import read_musescore
-import remi_representation
+from representation import Indexer, get_encoding, extract_notes, encode_notes, save_csv_notes, MAX_BEAT, RESOLUTION
 import utils
 
 ##################################################
@@ -102,11 +107,11 @@ class MusicDataset(torch.utils.data.Dataset):
     def __init__(
         self,
         paths: str, # path to file with filepaths to semi-encoded song representations
-        encoding: dict = remi_representation.get_encoding(), # encoding dictionary
-        indexer: remi_representation.Indexer = remi_representation.Indexer(), # indexer
-        encode_fn: Callable = remi_representation.encode_notes, # encoding function
+        encoding: dict = get_encoding(), # encoding dictionary
+        indexer: Indexer = Indexer(), # indexer
+        encode_fn: Callable = encode_notes, # encoding function
         max_seq_len: int = None, # max sequence length
-        max_beat: int = remi_representation.MAX_BEAT, # max beat
+        max_beat: int = MAX_BEAT, # max beat
         use_augmentation: bool = False, # use data augmentation?
     ):
         super().__init__()
@@ -195,7 +200,7 @@ class MusicDataset(torch.utils.data.Dataset):
 def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(prog = "Dataset", description = "Create and test PyTorch Dataset for MuseScore data.")
-    parser.add_argument("-d", "--dataset_filepath", default = f"{dataset_full.OUTPUT_DIR}/{dataset_full.DATASET_DIR_NAME}.csv", type = str, help = "Filepath to full dataset")
+    parser.add_argument("-d", "--dataset_filepath", default = f"{DATASET_OUTPUT_DIR}/{DATASET_DIR_NAME}.csv", type = str, help = "Filepath to full dataset")
     parser.add_argument("-o", "--output_dir", default = OUTPUT_DIR, type = str, help = "Output directory for any relevant files")
     parser.add_argument("-u", "--use_csv", action = "store_true", help = "Whether to save outputs in CSV format (default to NPY format)")
     parser.add_argument("-rv", "--ratio_valid", default = PARTITIONS["valid"], type = float, help = "Ratio of validation files")
@@ -261,18 +266,18 @@ if __name__ == "__main__":
 
         # load music object
         if path.endswith("mscz"): # musescore file
-            music = read_musescore(path = path, resolution = remi_representation.RESOLUTION)
+            music = read_musescore(path = path, resolution = RESOLUTION)
         elif path.endswith("json"): # music object file
             music = MusicExpress().load_json(path = path)
         else:
             raise ValueError(f"Unknown filetype `{path.split('.')[-1]}`.")
 
         # extract notes
-        notes = remi_representation.extract_notes(music = music, resolution = remi_representation.RESOLUTION)
+        notes = extract_notes(music = music, resolution = RESOLUTION)
 
         # output
         if args.use_csv:
-            remi_representation.save_csv_notes(filepath = output_path, data = notes)
+            save_csv_notes(filepath = output_path, data = notes)
         else:
             np.save(file = output_path, arr = notes)
 
@@ -281,7 +286,7 @@ if __name__ == "__main__":
 
     # use multiprocessing to extract notes
     with multiprocessing.Pool(processes = args.jobs) as pool:
-        dataset["output_path"] = list(pool.map(func = extract_notes, iterable = tqdm(iterable = dataset["path"], desc = "Extracting Notes", total = len(dataset)), chunksize = dataset_full.CHUNK_SIZE))
+        dataset["output_path"] = list(pool.map(func = extract_notes, iterable = tqdm(iterable = dataset["path"], desc = "Extracting Notes", total = len(dataset)), chunksize = CHUNK_SIZE))
 
     ##################################################
 
@@ -338,17 +343,17 @@ if __name__ == "__main__":
     ##################################################
 
     # load the encoding
-    encoding = remi_representation.get_encoding()
+    encoding = get_encoding()
 
     # get the indexer
-    indexer = remi_representation.Indexer(data = encoding["event_code_map"])
+    indexer = Indexer(data = encoding["event_code_map"])
 
     # create the dataset and data loader
     dataset = MusicDataset(
         paths = f"{args.output_dir}/{FACETS[0]}/valid.txt",
         encoding = encoding,
         indexer = indexer,
-        encode_fn = remi_representation.encode_notes,
+        encode_fn = encode_notes,
     )
     data_loader = torch.utils.data.DataLoader(
         dataset = dataset,

@@ -6,7 +6,7 @@
 
 # A place to store the command-line inputs for different REMI-models to train.
 
-# sh /home/pnlong/model_musescore/remi_train.sh
+# sh /home/pnlong/model_musescore/remi/train.sh
 
 # CONSTANTS
 ##################################################

@@ -4,7 +4,7 @@
 
 # Evaluate a REMI-Style model.
 
-# python /home/pnlong/model_musescore/remi_evaluate.py
+# python /home/pnlong/model_musescore/remi/evaluate.py
 
 # IMPORTS
 ##################################################
@@ -13,7 +13,7 @@ import argparse
 import logging
 import pprint
 import sys
-from os.path import exists, dirname, basename, isdir
+from os.path import exists, dirname, basename, isdir, realpath
 from os import mkdir, listdir
 from typing import Union, List
 import multiprocessing
@@ -26,11 +26,16 @@ import torch.utils.data
 from tqdm import tqdm
 import x_transformers
 
-import dataset_full
-from dataset_deduplicate import FACETS
-import remi_representation
-import remi_dataset
-import remi_train
+import sys
+sys.path.insert(0, dirname(realpath(__file__)))
+sys.path.insert(0, dirname(dirname(realpath(__file__))))
+
+from make_dataset.full import MMT_STATISTIC_COLUMNS, CHUNK_SIZE, pitch_class_entropy, scale_consistency, groove_consistency, get_tracks_string
+from make_dataset.deduplicate import FACETS
+from dataset import FACETS_HQ, MusicDataset, pad
+from train import OUTPUT_DIR, FINE_TUNING_SUFFIX
+from train import BATCH_SIZE as TRAIN_BATCH_SIZE
+from representation import Indexer, get_encoding, encode_notes, decode
 import utils
 
 ##################################################
@@ -40,7 +45,7 @@ import utils
 ##################################################
 
 # default number of samples to evaluate
-BATCH_SIZE = remi_train.BATCH_SIZE # 1
+BATCH_SIZE = TRAIN_BATCH_SIZE # 1
 N_SAMPLES = 1200
 N_BATCHES = int((N_SAMPLES - 1) / BATCH_SIZE) + 1
 
@@ -50,10 +55,10 @@ TEMPERATURE = 1.0
 FILTER = "top_k"
 
 # facets to use as loss sets
-LOSS_FACETS = [FACETS[0]] + remi_dataset.FACETS_HQ
+LOSS_FACETS = [FACETS[0]] + FACETS_HQ
 
 # output columns
-OUTPUT_COLUMNS = ["model", "path"] + dataset_full.MMT_STATISTIC_COLUMNS + ["tracks"] + list(map(lambda loss_facet: f"loss:{loss_facet}", LOSS_FACETS))
+OUTPUT_COLUMNS = ["model", "path"] + MMT_STATISTIC_COLUMNS + ["tracks"] + list(map(lambda loss_facet: f"loss:{loss_facet}", LOSS_FACETS))
 
 ##################################################
 
@@ -80,8 +85,7 @@ def loss_to_perplexity(losses: List[float]) -> float:
 def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(prog = "Evaluate", description = "Evaluate a REMI-Style Model.")
-    parser.add_argument("-i", "--input_dir", default = remi_train.OUTPUT_DIR, type = str, help = "Dataset facet directory containing the model(s) (as subdirectories) to evaluate")
-    # parser.add_argument("-d", "--dataset_filepath", default = f"{dataset_full.OUTPUT_DIR}/{dataset_full.DATASET_DIR_NAME}.csv", type = str, help = "Dataset from which facets are derived")
+    parser.add_argument("-i", "--input_dir", default = OUTPUT_DIR, type = str, help = "Dataset facet directory containing the model(s) (as subdirectories) to evaluate")
     # model
     parser.add_argument("--seq_len", default = SEQ_LEN, type = int, help = "Sequence length to generate")
     parser.add_argument("--temperature", nargs = "+", default = TEMPERATURE, type = float, help = f"Sampling temperature (default: {TEMPERATURE})")
@@ -108,7 +112,7 @@ if __name__ == "__main__":
 
     # get directories to eval
     model_dirs = list(filter(lambda path: isdir(path) and basename(path).split("_")[0].endswith("M"), map(lambda base: f"{args.input_dir}/{base}", listdir(args.input_dir))))
-    model_dirs = sorted(model_dirs, key = lambda model_dir: int(basename(model_dir).split("_")[0][:-1]) + (0.5 if remi_train.FINE_TUNING_SUFFIX in basename(model_dir) else 0)) # order from least to greatest
+    model_dirs = sorted(model_dirs, key = lambda model_dir: int(basename(model_dir).split("_")[0][:-1]) + (0.5 if FINE_TUNING_SUFFIX in basename(model_dir) else 0)) # order from least to greatest
     models = list(map(basename, model_dirs))
 
     # set up the logger
@@ -131,10 +135,10 @@ if __name__ == "__main__":
     logging.info(f"Using device: {device}")
 
     # load the encoding
-    encoding = remi_representation.get_encoding()
+    encoding = get_encoding()
 
     # load the indexer
-    indexer = remi_representation.Indexer(data = encoding["event_code_map"])
+    indexer = Indexer(data = encoding["event_code_map"])
     vocabulary = utils.inverse_dict(indexer.get_dict()) # for decoding
 
     # get special tokens
@@ -178,17 +182,17 @@ if __name__ == "__main__":
             """Evaluate the results."""
 
             # convert codes to a music object
-            music = remi_representation.decode(codes = codes, encoding = encoding, vocabulary = vocabulary) # convert to a MusicExpress object
+            music = decode(codes = codes, encoding = encoding, vocabulary = vocabulary) # convert to a MusicExpress object
 
             # return a dictionary
             if len(music.tracks) == 0:
-                return utils.rep(x = np.nan, times = len(dataset_full.MMT_STATISTIC_COLUMNS)) + [""]
+                return utils.rep(x = np.nan, times = len(MMT_STATISTIC_COLUMNS)) + [""]
             else:
                 return [
-                    dataset_full.pitch_class_entropy(music = music),
-                    dataset_full.scale_consistency(music = music),
-                    dataset_full.groove_consistency(music = music),
-                    dataset_full.get_tracks_string(tracks = music.tracks),
+                    pitch_class_entropy(music = music),
+                    scale_consistency(music = music),
+                    groove_consistency(music = music),
+                    get_tracks_string(tracks = music.tracks),
                 ]
 
         ##################################################
@@ -213,11 +217,11 @@ if __name__ == "__main__":
             del train_args_filepath
 
             # load dataset and data loader
-            datasets = [remi_dataset.MusicDataset(
+            datasets = [MusicDataset(
                 paths = data_paths_filepath,
                 encoding = encoding,
                 indexer = indexer,
-                encode_fn = remi_representation.encode_notes,
+                encode_fn = encode_notes,
                 max_seq_len = train_args["max_seq_len"],
                 max_beat = train_args["max_beat"],
                 use_augmentation = train_args["aug"],
@@ -298,11 +302,11 @@ if __name__ == "__main__":
                     else:
 
                         # load in generated content
-                        generated = remi_dataset.pad(data = list(map(np.load, generated_output_filepaths)))
+                        generated = pad(data = list(map(np.load, generated_output_filepaths)))
 
                     # analyze
                     with multiprocessing.Pool(processes = args.jobs) as pool:
-                        results = pool.map(func = evaluate, iterable = generated, chunksize = dataset_full.CHUNK_SIZE)
+                        results = pool.map(func = evaluate, iterable = generated, chunksize = CHUNK_SIZE)
 
                     ##################################################
 
@@ -369,7 +373,7 @@ if __name__ == "__main__":
     for model in models:
         results_model = results[results["model"] == model]
         logging.info(f"\n{f' {model} ':=^{bar_width}}")
-        for mmt_statistic in dataset_full.MMT_STATISTIC_COLUMNS:
+        for mmt_statistic in MMT_STATISTIC_COLUMNS:
             logging.info(f"{mmt_statistic.replace('_', ' ').title()}: mean = {np.nanmean(a = results_model[mmt_statistic], axis = 0):.4f}, std = {np.nanstd(a = results_model[mmt_statistic], axis = 0):.4f}")
         logging.info(f"Perplexity (All): {loss_to_perplexity(losses = results_model[f'loss:all']):.4f}")
     print("")
