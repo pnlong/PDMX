@@ -4,7 +4,7 @@
 
 # Analyze full dataset to see if there are differences between different facets.
 
-# python /home/pnlong/model_musescore/make_dataset/full_analysis.py
+# python /home/pnlong/model_musescore/make_dataset/quality.py
 
 # IMPORTS
 ##################################################

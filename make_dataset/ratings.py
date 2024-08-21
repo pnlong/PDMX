@@ -21,7 +21,7 @@ sys.path.insert(0, dirname(realpath(__file__)))
 sys.path.insert(0, dirname(dirname(realpath(__file__))))
 
 from full import MMT_STATISTIC_COLUMNS, OUTPUT_DIR, DATASET_DIR_NAME
-from full_analysis import discretize_rating, group_by, RATING_ROUND_TO_THE_NEAREST, PLOTS_DIR_NAME
+from quality import discretize_rating, group_by, RATING_ROUND_TO_THE_NEAREST, PLOTS_DIR_NAME
 
 plt.style.use("default")
 # plt.rcParams["font.family"] = "serif"

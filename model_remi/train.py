@@ -4,7 +4,7 @@
 
 # Train a REMI-Style model.
 
-# python /home/pnlong/model_musescore/remi_train.py
+# python /home/pnlong/model_musescore/model_remi/train.py
 
 # IMPORTS
 ##################################################

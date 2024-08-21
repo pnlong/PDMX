@@ -22,9 +22,9 @@ sys.path.insert(0, dirname(realpath(__file__)))
 sys.path.insert(0, dirname(dirname(realpath(__file__))))
 
 from full import OUTPUT_DIR, DATASET_DIR_NAME, LIST_FEATURE_JOIN_STRING
-from full_analysis import PLOTS_DIR_NAME
+from quality import PLOTS_DIR_NAME
 from deduplicate import FACETS
-from remi.analysis import make_facet_name_fancy
+from model_remi.analysis import make_facet_name_fancy
 
 plt.style.use("default")
 # plt.rcParams["font.family"] = "serif"

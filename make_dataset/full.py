@@ -31,7 +31,7 @@ sys.path.insert(0, dirname(dirname(realpath(__file__))))
 
 from read_mscz.read_mscz import read_musescore, get_musescore_version
 from read_mscz.music import MusicExpress
-import remi.representation
+import model_remi.representation
 import utils
 
 ##################################################
@@ -441,12 +441,12 @@ def get_full_dataset(path: str) -> None:
     ##################################################
 
     # encode then decode
-    notes = remi.representation.extract_notes(music = music, resolution = encoding["resolution"])
+    notes = model_remi.representation.extract_notes(music = music, resolution = encoding["resolution"])
     notes = notes[notes[:, 0] < encoding["max_beat"]] # filter so that all beats are in the vocabulary
     notes[:, 2] = np.clip(a = notes[:, 2], a_min = 0, a_max = 127) # remove unknown pitches
-    codes = remi.representation.encode_notes(notes = notes, encoding = encoding, indexer = indexer)
-    notes = remi.representation.decode_notes(data = codes, encoding = encoding, vocabulary = vocabulary)
-    music = remi.representation.reconstruct(notes = notes, resolution = encoding["resolution"])
+    codes = model_remi.representation.encode_notes(notes = notes, encoding = encoding, indexer = indexer)
+    notes = model_remi.representation.decode_notes(data = codes, encoding = encoding, vocabulary = vocabulary)
+    music = model_remi.representation.reconstruct(notes = notes, resolution = encoding["resolution"])
 
     # extract MMT-style statistics
     results.update(dict(zip(MMT_STATISTIC_COLUMNS, (
@@ -500,8 +500,8 @@ if __name__ == "__main__":
     METADATA = {path : path_metadata if not pd.isna(path_metadata) else None for path, path_metadata in zip(METADATA["data_path"], METADATA["metadata_path"])}
 
     # for encoding and decoding
-    encoding = remi.representation.get_encoding() # load the encoding
-    indexer = remi.representation.Indexer(data = encoding["event_code_map"])# get the indexer
+    encoding = model_remi.representation.get_encoding() # load the encoding
+    indexer = model_remi.representation.Indexer(data = encoding["event_code_map"])# get the indexer
     vocabulary = utils.inverse_dict(indexer.get_dict()) # for decoding
 
     # set up logging

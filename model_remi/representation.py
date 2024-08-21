@@ -4,7 +4,7 @@
 
 # Utilities for representing a REMI-Style encoding.
 
-# python /home/pnlong/model_musescore/remi/representation.py
+# python /home/pnlong/model_musescore/model_remi/representation.py
 
 
 # IMPORTS

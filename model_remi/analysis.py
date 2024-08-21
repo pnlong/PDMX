@@ -4,7 +4,7 @@
 
 # Analyze the evaluation a REMI-Style model.
 
-# python /home/pnlong/model_musescore/remi/analysis.py
+# python /home/pnlong/model_musescore/model_remi/analysis.py
 
 # IMPORTS
 ##################################################

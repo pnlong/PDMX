@@ -4,7 +4,7 @@
 
 # Data Loader for REMI-Style Encoding.
 
-# python /home/pnlong/model_musescore/remi/dataset.py
+# python /home/pnlong/model_musescore/model_remi/dataset.py
 
 # IMPORTS
 ##################################################

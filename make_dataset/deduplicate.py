@@ -32,7 +32,7 @@ sys.path.insert(0, dirname(realpath(__file__)))
 sys.path.insert(0, dirname(dirname(realpath(__file__))))
 
 from full import OUTPUT_DIR, DATASET_DIR_NAME, CHUNK_SIZE, MMT_STATISTIC_COLUMNS
-from full_analysis import PLOTS_DIR_NAME
+from quality import PLOTS_DIR_NAME
 import utils
 
 os.environ["TOKENIZERS_PARALLELISM"] = "true"

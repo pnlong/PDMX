@@ -10,7 +10,7 @@
 ##################################################
 
 import argparse
-from os.path import exists, dirname
+from os.path import exists, dirname, realpath
 from os import makedirs, mkdir
 from shutil import copyfile
 import pandas as pd
@@ -18,8 +18,12 @@ from tqdm import tqdm
 import multiprocessing
 import logging
 
-from make_dataset.full import DATASET_DIR_NAME, MUSESCORE_DIR, CHUNK_SIZE
-from make_dataset.full import OUTPUT_DIR as DATASET_OUTPUT_DIR
+import sys
+sys.path.insert(0, dirname(realpath(__file__)))
+sys.path.insert(0, dirname(dirname(realpath(__file__))))
+
+from full import DATASET_DIR_NAME, MUSESCORE_DIR, CHUNK_SIZE
+from full import OUTPUT_DIR as DATASET_OUTPUT_DIR
 from read_mscz.read_mscz import read_musescore
 import utils
 
