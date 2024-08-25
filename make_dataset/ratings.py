@@ -99,9 +99,10 @@ if __name__ == "__main__":
 
     # create plot
     mosaic = list(zip(MMT_STATISTIC_COLUMNS)) if args.column else [MMT_STATISTIC_COLUMNS]
-    figsize = (4, 6) if args.column else (8, 2.5)
+    figsize = (4, 4) if args.column else (8, 2.5)
     fig, axes = plt.subplot_mosaic(mosaic = mosaic, constrained_layout = True, figsize = figsize)
     plt.set_loglevel("WARNING")
+    axes_label_fontsize = "small"
 
     # get current data frame
     width_proportion = 0.92 # proportion of 0.1 each bar is wide
@@ -110,6 +111,10 @@ if __name__ == "__main__":
 
     # make plots
     for mmt_statistic_column in MMT_STATISTIC_COLUMNS[::-1]:
+
+        # set tick label parameters
+        axes[mmt_statistic_column].tick_params(axis = "both", which = "major", labelsize = axes_label_fontsize) # set tick label font size
+        # axes[mmt_statistic_column].tick_params(axis = "both", which = "minor", labelsize = axes_label_fontsize) # set tick label font size
 
         # variables
         statistic_fancy = " ".join(mmt_statistic_column.split("_")).title() # stylize the name of the mmt statistic
@@ -125,11 +130,11 @@ if __name__ == "__main__":
 
         # y and x axis labels
         if (not args.column) or (args.column and (mmt_statistic_column == MMT_STATISTIC_COLUMNS[-1])):
-            axes[mmt_statistic_column].set_xlabel("Rating")
+            axes[mmt_statistic_column].set_xlabel("Rating", fontsize = axes_label_fontsize)
         elif args.column and (mmt_statistic_column != MMT_STATISTIC_COLUMNS[-1]):
             axes[mmt_statistic_column].sharex(other = axes[MMT_STATISTIC_COLUMNS[-1]])
             # axes[mmt_statistic_column].set_xticklabels([])
-        axes[mmt_statistic_column].set_ylabel(statistic_fancy)
+        axes[mmt_statistic_column].set_ylabel(statistic_fancy, fontsize = axes_label_fontsize)
         # axes[mmt_statistic_column].grid()
 
         # set range of x axis to avoid weird outliers
