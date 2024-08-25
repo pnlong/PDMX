@@ -12,7 +12,7 @@
 
 import subprocess
 from os import rename
-from os.path import exists, expanduser, dirname, realpath
+from os.path import exists, expanduser
 from re import sub
 from typing import Tuple, Dict, List, Callable
 from numpy import linspace
@@ -21,10 +21,11 @@ from math import sin, pi
 from itertools import groupby
 from warnings import warn
 
-# general
+from os.path import dirname, realpath
 import sys
 sys.path.insert(0, dirname(realpath(__file__)))
 sys.path.insert(0, dirname(dirname(realpath(__file__))))
+
 from classes import *
 from utils import unique
 

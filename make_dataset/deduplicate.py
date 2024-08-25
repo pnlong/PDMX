@@ -18,7 +18,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from re import sub
 import os
-from os.path import dirname, basename, exists, realpath
+from os.path import dirname, basename, exists
 from tqdm import tqdm
 import multiprocessing
 from typing import List
@@ -27,6 +27,7 @@ import logging
 
 from sentence_transformers import SentenceTransformer
 
+from os.path import dirname, realpath
 import sys
 sys.path.insert(0, dirname(realpath(__file__)))
 sys.path.insert(0, dirname(dirname(realpath(__file__))))

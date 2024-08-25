@@ -13,9 +13,8 @@
 import pprint
 import numpy as np
 from typing import List
-import utils
-from os.path import dirname, realpath
 
+from os.path import dirname, realpath
 import sys
 sys.path.insert(0, dirname(realpath(__file__)))
 sys.path.insert(0, dirname(dirname(realpath(__file__))))
@@ -23,6 +22,7 @@ sys.path.insert(0, dirname(dirname(realpath(__file__))))
 from read_musescore.music import MusicRender
 from read_musescore.classes import Tempo, Track, Note
 from read_musescore.read_musescore import read_musescore
+import utils
 
 ##################################################
 

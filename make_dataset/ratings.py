@@ -11,11 +11,12 @@
 
 import argparse
 import pandas as pd
-from os.path import exists, dirname, realpath
+from os.path import exists, dirname
 from os import mkdir
 import matplotlib.pyplot as plt
 import logging
 
+from os.path import dirname, realpath
 import sys
 sys.path.insert(0, dirname(realpath(__file__)))
 sys.path.insert(0, dirname(dirname(realpath(__file__))))
@@ -126,7 +127,7 @@ if __name__ == "__main__":
         # plot
         axes[mmt_statistic_column].bar(x = x_values, height = data_mmt_statistic["mean"], width = RATING_ROUND_TO_THE_NEAREST * width_proportion, align = "center", color = LIGHT_GREY if args.error_bars else GREY)
         if args.error_bars:
-            axes[mmt_statistic_column].errorbar(x = x_values, y = data_mmt_statistic["mean"], yerr = data_mmt_statistic["sem"], fmt = "o", color = GREY)            
+            axes[mmt_statistic_column].errorbar(x = x_values, y = data_mmt_statistic["mean"], yerr = data_mmt_statistic["sem"], fmt = "o", color = GREY)
 
         # y and x axis labels
         if (not args.column) or (args.column and (mmt_statistic_column == MMT_STATISTIC_COLUMNS[-1])):

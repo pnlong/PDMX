@@ -14,7 +14,7 @@ import logging
 import multiprocessing
 from tqdm import tqdm
 from typing import List, Callable
-from os.path import exists, basename, dirname, realpath
+from os.path import exists, basename
 from os import makedirs, mkdir
 import random
 
@@ -23,6 +23,7 @@ import pandas as pd
 import torch
 import torch.utils.data
 
+from os.path import dirname, realpath
 import sys
 sys.path.insert(0, dirname(realpath(__file__)))
 sys.path.insert(0, dirname(dirname(realpath(__file__))))

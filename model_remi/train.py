@@ -13,7 +13,7 @@ import argparse
 import logging
 import pprint
 import sys
-from os.path import exists, basename, dirname, realpath
+from os.path import exists, basename
 from os import makedirs, mkdir
 from multiprocessing import cpu_count # for calculating num_workers
 import wandb
@@ -25,6 +25,7 @@ import torch.utils.data
 from tqdm import tqdm
 import x_transformers
 
+from os.path import dirname, realpath
 import sys
 sys.path.insert(0, dirname(realpath(__file__)))
 sys.path.insert(0, dirname(dirname(realpath(__file__))))

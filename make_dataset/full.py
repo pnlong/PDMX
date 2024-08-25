@@ -11,7 +11,7 @@
 ##################################################
 
 import glob
-from os.path import isfile, exists, basename, dirname, realpath
+from os.path import isfile, exists, basename
 from os import makedirs
 import random
 import pandas as pd
@@ -25,6 +25,7 @@ import json
 import math
 import muspy
 
+from os.path import dirname, realpath
 import sys
 sys.path.insert(0, dirname(realpath(__file__)))
 sys.path.insert(0, dirname(dirname(realpath(__file__))))

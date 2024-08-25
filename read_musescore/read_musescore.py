@@ -16,7 +16,7 @@ from collections import OrderedDict
 from fractions import Fraction
 from functools import reduce
 from operator import attrgetter
-from os.path import dirname, join, basename, realpath
+from os.path import dirname, join, basename
 from typing import Dict, List, Optional, Tuple, TypeVar, Union
 from xml.etree.ElementTree import Element
 from zipfile import ZipFile
@@ -24,14 +24,14 @@ from re import sub
 import numpy as np
 from muspy.utils import CIRCLE_OF_FIFTHS, MODE_CENTERS, NOTE_TYPE_MAP, TONAL_PITCH_CLASSES
 
-# MusicRender imports
+from os.path import dirname, realpath
 import sys
 sys.path.insert(0, dirname(realpath(__file__)))
 sys.path.insert(0, dirname(dirname(realpath(__file__))))
+
 from classes import *
 from music import MusicRender
 
-# create type variable
 T = TypeVar("T")
 
 ##################################################

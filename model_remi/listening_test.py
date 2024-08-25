@@ -11,7 +11,7 @@
 
 import argparse
 import logging
-from os.path import exists, basename, dirname, realpath
+from os.path import exists, basename, dirname
 from os import mkdir, makedirs, chdir, remove
 from shutil import rmtree
 import pandas as pd
@@ -23,13 +23,13 @@ from itertools import product
 import subprocess
 import matplotlib.pyplot as plt
 
+from os.path import dirname, realpath
 import sys
 sys.path.insert(0, dirname(realpath(__file__)))
 sys.path.insert(0, dirname(dirname(realpath(__file__))))
 
 from make_dataset.full import CHUNK_SIZE
-from make_dataset.ratings import GREY, LIGHT_GREY
-from make_dataset.genres import FACETS_FOR_PLOTTING
+from make_dataset.genres import FACETS_FOR_PLOTTING, FACET_COLORS
 from make_dataset.quality import PLOTS_DIR_NAME
 from dataset import OUTPUT_DIR as DATASET_OUTPUT_DIR
 from train import FINE_TUNING_SUFFIX
@@ -199,7 +199,11 @@ if __name__ == "__main__":
     listening_test = pd.read_csv(filepath_or_buffer = "", sep = ",", header = 0, index_col = False)
 
     # wrangle data, expecting multiindex (facet: str, fine_tuned: bool)
-    listening_test = listening_test
+    paths = list(map(basename, listening_test["path"]))
+    paths_info = np.array(list(map(lambda path: path.split("."), paths)))[:, :-1] # remove wav suffix
+    listening_test["facet"] = paths_info[:, 1]
+    listening_test["fine_tuned"] = list(map(lambda model: FINE_TUNING_SUFFIX in model, paths_info[:, 0]))
+    listening_test = listening_test.groupby(by = ("facet", "fine_tuned")).agg(["mean", "sem"])
 
     # create plot
     fig, axes = plt.subplot_mosaic(mosaic = [["plot"]], constrained_layout = True, figsize = (5, 2.5))
@@ -208,12 +212,24 @@ if __name__ == "__main__":
     axis_tick_fontsize = "small"
     total_bar_width = 0.8
     individual_bar_width = total_bar_width / 2
+    half_bar_width = 0.5 * individual_bar_width
+    alpha_for_fine_tune = (0.75, 1.0)
+    xticks = np.arange(len(FACETS_FOR_PLOTTING))
     for i, facet in enumerate(FACETS_FOR_PLOTTING):
-        axes["plot"].bar(x = i - (0.5 * individual_bar_width), height = listening_test.at[(facet, False)], width = individual_bar_width, align = "center", label = "Base", color = LIGHT_GREY) # not fine tuned
-        axes["plot"].bar(x = i + (0.5 * individual_bar_width), height = listening_test.at[(facet, True)], width = individual_bar_width, align = "center", label = "Fine Tuned", color = GREY) # fine tuned
-    axes["plot"].set_xlabel("Subset")
-    axes["genres"].set_xticks(ticks = list(range(len(FACETS_FOR_PLOTTING))), labels = FACETS_FOR_PLOTTING, fontsize = axis_tick_fontsize, rotation = 0) # get subset names
-    axes["plot"].set_ylabel("Mean Opinion Score")
+        axes["plot"].bar(x = i - half_bar_width, height = listening_test.at[(facet, False), "mean"], width = individual_bar_width, align = "center", label = "Base", color = FACET_COLORS[facet], alpha = alpha_for_fine_tune[0]) # not fine tuned
+        axes["plot"].bar(x = i + half_bar_width, height = listening_test.at[(facet, True), "mean"], width = individual_bar_width, align = "center", label = "Fine Tuned", color = FACET_COLORS[facet], alpha = alpha_for_fine_tune[1]) # fine tuned
+    
+    # error bars if needed
+    if args.error_bars:
+        error_bar_fmt = "o"
+        error_bar_color = "0"
+        listening_test_by_fine_tuned = listening_test.droplevel(level = "facet", axis = 0)
+        axes["plot"].errorbar(x = xticks - half_bar_width, y = listening_test_by_fine_tuned.loc[False, "mean"], yerr = listening_test_by_fine_tuned.loc[False, "sem"], fmt = error_bar_fmt, color = error_bar_color) # not fine tuned
+        axes["plot"].errorbar(x = xticks - half_bar_width, y = listening_test_by_fine_tuned.loc[True, "mean"], yerr = listening_test_by_fine_tuned.loc[True, "sem"], fmt = error_bar_fmt, color = error_bar_color) # fine tuned
+    
+    # axes["plot"].set_xlabel("Subset", fontsize = axis_tick_fontsize)
+    axes["plot"].set_xticks(ticks = xticks, labels = FACETS_FOR_PLOTTING, fontsize = axis_tick_fontsize, rotation = 0) # get subset names
+    axes["plot"].set_ylabel("Mean Opinion Score", fontsize = axis_tick_fontsize)
     axes["plot"].legend()
 
     # save plot

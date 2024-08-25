@@ -13,11 +13,12 @@ import argparse
 import pandas as pd
 from typing import Union, List
 from utils import rep
-from os.path import exists, dirname, realpath
+from os.path import exists, dirname
 from os import mkdir
 import matplotlib.pyplot as plt
 import logging
 
+from os.path import dirname, realpath
 import sys
 sys.path.insert(0, dirname(realpath(__file__)))
 sys.path.insert(0, dirname(dirname(realpath(__file__))))

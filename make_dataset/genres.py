@@ -12,11 +12,13 @@
 import argparse
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.colors import TABLEAU_COLORS
 import logging
-from os.path import dirname, exists, realpath
+from os.path import dirname, exists
 from os import mkdir
 import numpy as np
 
+from os.path import dirname, realpath
 import sys
 sys.path.insert(0, dirname(realpath(__file__)))
 sys.path.insert(0, dirname(dirname(realpath(__file__))))
@@ -41,6 +43,9 @@ TOP_N = 10
 # facets for plotting, as the order is different in paper
 FACETS_FOR_PLOTTING = FACETS.copy()
 FACETS_FOR_PLOTTING[1], FACETS_FOR_PLOTTING[2] = FACETS_FOR_PLOTTING[2], FACETS_FOR_PLOTTING[1]
+
+# colors for plotting
+FACET_COLORS = dict(zip(FACETS_FOR_PLOTTING, list(TABLEAU_COLORS.keys())[:len(FACETS_FOR_PLOTTING)]))
 
 ##################################################
 
@@ -115,7 +120,7 @@ if __name__ == "__main__":
     ##################################################
 
     # create figure
-    figsize = (8, 8) if args.column else (8, 2.2)
+    figsize = (4, 6) if args.column else (8, 2.2)
     fig, axes = plt.subplot_mosaic(mosaic = [["genres"]], constrained_layout = True, figsize = figsize)
     xlabel, ylabel = "Genre", "Percent of Songs (%)"
     xaxis_tick_label_rotation = 0
@@ -129,12 +134,13 @@ if __name__ == "__main__":
     yticks = 10 ** np.arange(start = 0, stop = 3, step = 1)
     for i, facet in enumerate(FACETS_FOR_PLOTTING):
         if args.column:
-            axes["genres"].barh(y = xticks + offset[i], width = data[facet], height = width, align = "center", log = True, label = facet)
+            axes["genres"].barh(y = xticks + offset[i], width = data[facet], height = width, align = "center", log = True, label = facet, color = FACET_COLORS[facet])
         else:
-            axes["genres"].bar(x = xticks + offset[i], height = data[facet], width = width, align = "center", log = True, label = facet)
+            axes["genres"].bar(x = xticks + offset[i], height = data[facet], width = width, align = "center", log = True, label = facet, color = FACET_COLORS[facet])
     if args.column:
         # axes["genres"].set_ylabel(xlabel, fontsize = axis_tick_fontsize)
         axes["genres"].set_yticks(ticks = xticks, labels = genres, fontsize = axis_tick_fontsize, rotation = xaxis_tick_label_rotation) # get genre names
+        axes["genres"].invert_yaxis() # so most common genres are on top
         axes["genres"].set_xlabel(ylabel, fontsize = axis_tick_fontsize)
         # axes["genres"].xaxis.grid(True)
         axes["genres"].set_xticks(ticks = yticks, labels = yticks, fontsize = axis_tick_fontsize)

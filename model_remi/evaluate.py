@@ -13,7 +13,7 @@ import argparse
 import logging
 import pprint
 import sys
-from os.path import exists, dirname, basename, isdir, realpath
+from os.path import exists, dirname, basename, isdir
 from os import mkdir, listdir
 from typing import Union, List
 import multiprocessing
@@ -26,6 +26,7 @@ import torch.utils.data
 from tqdm import tqdm
 import x_transformers
 
+from os.path import dirname, realpath
 import sys
 sys.path.insert(0, dirname(realpath(__file__)))
 sys.path.insert(0, dirname(dirname(realpath(__file__))))
