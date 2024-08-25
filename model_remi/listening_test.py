@@ -206,7 +206,7 @@ if __name__ == "__main__":
     listening_test = listening_test.groupby(by = ("facet", "fine_tuned")).agg(["mean", "sem"])
 
     # create plot
-    fig, axes = plt.subplot_mosaic(mosaic = [["plot"]], constrained_layout = True, figsize = (5, 2.5))
+    fig, axes = plt.subplot_mosaic(mosaic = [["plot"]], constrained_layout = True, figsize = (4, 4))
 
     # plot
     axis_tick_fontsize = "small"
