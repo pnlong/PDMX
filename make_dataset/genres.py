@@ -52,6 +52,7 @@ def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(prog = "Genres", description = "Create genres plot for paper.")
     parser.add_argument("-d", "--dataset_filepath", type = str, default = f"{OUTPUT_DIR}/{DATASET_DIR_NAME}.csv", help = "Filepath to full dataset.")
+    parser.add_argument("-c", "--column", action = "store_true", help = "Whether plot is a column or a row.")
     return parser.parse_args(args = args, namespace = namespace)
 
 ##################################################
@@ -114,7 +115,10 @@ if __name__ == "__main__":
     ##################################################
 
     # create figure
-    fig, axes = plt.subplot_mosaic(mosaic = [["genres"]], constrained_layout = True, figsize = (8, 2.2))
+    figsize = (8, 8) if args.column else (8, 2.2)
+    fig, axes = plt.subplot_mosaic(mosaic = [["genres"]], constrained_layout = True, figsize = figsize)
+    xlabel, ylabel = "Genre", "Percent of Songs (%)"
+    xaxis_tick_label_rotation = 0
 
     # plot by facet
     axis_tick_fontsize = "small"
@@ -124,12 +128,22 @@ if __name__ == "__main__":
     xticks = np.arange(len(genres))
     yticks = 10 ** np.arange(start = 0, stop = 3, step = 1)
     for i, facet in enumerate(FACETS_FOR_PLOTTING):
-        axes["genres"].bar(x = xticks + offset[i], height = data[facet], width = width, align = "center", log = True, label = facet)
-    # axes["genres"].set_xlabel("Genres")
-    axes["genres"].set_xticks(ticks = xticks, labels = list(map(lambda i: genres[i], xticks)), fontsize = axis_tick_fontsize, rotation = 0) # get genre names
-    axes["genres"].set_ylabel("Percent of Songs (%)")
-    # axes["genres"].yaxis.grid(True)
-    axes["genres"].set_yticks(ticks = yticks, labels = yticks, fontsize = axis_tick_fontsize)
+        if args.column:
+            axes["genres"].barh(y = xticks + offset[i], width = data[facet], height = width, align = "center", log = True, label = facet)
+        else:
+            axes["genres"].bar(x = xticks + offset[i], height = data[facet], width = width, align = "center", log = True, label = facet)
+    if args.column:
+        # axes["genres"].set_ylabel(xlabel, fontsize = axis_tick_fontsize)
+        axes["genres"].set_yticks(ticks = xticks, labels = genres, fontsize = axis_tick_fontsize, rotation = xaxis_tick_label_rotation) # get genre names
+        axes["genres"].set_xlabel(ylabel, fontsize = axis_tick_fontsize)
+        # axes["genres"].xaxis.grid(True)
+        axes["genres"].set_xticks(ticks = yticks, labels = yticks, fontsize = axis_tick_fontsize)
+    else:
+        # axes["genres"].set_xlabel(xlabel, fontsize = axis_tick_fontsize)
+        axes["genres"].set_xticks(ticks = xticks, labels = genres, fontsize = axis_tick_fontsize, rotation = xaxis_tick_label_rotation) # get genre names
+        axes["genres"].set_ylabel(ylabel, fontsize = axis_tick_fontsize)
+        # axes["genres"].yaxis.grid(True)
+        axes["genres"].set_yticks(ticks = yticks, labels = yticks, fontsize = axis_tick_fontsize)
 
     # add legend
     handles, labels = axes["genres"].get_legend_handles_labels()
