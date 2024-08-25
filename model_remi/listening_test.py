@@ -65,6 +65,7 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("-m", "--model_size", default = MODEL_SIZE, type = str, help = "Model size from which to generate listening samples.")
     parser.add_argument("-n", "--n_samples_per_group", default = N_SAMPLES_PER_GROUP, type = int, help = "Number of samples per group to generate.")
     parser.add_argument("-r", "--reset", action = "store_true", help = "Whether or not to recreate data files")
+    parser.add_argument("-eb", "--error_bars", action = "store_true", help = "Whether to add error bars.")
     parser.add_argument("-j", "--jobs", default = int(multiprocessing.cpu_count() / 4), type = int, help = "Number of jobs.")
     return parser.parse_args(args = args, namespace = namespace)
 
