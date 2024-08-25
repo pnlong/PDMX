@@ -41,8 +41,7 @@ plt.style.use("default")
 TOP_N = 10
 
 # facets for plotting, as the order is different in paper
-FACETS_FOR_PLOTTING = FACETS.copy()
-FACETS_FOR_PLOTTING[1], FACETS_FOR_PLOTTING[2] = FACETS_FOR_PLOTTING[2], FACETS_FOR_PLOTTING[1]
+FACETS_FOR_PLOTTING = sorted(FACETS.copy())
 
 # colors for plotting
 FACET_COLORS = dict(zip(FACETS_FOR_PLOTTING, list(TABLEAU_COLORS.keys())[:len(FACETS_FOR_PLOTTING)]))

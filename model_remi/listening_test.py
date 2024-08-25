@@ -13,6 +13,7 @@ import argparse
 import logging
 from os.path import exists, basename, dirname
 from os import mkdir, makedirs, chdir, remove
+import sys
 from shutil import rmtree
 import pandas as pd
 import numpy as np
@@ -66,6 +67,7 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("-n", "--n_samples_per_group", default = N_SAMPLES_PER_GROUP, type = int, help = "Number of samples per group to generate.")
     parser.add_argument("-r", "--reset", action = "store_true", help = "Whether or not to recreate data files")
     parser.add_argument("-eb", "--error_bars", action = "store_true", help = "Whether to add error bars.")
+    parser.add_argument("-bp", "--bar_plot", action = "store_true", help = "Whether or not to make a bar plot (violin plot is default).")
     parser.add_argument("-j", "--jobs", default = int(multiprocessing.cpu_count() / 4), type = int, help = "Number of jobs.")
     return parser.parse_args(args = args, namespace = namespace)
 
@@ -197,36 +199,64 @@ if __name__ == "__main__":
     ##################################################
 
     # load in data
-    listening_test = pd.read_csv(filepath_or_buffer = "", sep = ",", header = 0, index_col = False)
-
-    # wrangle data, expecting multiindex (facet: str, fine_tuned: bool)
-    paths = list(map(basename, listening_test["path"]))
-    paths_info = np.array(list(map(lambda path: path.split("."), paths)))[:, :-1] # remove wav suffix
-    listening_test["facet"] = paths_info[:, 1]
-    listening_test["fine_tuned"] = list(map(lambda model: FINE_TUNING_SUFFIX in model, paths_info[:, 0]))
-    listening_test = listening_test.groupby(by = ("facet", "fine_tuned")).agg(["mean", "sem"])
+    listening_test_results_filepath = f"{dirname(args.dataset_filepath)}/listening_test.csv"
+    if not exists(listening_test_results_filepath):
+        sys.exit()
+    listening_test = pd.read_csv(filepath_or_buffer = listening_test_results_filepath, sep = ",", header = 0, index_col = False)
+    listening_test = listening_test.rename(columns = {"path": "path", "rating": "rating"}) # rename columns to work in our infrastructure
+    listening_test[["model", "facet", "i"]] = list(map(lambda path: path.split("."), paths = list(map(basename, listening_test["path"]))))[:, :-1] # extract info from paths
+    listening_test = listening_test.set_index(keys = ["model", "facet"], drop = True)["rating"]
+    mos = listening_test.groupby(by = ["model", "facet"]).agg(["mean", "sem"]) # mean opinion scores by model and facet
 
     # create plot
-    fig, axes = plt.subplot_mosaic(mosaic = [["plot"]], constrained_layout = True, figsize = (4, 4))
+    fig, axes = plt.subplot_mosaic(mosaic = [["plot"]], constrained_layout = True, figsize = (5, 3))
 
-    # plot
+    # plot hyperparameters
     axis_tick_fontsize = "small"
     total_bar_width = 0.8
     individual_bar_width = total_bar_width / 2
     half_bar_width = 0.5 * individual_bar_width
     alpha_for_fine_tune = (0.75, 1.0)
     xticks = np.arange(len(FACETS_FOR_PLOTTING))
-    for i, facet in enumerate(FACETS_FOR_PLOTTING):
-        axes["plot"].bar(x = i - half_bar_width, height = listening_test.at[(facet, False), "mean"], width = individual_bar_width, align = "center", label = "Base", color = FACET_COLORS[facet], alpha = alpha_for_fine_tune[0]) # not fine tuned
-        axes["plot"].bar(x = i + half_bar_width, height = listening_test.at[(facet, True), "mean"], width = individual_bar_width, align = "center", label = "Fine Tuned", color = FACET_COLORS[facet], alpha = alpha_for_fine_tune[1]) # fine tuned
-    
-    # error bars if needed
-    if args.error_bars:
-        error_bar_fmt = "o"
-        error_bar_color = "0"
-        listening_test_by_fine_tuned = listening_test.droplevel(level = "facet", axis = 0)
-        axes["plot"].errorbar(x = xticks - half_bar_width, y = listening_test_by_fine_tuned.loc[False, "mean"], yerr = listening_test_by_fine_tuned.loc[False, "sem"], fmt = error_bar_fmt, color = error_bar_color) # not fine tuned
-        axes["plot"].errorbar(x = xticks - half_bar_width, y = listening_test_by_fine_tuned.loc[True, "mean"], yerr = listening_test_by_fine_tuned.loc[True, "sem"], fmt = error_bar_fmt, color = error_bar_color) # fine tuned
+
+    # plot a bar plot
+    if args.bar_plot:
+        for xtick, facet in zip(xticks, FACETS_FOR_PLOTTING):
+            for fine_tuned in (False, True):
+                axes["plot"].bar(x = xtick + ((1 if fine_tuned else -1) * half_bar_width),
+                                height = mos.at[(facet, args.model_size + (f"_{FINE_TUNING_SUFFIX}" if fine_tuned else "")), "mean"],
+                                width = individual_bar_width,
+                                align = "center",
+                                label = "Fine Tuned" if fine_tuned else "Base",
+                                color = FACET_COLORS[facet],
+                                alpha = alpha_for_fine_tune[fine_tuned])
+        if args.error_bars: # error bars if needed
+            mos_by_fine_tuned = mos.droplevel(level = "facet", axis = 0)
+            for fine_tuned in (False, True):
+                model = args.model_size + (f"_{FINE_TUNING_SUFFIX}" if fine_tuned else "")
+                axes["plot"].errorbar(x = xticks + ((1 if fine_tuned else -1) * half_bar_width),
+                                    y = mos_by_fine_tuned.loc[model, "mean"],
+                                    yerr = mos_by_fine_tuned.loc[model, "sem"],
+                                    fmt = "o",
+                                    color = "0")
+                
+    # plot a violion plot
+    else:
+        plotting_indicies = listening_test.sort_index(level = "facet").index
+        violin_parts = axes["plot"].violinplot(
+            dataset = list(map(lambda model_facet: listening_test.loc[model_facet].to_list(), plotting_indicies)),
+            positions = sorted(np.concatenate((xticks - half_bar_width, xticks + half_bar_width), axis = 0)),
+            vert = True,
+            width = 0.5,
+            showmeans = False,
+            showextrema = False,
+            showmedians = False,
+            quantiles = None, # alternatively, [0.0, 0.25, 0.5, 0.75, 1.0]
+        )
+        for patch, model, facet in zip(violin_parts["bodies"], *zip(*plotting_indicies)): # set colors
+            patch.set_facecolor(FACET_COLORS[facet]) # set color of each violin
+            # patch.set_edgecolor("black") # set the edgecolor
+            patch.set_alpha(1.0 * alpha_for_fine_tune[FINE_TUNING_SUFFIX in model]) # set alpha
     
     # axes["plot"].set_xlabel("Subset", fontsize = axis_tick_fontsize)
     axes["plot"].set_xticks(ticks = xticks, labels = FACETS_FOR_PLOTTING, fontsize = axis_tick_fontsize, rotation = 0) # get subset names
