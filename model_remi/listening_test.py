@@ -204,7 +204,7 @@ if __name__ == "__main__":
         sys.exit()
     listening_test = pd.read_csv(filepath_or_buffer = listening_test_results_filepath, sep = ",", header = 0, index_col = False)
     listening_test = listening_test.rename(columns = {"path": "path", "rating": "rating"}) # rename columns to work in our infrastructure
-    listening_test[["model", "facet", "i"]] = list(map(lambda path: path.split("."), paths = list(map(basename, listening_test["path"]))))[:, :-1] # extract info from paths
+    listening_test[["model", "facet"]] = list(map(lambda path: basename(path).split("."), listening_test["path"]))[:, :-2] # extract info from paths
     listening_test = listening_test.set_index(keys = ["model", "facet"], drop = True)["rating"]
     mos = listening_test.groupby(by = ["model", "facet"]).agg(["mean", "sem"]) # mean opinion scores by model and facet
 
