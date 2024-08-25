@@ -120,7 +120,7 @@ if __name__ == "__main__":
     ##################################################
 
     # create figure
-    figsize = (4, 6) if args.column else (8, 2.2)
+    figsize = (4, 4) if args.column else (8, 2.2)
     fig, axes = plt.subplot_mosaic(mosaic = [["genres"]], constrained_layout = True, figsize = figsize)
     xlabel, ylabel = "Genre", "Percent of Songs (%)"
     xaxis_tick_label_rotation = 0
