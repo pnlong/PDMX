@@ -255,8 +255,8 @@ if __name__ == "__main__":
         )
         for patch, model, facet in zip(violin_parts["bodies"], *zip(*plotting_indicies)): # set colors
             patch.set_facecolor(FACET_COLORS[facet]) # set color of each violin
-            # patch.set_edgecolor("black") # set the edgecolor
-            patch.set_alpha(1.0 * alpha_for_fine_tune[FINE_TUNING_SUFFIX in model]) # set alpha
+            patch.set_edgecolor("black") # set the edgecolor
+            patch.set_alpha(0.9 * alpha_for_fine_tune[FINE_TUNING_SUFFIX in model]) # set alpha
     
     # axes["plot"].set_xlabel("Subset", fontsize = axis_tick_fontsize)
     axes["plot"].set_xticks(ticks = xticks, labels = FACETS_FOR_PLOTTING, fontsize = axis_tick_fontsize, rotation = 0) # get subset names
