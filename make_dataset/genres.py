@@ -156,7 +156,7 @@ if __name__ == "__main__":
     by_label = dict(zip(labels, handles))
     axes["genres"].legend(handles = by_label.values(), labels = list(map(make_facet_name_fancy, by_label.keys())),
                           fontsize = axis_tick_fontsize, title_fontsize = axis_tick_fontsize, alignment = "center",
-                         ncol = 1, title = "Subset", title_fontproperties = {"weight": "bold"})
+                          ncol = 1, title = "Subset", title_fontproperties = {"weight": "bold"})
 
     # save image
     output_filepath = f"{dirname(args.dataset_filepath)}/{PLOTS_DIR_NAME}/genres.pdf" # get output filepath

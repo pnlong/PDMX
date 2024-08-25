@@ -230,7 +230,7 @@ if __name__ == "__main__":
     # axes["plot"].set_xlabel("Subset", fontsize = axis_tick_fontsize)
     axes["plot"].set_xticks(ticks = xticks, labels = FACETS_FOR_PLOTTING, fontsize = axis_tick_fontsize, rotation = 0) # get subset names
     axes["plot"].set_ylabel("Mean Opinion Score", fontsize = axis_tick_fontsize)
-    axes["plot"].legend()
+    axes["plot"].legend(fontsize = axis_tick_fontsize)
 
     # save plot
     output_filepath = f"{dirname(args.dataset_filepath)}/{PLOTS_DIR_NAME}/listening_test.pdf" # get output filepath
