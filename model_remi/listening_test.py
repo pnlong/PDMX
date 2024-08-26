@@ -23,6 +23,7 @@ import random
 from itertools import product
 import subprocess
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 from os.path import dirname, realpath
 import sys
@@ -203,10 +204,12 @@ if __name__ == "__main__":
     if not exists(listening_test_results_filepath):
         sys.exit()
     listening_test = pd.read_csv(filepath_or_buffer = listening_test_results_filepath, sep = ",", header = 0, index_col = False)
-    listening_test = listening_test.rename(columns = {"path": "path", "rating": "rating"}) # rename columns to work in our infrastructure
+    listening_test = listening_test.rename(columns = {"path": "path", "rating": "rating", "user": "user"}) # rename columns to work in our infrastructure
+    logging.info(f"{len(set(listening_test['user']))} survey participants.")
     listening_test[["model", "facet"]] = list(map(lambda path: basename(path).split("."), listening_test["path"]))[:, :-2] # extract info from paths
-    listening_test = listening_test.set_index(keys = ["model", "facet"], drop = True)["rating"]
-    mos = listening_test.groupby(by = ["model", "facet"]).agg(["mean", "sem"]) # mean opinion scores by model and facet
+    listening_test["fine_tuned"] = list(map(lambda model: FINE_TUNING_SUFFIX in model, listening_test["model"]))
+    listening_test = listening_test.sort_values(by = ["model", "facet"], axis = 0, ascending = True, ignore_index = True) # sort in correct order
+    mos = listening_test[["model", "facet", "rating"]].groupby(by = ["model", "facet"]).agg(["mean", "sem"]) # mean opinion scores by model and facet
 
     # create plot
     fig, axes = plt.subplot_mosaic(mosaic = [["plot"]], constrained_layout = True, figsize = (5, 3))
@@ -238,30 +241,45 @@ if __name__ == "__main__":
                                     y = mos_by_fine_tuned.loc[model, "mean"],
                                     yerr = mos_by_fine_tuned.loc[model, "sem"],
                                     fmt = "o",
-                                    color = "0")
+                                    color = "0.2")
                 
     # plot a violion plot
     else:
-        plotting_indicies = listening_test.sort_index(level = "facet").index
-        violin_parts = axes["plot"].violinplot(
-            dataset = list(map(lambda model_facet: listening_test.loc[model_facet].to_list(), plotting_indicies)),
-            positions = sorted(np.concatenate((xticks - half_bar_width, xticks + half_bar_width), axis = 0)),
-            vert = True,
-            width = 0.5,
-            showmeans = False,
-            showextrema = False,
-            showmedians = False,
-            quantiles = None, # alternatively, [0.0, 0.25, 0.5, 0.75, 1.0]
-        )
-        for patch, model, facet in zip(violin_parts["bodies"], *zip(*plotting_indicies)): # set colors
-            patch.set_facecolor(FACET_COLORS[facet]) # set color of each violin
-            patch.set_edgecolor("black") # set the edgecolor
-            patch.set_alpha(0.9 * alpha_for_fine_tune[FINE_TUNING_SUFFIX in model]) # set alpha
+        violin_parts = sns.violinplot(
+                       data = listening_test,
+                       x = "facet",
+                       y = "rating",
+                       hue = "fine_tuned",
+                       split = True, gap = 0.1,
+                       inner = "quart",
+                       legend = False,
+                       palette = FACET_COLORS,
+                       ax = axes["plot"]
+                       )
+        for i, patch in enumerate(violin_parts.collections[::2]):
+            patch.set_alpha(alpha_for_fine_tune[i % 2 == 1])
+        # listening_test = listening_test.set_index(keys = ["model", "facet"], drop = True)["rating"]
+        # plotting_indicies = listening_test.sort_index(level = "facet").index
+        # violin_plot_data = list(map(lambda model_facet: listening_test.loc[model_facet].to_list(), plotting_indicies))
+        # violin_parts = axes["plot"].violinplot(
+        #     dataset = violin_plot_data,
+        #     positions = sorted(np.concatenate((xticks - half_bar_width, xticks + half_bar_width), axis = 0)),
+        #     vert = True,
+        #     width = 0.5,
+        #     showmeans = False,
+        #     showextrema = False,
+        #     showmedians = False,
+        #     quantiles = None, # alternatively, [0.0, 0.25, 0.5, 0.75, 1.0]
+        # )
+        # for patch, model, facet in zip(violin_parts["bodies"], *zip(*plotting_indicies)): # set colors
+        #     patch.set_facecolor(FACET_COLORS[facet]) # set color of each violin
+        #     patch.set_edgecolor("black") # set the edgecolor
+        #     patch.set_alpha(alpha_for_fine_tune[FINE_TUNING_SUFFIX in model]) # set alpha
     
     # axes["plot"].set_xlabel("Subset", fontsize = axis_tick_fontsize)
     axes["plot"].set_xticks(ticks = xticks, labels = FACETS_FOR_PLOTTING, fontsize = axis_tick_fontsize, rotation = 0) # get subset names
-    axes["plot"].set_ylabel("Mean Opinion Score", fontsize = axis_tick_fontsize)
-    axes["plot"].legend(fontsize = axis_tick_fontsize)
+    axes["plot"].set_ylabel("Rating", fontsize = axis_tick_fontsize)
+    # axes["plot"].legend(fontsize = axis_tick_fontsize) # legend is illogical with the current alpha adjustment scheme
 
     # save plot
     output_filepath = f"{dirname(args.dataset_filepath)}/{PLOTS_DIR_NAME}/listening_test.pdf" # get output filepath
