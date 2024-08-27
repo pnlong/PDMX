@@ -276,7 +276,7 @@ if __name__ == "__main__":
         #     patch.set_edgecolor("black") # set the edgecolor
         #     patch.set_alpha(alpha_for_fine_tune[FINE_TUNING_SUFFIX in model]) # set alpha
     
-    # axes["plot"].set_xlabel("Subset", fontsize = axis_tick_fontsize)
+    axes["plot"].set_xlabel("Subset", fontsize = axis_tick_fontsize)
     axes["plot"].set_xticks(ticks = xticks, labels = FACETS_FOR_PLOTTING, fontsize = axis_tick_fontsize, rotation = 0) # get subset names
     axes["plot"].set_ylabel("Rating", fontsize = axis_tick_fontsize)
     # axes["plot"].legend(fontsize = axis_tick_fontsize) # legend is illogical with the current alpha adjustment scheme
