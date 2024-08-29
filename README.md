@@ -32,23 +32,21 @@ We introduce `MusicRender`, an extension of [MusPy](https://hermandong.com/muspy
 from pdmx import MusicRender
 ```
 
-Let's say `music` is a `MusicRender` object. We can save `music` to the JSON file `path`, from which can later reinstate as another `MusicRender` object, with:
-
-```python
-music.save_json(path = path)
-```
-
-Additionally, if we want to write `music` as audio, we can use:
+Let's say `music` is a `MusicRender` object. We can write `music` to various output formats, where the output filetype is inferred from the filetype of `path` (`.wav` is audio, `.midi` is symbolic).
 
 ```python
 music.write(path = path)
 ```
 
-Where the output filetype is inferred from the filetype of `path` (`wav` is audio, `midi` is symbolic).
+We can also save `music` to a JSON file at the location `path`.
+
+```python
+music.save_json(path = path)
+```
 
 ### `load_json()`
 
-We store PDMX as JSONified `MusicRender` objects. We can reinstate these objects into Python by loading them with the `load_json()` function, which returns a `MusicRender` object given the JSON's path, `path`.
+We store PDMX as JSONified `MusicRender` objects (see the `save_json()` method above). We can reinstate these objects into Python by reading them with the `load_json()` function, which returns a `MusicRender` object given the path to the JSON file.
 
 ```python
 from pdmx import load_json
@@ -57,7 +55,7 @@ music = load_json(path = path)
 
 ### `read_musescore()`
 
-PDMX was created by scraping the public domain content of [MuseScore](https://musescore.com), a score-sharing online platform on which users can upload their own sheet music arrangements in a MusicXML-like format. MusPy alone lacked the ability to fully parse these files. Our `read_musescore()` function can, and returns a `MusicRender` object given the path to the MuseScore file, `path`.
+PDMX was created by scraping the public domain content of [MuseScore](https://musescore.com), a score-sharing online platform on which users can upload their own sheet music arrangements in a MusicXML-like format. MusPy alone lacked the ability to fully parse these files. Our `read_musescore()` function can, and returns a `MusicRender` object given the path to the MuseScore file.
 
 ```python
 from pdmx import read_musescore
