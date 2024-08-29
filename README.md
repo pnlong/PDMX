@@ -2,21 +2,31 @@
 
 # PDMX: A Large-Scale *P*ublic *D*omain *M*usic*X*ML Dataset for Symbolic Music Processing
 
-Recent [copyright infringement lawsuits against leading music generation companies](https://www.riaa.com/record-companies-bring-landmark-cases-for-responsible-ai-againstsuno-and-udio-in-boston-and-new-york-federal-courts-respectively) have sent shockwaves throughout the AI-Music community, highlighting the need for copyright-free training data. Meanwhile, the most prevalent format for symbolic music processing, MIDI, is well-suited for modeling sequences of notes but omits an abundance of extra musical information present in sheet music, which the MusicXML format addresses. To mitigate these gaps, we present **PDMX**: a large-scale open-source dataset of over 250K public domain MusicXML scores. We also introduce `MusicRender`, an extension of the Python library [MusPy](https://hermandong.com/muspy/doc/muspy.html)'s universal `Music` object, designed specifically to handle MusicXML.
+Recent [copyright infringement lawsuits against leading music generation companies](https://www.riaa.com/record-companies-bring-landmark-cases-for-responsible-ai-againstsuno-and-udio-in-boston-and-new-york-federal-courts-respectively) have sent shockwaves throughout the AI-Music community, highlighting the need for copyright-free training data. Meanwhile, the most prevalent format for symbolic music processing, MIDI, is well-suited for modeling sequences of notes but omits an abundance of extra musical information present in sheet music, which the MusicXML format addresses. To mitigate these gaps, we present **[PDMX]()**: a large-scale open-source dataset of over 250K public domain MusicXML scores. We also introduce `MusicRender`, an extension of the Python library [MusPy](https://hermandong.com/muspy/doc/muspy.html)'s universal `Music` object, designed specifically to handle MusicXML.
 
 ---
 
 ## Installation
 
+To access the functionalities that we introduce, please clone the latest version of this [repository](https://github.com/pnlong/PDMX). Then, install relevant dependencies to the Conda environment `my_env` with `conda env update -n my_env --file environment.yml`.
+
+### TL;DR
+
+```
+git clone https://github.com/pnlong/PDMX.git
+conda env update -n my_env --file PDMX/environment.yml
+conda activate my_env
+```
 
 
-# Important Methods
+
+## Important Methods
 
 We present a few important contributions to interact with both the PDMX dataset and MusicXML-like files.
 
 ### `MusicRender`
 
-We introduce `MusicRender`, an extension of [MusPy](https://hermandong.com/muspy/doc/muspy.html)'s universal `Music` object, that can hold musical performance directives through its `annotations` field. `MusicRender` objects are accessible by calling:
+We introduce `MusicRender`, an extension of [MusPy](https://hermandong.com/muspy/doc/muspy.html)'s universal `Music` object, that can hold musical performance directives through its `annotations` field.
 
 ```python
 from pdmx import MusicRender
@@ -55,11 +65,20 @@ music = read_musescore(path = path)
 ```
 
 
+
 ## Citing & Authors
 
 If you find this repository helpful, feel free to cite our publication [PDMX: A Large-Scale Public Domain MusicXML Dataset for Symbolic Music Processing]():
 
 ```tex
-
+@inproceedings{long2024pdmx,
+    title = "PDMX: A Large-Scale Public Domain MusicXML Dataset for Symbolic Music Processing",
+    author = "Long, Phillip and Novack, Zachary and Berg-Kirkpatrick, Taylor and McAuley, Julian",
+    booktitle = "",
+    month = "9",
+    year = "2024",
+    publisher = "",
+    url = "",
+}
 ```
 

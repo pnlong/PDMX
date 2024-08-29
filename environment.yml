@@ -1,4 +1,4 @@
-name: base
+name: PDMX
 channels:
   - pytorch
   - conda-forge
