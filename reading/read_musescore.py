@@ -5,7 +5,7 @@
 # Create an object that can read musescore files (.mscz) into a prettier, pythonic format.
 # Copied from https://github.com/salu133445/muspy/blob/main/muspy/inputs/musescore.py
 
-# python /home/pnlong/parse_musescore/read_musescore/read_musescore.py
+# python /home/pnlong/model_musescore/reading/read_musescore.py
 
 # IMPORTS / CONSTANTS
 ##################################################

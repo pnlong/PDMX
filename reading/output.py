@@ -4,7 +4,7 @@
 
 # Functions for outputting a MusicRender object to different file formats.
 
-# python ./output.py
+# python /home/pnlong/model_musescore/reading/output.py
 
 
 # IMPORTS
@@ -104,7 +104,7 @@ def to_mido_note_on_note_off(note: Note, channel: int, use_note_off_message: boo
 
     Parameters
     ----------
-    note : :class:`read_musescore.Note` object
+    note : :class:`Note` object
         Note object to convert.
     channel : int
         Channel of the .mid message.
@@ -174,7 +174,7 @@ def to_mido_meta_track(music: "MusicRender") -> MidiTrack:
 
     Parameters
     ----------
-    music : :class:`read_musescore.MusicRender` object
+    music : :class:`MusicRender` object
         Music object to convert.
 
     Returns
@@ -353,9 +353,9 @@ def to_mido_track(track: Track, music: "MusicRender", channel: int = None, use_n
 
     Parameters
     ----------
-    track : :class:`read_musescore.Track` object
+    track : :class:`Track` object
         Track object to convert.
-    music : :class:`read_musescore.MusicRender` object
+    music : :class:`MusicRender` object
         Music object that `track` belongs to.
     channel : int, optional
         Channel number. Defaults to 10 for drums and 0 for other instruments.
@@ -463,7 +463,7 @@ def write_midi(path: str, music: "MusicRender", use_note_off_message: bool = Fal
     ----------
     path : str
         Path to write the .mid file.
-    music : :class:`read_musescore.MusicRender` object
+    music : :class:`MusicRender` object
         Music object to write.
     use_note_off_message : bool, default: False
         Whether to use note-off messages. If False, note-on messages with zero velocity are used instead. The advantage to using note-on messages at zero velocity is that it can avoid sending additional status bytes when Running Status is employed.
@@ -510,7 +510,7 @@ def write_audio(path: str, music: "MusicRender", audio_format: str = "auto", sou
     ----------
     path : str
         Path to write the audio file.
-    music : :class:`read_musescore.MusicRender`
+    music : :class:`MusicRender`
         Music object to write.
     audio_format : str, default: 'auto'
         File format to write. Defaults to infer from the extension.
@@ -563,7 +563,7 @@ def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
     ----------
     path : str
         Path to write the MusicXML file.
-    music : :class:`read_musescore.MusicRender`
+    music : :class:`MusicRender`
         Music object to write.
     compressed : bool, optional
         Whether to write to a compressed MusicXML file. If None, infer
@@ -860,7 +860,7 @@ def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
 
 if __name__ == "__main__":
 
-    from read_musescore.read_musescore import read_musescore
+    from reading.read_musescore import read_musescore
     prefix = "/data2/pnlong/musescore/test_data/test2/QmbbxbpgJHyNRzjkbyxdoV5saQ9HY38MauKMd5CijTPFiF"
     music = read_musescore(path = f"{prefix}.mscz")
     music.write(path = f"{prefix}.xml") # tests xml output

@@ -4,7 +4,7 @@
 
 # Generate audio samples for listening test.
 
-# python /home/pnlong/model_musescore/model_remi/listening_test.py
+# python /home/pnlong/model_musescore/modeling/listening_test.py
 
 # IMPORTS
 ##################################################
@@ -30,9 +30,9 @@ import sys
 sys.path.insert(0, dirname(realpath(__file__)))
 sys.path.insert(0, dirname(dirname(realpath(__file__))))
 
-from make_dataset.full import CHUNK_SIZE
-from make_dataset.genres import FACETS_FOR_PLOTTING, FACET_COLORS
-from make_dataset.quality import PLOTS_DIR_NAME
+from wrangling.full import CHUNK_SIZE
+from wrangling.genres import FACETS_FOR_PLOTTING, FACET_COLORS
+from wrangling.quality import PLOTS_DIR_NAME
 from dataset import OUTPUT_DIR as DATASET_OUTPUT_DIR
 from train import FINE_TUNING_SUFFIX
 from representation import Indexer, get_encoding

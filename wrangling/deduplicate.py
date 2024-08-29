@@ -7,7 +7,7 @@
 # In other words, we group songs with duplicate artists and titles together,
 # and from that grouping, we choose the best version within that group.
 
-# python /home/pnlong/model_musescore/make_dataset/deduplicate.py
+# python /home/pnlong/model_musescore/wrangling/deduplicate.py
 
 # IMPORTS
 ##################################################

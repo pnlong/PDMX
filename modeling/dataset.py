@@ -4,7 +4,7 @@
 
 # Data Loader for REMI-Style Encoding.
 
-# python /home/pnlong/model_musescore/model_remi/dataset.py
+# python /home/pnlong/model_musescore/modeling/dataset.py
 
 # IMPORTS
 ##################################################
@@ -28,11 +28,11 @@ import sys
 sys.path.insert(0, dirname(realpath(__file__)))
 sys.path.insert(0, dirname(dirname(realpath(__file__))))
 
-from make_dataset.full import DATASET_DIR_NAME, CHUNK_SIZE
-from make_dataset.full import OUTPUT_DIR as DATASET_OUTPUT_DIR
-from make_dataset.deduplicate import FACETS
-from read_musescore.music import MusicRender
-from read_musescore.read_musescore import read_musescore
+from wrangling.full import DATASET_DIR_NAME, CHUNK_SIZE
+from wrangling.full import OUTPUT_DIR as DATASET_OUTPUT_DIR
+from wrangling.deduplicate import FACETS
+from reading.music import MusicRender
+from reading.read_musescore import read_musescore
 from representation import Indexer, get_encoding, extract_notes, encode_notes, save_csv_notes, MAX_BEAT, RESOLUTION
 import utils
 

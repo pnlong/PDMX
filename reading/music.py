@@ -9,7 +9,7 @@
 # -------
 # - Music
 
-# ./music.py
+# python /home/pnlong/model_musescore/reading/music.py
 
 
 # IMPORTS
@@ -499,6 +499,11 @@ class MusicRender(muspy.music.Music):
             Whether to save as a compressed JSON file (`.json.gz`). Has no effect when `path` is a file object. Defaults to infer from the extension (`.gz`).
         **kwargs
             Keyword arguments to pass to :py:func:`json.dumps`.
+
+        Returns
+        -------
+        str
+            Filepath to which we ended up saving the MusicRender object to.
 
         Notes
         -----

@@ -4,7 +4,7 @@
 
 # Parse through all musescore (.mscz) files and determine which are in the public domain.
 
-# python /home/pnlong/model_musescore/make_dataset/full.py
+# python /home/pnlong/model_musescore/wrangling/full.py
 
 
 # IMPORTS
@@ -30,9 +30,9 @@ import sys
 sys.path.insert(0, dirname(realpath(__file__)))
 sys.path.insert(0, dirname(dirname(realpath(__file__))))
 
-from read_musescore.read_musescore import read_musescore, get_musescore_version
-from read_musescore.music import MusicRender
-import model_remi.representation
+from reading.read_musescore import read_musescore, get_musescore_version
+from reading.music import MusicRender
+from modeling.representation import Indexer, get_encoding, extract_notes, encode_notes, decode_notes, reconstruct
 import utils
 
 ##################################################
@@ -442,12 +442,12 @@ def get_full_dataset(path: str) -> None:
     ##################################################
 
     # encode then decode
-    notes = model_remi.representation.extract_notes(music = music, resolution = encoding["resolution"])
+    notes = extract_notes(music = music, resolution = encoding["resolution"])
     notes = notes[notes[:, 0] < encoding["max_beat"]] # filter so that all beats are in the vocabulary
     notes[:, 2] = np.clip(a = notes[:, 2], a_min = 0, a_max = 127) # remove unknown pitches
-    codes = model_remi.representation.encode_notes(notes = notes, encoding = encoding, indexer = indexer)
-    notes = model_remi.representation.decode_notes(data = codes, encoding = encoding, vocabulary = vocabulary)
-    music = model_remi.representation.reconstruct(notes = notes, resolution = encoding["resolution"])
+    codes = encode_notes(notes = notes, encoding = encoding, indexer = indexer)
+    notes = decode_notes(data = codes, encoding = encoding, vocabulary = vocabulary)
+    music = reconstruct(notes = notes, resolution = encoding["resolution"])
 
     # extract MMT-style statistics
     results.update(dict(zip(MMT_STATISTIC_COLUMNS, (
@@ -501,8 +501,8 @@ if __name__ == "__main__":
     METADATA = {path : path_metadata if not pd.isna(path_metadata) else None for path, path_metadata in zip(METADATA["data_path"], METADATA["metadata_path"])}
 
     # for encoding and decoding
-    encoding = model_remi.representation.get_encoding() # load the encoding
-    indexer = model_remi.representation.Indexer(data = encoding["event_code_map"])# get the indexer
+    encoding = get_encoding() # load the encoding
+    indexer = Indexer(data = encoding["event_code_map"])# get the indexer
     vocabulary = utils.inverse_dict(indexer.get_dict()) # for decoding
 
     # set up logging

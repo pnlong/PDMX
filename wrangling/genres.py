@@ -4,7 +4,7 @@
 
 # Create genres plot for paper.
 
-# python /home/pnlong/model_musescore/make_dataset/genres.py
+# python /home/pnlong/model_musescore/wrangling/genres.py
 
 # IMPORTS
 ##################################################

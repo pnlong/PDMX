@@ -5,7 +5,7 @@
 # Music object classes better suited for storing expressive features from musescore
 # taken from https://github.com/salu133445/muspy/blob/b2d4265c6279e730903d8abe9dddda8484511903/muspy/classes.py
 
-# ./classes.py
+# python /home/pnlong/model_musescore/reading/classes.py
 
 # IMPORTS / CONSTANTS
 ##################################################

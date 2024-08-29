@@ -4,7 +4,7 @@
 
 # Evaluate a REMI-Style model.
 
-# python /home/pnlong/model_musescore/model_remi/evaluate.py
+# python /home/pnlong/model_musescore/modeling/evaluate.py
 
 # IMPORTS
 ##################################################
@@ -31,8 +31,8 @@ import sys
 sys.path.insert(0, dirname(realpath(__file__)))
 sys.path.insert(0, dirname(dirname(realpath(__file__))))
 
-from make_dataset.full import MMT_STATISTIC_COLUMNS, CHUNK_SIZE, pitch_class_entropy, scale_consistency, groove_consistency, get_tracks_string
-from make_dataset.deduplicate import FACETS
+from wrangling.full import MMT_STATISTIC_COLUMNS, CHUNK_SIZE, pitch_class_entropy, scale_consistency, groove_consistency, get_tracks_string
+from wrangling.deduplicate import FACETS
 from dataset import FACETS_HQ, MusicDataset, pad
 from train import OUTPUT_DIR, FINE_TUNING_SUFFIX
 from train import BATCH_SIZE as TRAIN_BATCH_SIZE

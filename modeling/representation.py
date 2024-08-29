@@ -4,7 +4,7 @@
 
 # Utilities for representing a REMI-Style encoding.
 
-# python /home/pnlong/model_musescore/model_remi/representation.py
+# python /home/pnlong/model_musescore/modeling/representation.py
 
 
 # IMPORTS
@@ -19,9 +19,9 @@ import sys
 sys.path.insert(0, dirname(realpath(__file__)))
 sys.path.insert(0, dirname(dirname(realpath(__file__))))
 
-from read_musescore.music import MusicRender
-from read_musescore.classes import Tempo, Track, Note
-from read_musescore.read_musescore import read_musescore
+from reading.music import MusicRender
+from reading.classes import Tempo, Track, Note
+from reading.read_musescore import read_musescore
 import utils
 
 ##################################################

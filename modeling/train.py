@@ -4,7 +4,7 @@
 
 # Train a REMI-Style model.
 
-# python /home/pnlong/model_musescore/model_remi/train.py
+# python /home/pnlong/model_musescore/modeling/train.py
 
 # IMPORTS
 ##################################################
@@ -30,7 +30,7 @@ import sys
 sys.path.insert(0, dirname(realpath(__file__)))
 sys.path.insert(0, dirname(dirname(realpath(__file__))))
 
-from make_dataset.deduplicate import FACETS
+from wrangling.deduplicate import FACETS
 from dataset import PARTITIONS, MusicDataset
 from dataset import OUTPUT_DIR as DATASET_OUTPUT_DIR
 from representation import Indexer, get_encoding, encode_notes

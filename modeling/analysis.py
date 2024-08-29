@@ -4,7 +4,7 @@
 
 # Analyze the evaluation a REMI-Style model.
 
-# python /home/pnlong/model_musescore/model_remi/analysis.py
+# python /home/pnlong/model_musescore/modeling/analysis.py
 
 # IMPORTS
 ##################################################
@@ -22,10 +22,10 @@ import sys
 sys.path.insert(0, dirname(realpath(__file__)))
 sys.path.insert(0, dirname(dirname(realpath(__file__))))
 
-from make_dataset.full import DATASET_DIR_NAME, MMT_STATISTIC_COLUMNS
-from make_dataset.full import OUTPUT_DIR as DATASET_OUTPUT_DIR
-from make_dataset.deduplicate import FACETS
-from make_dataset.quality import make_facet_name_fancy, PLOTS_DIR_NAME
+from wrangling.full import DATASET_DIR_NAME, MMT_STATISTIC_COLUMNS
+from wrangling.full import OUTPUT_DIR as DATASET_OUTPUT_DIR
+from wrangling.deduplicate import FACETS
+from wrangling.quality import make_facet_name_fancy, PLOTS_DIR_NAME
 from dataset import OUTPUT_DIR
 from train import RELEVANT_PARTITIONS
 from evaluate import OUTPUT_COLUMNS, loss_to_perplexity
