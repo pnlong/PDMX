@@ -70,7 +70,7 @@ music = read_musescore(path = path)
 
 If you find this repository helpful, feel free to cite our publication [PDMX: A Large-Scale Public Domain MusicXML Dataset for Symbolic Music Processing]():
 
-```tex
+```bibtex
 @inproceedings{long2024pdmx,
     title = "PDMX: A Large-Scale Public Domain MusicXML Dataset for Symbolic Music Processing",
     author = "Long, Phillip and Novack, Zachary and Berg-Kirkpatrick, Taylor and McAuley, Julian",
