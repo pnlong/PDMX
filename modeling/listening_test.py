@@ -214,7 +214,7 @@ if __name__ == "__main__":
 
     # create plot
     mosaic = [["bar"], ["violin"]] if args.combined else ([["bar"]] if args.bar_plot else [["violin"]])
-    fig, axes = plt.subplot_mosaic(mosaic = mosaic, constrained_layout = True, figsize = (5, 3 * (2 if args.combined else 1)))
+    fig, axes = plt.subplot_mosaic(mosaic = mosaic, constrained_layout = True, figsize = (5, 3 * (1.6 if args.combined else 1)))
 
     # plot hyperparameters
     axis_label_fontsize = "small"
