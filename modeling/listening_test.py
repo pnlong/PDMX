@@ -227,6 +227,7 @@ if __name__ == "__main__":
     alpha_for_fine_tune = (1.0, 0.6)
     bar_plot_margin = 0.02 # set None if there is no margin and matplotlib automatically decides
     linewidth = 1.0
+    linecolor = "0.2"
     xticks = np.arange(len(FACETS_FOR_PLOTTING))
 
     # plot a bar plot
@@ -239,7 +240,9 @@ if __name__ == "__main__":
                                 align = "center",
                                 label = "Fine Tuned" if fine_tuned else "Base",
                                 color = FACET_COLORS[facet],
-                                alpha = alpha_for_fine_tune[fine_tuned])
+                                alpha = alpha_for_fine_tune[fine_tuned],
+                                edgecolor = linecolor, linewidth = linewidth
+                                )
         if args.error_bars: # error bars if needed
             mos_by_fine_tuned = mos.droplevel(level = "facet", axis = 0)
             for fine_tuned in (False, True):
@@ -247,8 +250,8 @@ if __name__ == "__main__":
                 axes["bar"].errorbar(x = xticks + ((1 if fine_tuned else -1) * half_bar_width),
                                      y = mos_by_fine_tuned.loc[model, "mean"],
                                      yerr = mos_by_fine_tuned.loc[model, "sem"],
-                                     fmt = "o", elinewidth = linewidth,
-                                     color = "0.4")
+                                     fmt = ",", elinewidth = linewidth, color = linecolor, alpha = alpha_for_fine_tune[fine_tuned]
+                                     )
         if bar_plot_margin is not None:
             low, high = min(mos["mean"] - (mos["sem"] if args.error_bars else 0)), max(mos["mean"] + (mos["sem"] if args.error_bars else 0))
             axes["bar"].set_ylim(bottom = (1 - bar_plot_margin) * low, top = (1 + bar_plot_margin) * high) # add limits
@@ -267,6 +270,7 @@ if __name__ == "__main__":
                        )
         for i, patch in enumerate(violin_parts.findobj(PolyCollection)):
             patch.set_facecolor(FACET_COLORS[FACETS_FOR_PLOTTING[i // 2]])
+            patch.set_edgecolor(linecolor)
             patch.set_alpha(alpha_for_fine_tune[i % 2 == 1])
         axes["violin"].legend_.remove() # remove legend
         # listening_test = listening_test.set_index(keys = ["model", "facet"], drop = True)["rating"]
