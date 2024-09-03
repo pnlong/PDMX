@@ -219,7 +219,7 @@ if __name__ == "__main__":
     # plot hyperparameters
     axis_label_fontsize = "small"
     xlabel = "Subset"
-    ylabel = "Rating"
+    ylabel = {"violin": "Rating", "bar": "Mean Opinion Score"}
     axis_tick_fontsize = "x-small"
     total_bar_width = 0.8
     individual_bar_width = total_bar_width / 2
@@ -261,7 +261,7 @@ if __name__ == "__main__":
                        hue = "fine_tuned",
                        split = True,
                        inner = "quart",
-                       fill = True, linewidth = 0,
+                       fill = True, linewidth = 1,
                        ax = axes["violin"]
                        )
         for i, patch in enumerate(violin_parts.findobj(PolyCollection)):
@@ -292,20 +292,20 @@ if __name__ == "__main__":
         axes[bottom_plot_type].set_xlabel(xlabel, fontsize = axis_label_fontsize)
         axes[top_plot_type].set_xticks(ticks = [], labels = []) # no x tick labels
         axes[bottom_plot_type].set_xticks(ticks = xticks, labels = list(map(make_facet_name_fancy, FACETS_FOR_PLOTTING)), fontsize = axis_tick_fontsize, rotation = 0) # get subset names
-        axes[top_plot_type].set_ylabel(ylabel, fontsize = axis_label_fontsize)
-        axes[bottom_plot_type].set_ylabel(ylabel, fontsize = axis_label_fontsize)
+        axes[top_plot_type].set_ylabel(ylabel[top_plot_type], fontsize = axis_label_fontsize)
+        axes[bottom_plot_type].set_ylabel(ylabel[bottom_plot_type], fontsize = axis_label_fontsize)
     else:
         plot_type = "bar" if args.bar_plot else "violin"
         axes[plot_type].set_xticks(ticks = xticks, labels = list(map(make_facet_name_fancy, FACETS_FOR_PLOTTING)), fontsize = axis_tick_fontsize, rotation = 0)
         axes[plot_type].set_xlabel(xlabel, fontsize = axis_label_fontsize)
-        axes[plot_type].set_ylabel(ylabel, fontsize = axis_label_fontsize)
+        axes[plot_type].set_ylabel(ylabel[plot_type], fontsize = axis_label_fontsize)
 
     # save plot
     output_filepath = f"{dirname(args.dataset_filepath)}/{PLOTS_DIR_NAME}/listening_test.pdf" # get output filepath
     if not exists(dirname(output_filepath)): # make sure output directory exists
         mkdir(dirname(output_filepath))
     fig.savefig(output_filepath, dpi = 200, transparent = True, bbox_inches = "tight") # save image
-    logging.info(f"MOS plot saved to {output_filepath}.")
+    logging.info(f"Listening Test plot saved to {output_filepath}.")
 
     ##################################################
 
