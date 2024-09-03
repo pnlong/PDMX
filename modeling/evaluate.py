@@ -24,6 +24,8 @@ import pandas as pd
 import torch
 import torch.utils.data
 from tqdm import tqdm
+import warnings
+warnings.simplefilter(action = "ignore", category = FutureWarning)
 import x_transformers
 
 from os.path import dirname, realpath
