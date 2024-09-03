@@ -71,6 +71,7 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("-r", "--reset", action = "store_true", help = "Whether or not to recreate data files.")
     parser.add_argument("-bp", "--bar_plot", action = "store_true", help = "Whether or not to make a bar plot (violin plot is default).")
     parser.add_argument("-eb", "--error_bars", action = "store_true", help = "Whether to add error bars to bar plot (irrelevant if --bar_plot is not selected).")
+    parser.add_argument("-c", "--combined", action = "store_true", help = "Combine bar and violin plot.")
     parser.add_argument("-j", "--jobs", default = int(multiprocessing.cpu_count() / 4), type = int, help = "Number of jobs.")
     return parser.parse_args(args = args, namespace = namespace)
 
@@ -212,10 +213,13 @@ if __name__ == "__main__":
     mos = listening_test[["model", "facet", "rating"]].groupby(by = ["model", "facet"]).agg(["mean", "sem"])["rating"] # mean opinion scores by model and facet
 
     # create plot
-    fig, axes = plt.subplot_mosaic(mosaic = [["plot"]], constrained_layout = True, figsize = (5, 3))
+    mosaic = [["bar"], ["violin"]] if args.combined else ([["bar"]] if args.bar_plot else [["violin"]])
+    fig, axes = plt.subplot_mosaic(mosaic = mosaic, constrained_layout = True, figsize = (5, 3 * (2 if args.combined else 1)))
 
     # plot hyperparameters
     axis_label_fontsize = "small"
+    xlabel = "Subset"
+    ylabel = "Rating"
     axis_tick_fontsize = "x-small"
     total_bar_width = 0.8
     individual_bar_width = total_bar_width / 2
@@ -225,31 +229,31 @@ if __name__ == "__main__":
     xticks = np.arange(len(FACETS_FOR_PLOTTING))
 
     # plot a bar plot
-    if args.bar_plot:
+    if args.bar_plot or args.combined:
         for xtick, facet in zip(xticks, FACETS_FOR_PLOTTING):
             for fine_tuned in (False, True):
-                axes["plot"].bar(x = xtick + ((1 if fine_tuned else -1) * half_bar_width),
-                                 height = mos.at[(args.model_size + (f"_{FINE_TUNING_SUFFIX}" if fine_tuned else ""), facet), "mean"],
-                                 width = individual_bar_width,
-                                 align = "center",
-                                 label = "Fine Tuned" if fine_tuned else "Base",
-                                 color = FACET_COLORS[facet],
-                                 alpha = alpha_for_fine_tune[fine_tuned])
+                axes["bar"].bar(x = xtick + ((1 if fine_tuned else -1) * half_bar_width),
+                                height = mos.at[(args.model_size + (f"_{FINE_TUNING_SUFFIX}" if fine_tuned else ""), facet), "mean"],
+                                width = individual_bar_width,
+                                align = "center",
+                                label = "Fine Tuned" if fine_tuned else "Base",
+                                color = FACET_COLORS[facet],
+                                alpha = alpha_for_fine_tune[fine_tuned])
         if args.error_bars: # error bars if needed
             mos_by_fine_tuned = mos.droplevel(level = "facet", axis = 0)
             for fine_tuned in (False, True):
                 model = args.model_size + (f"_{FINE_TUNING_SUFFIX}" if fine_tuned else "")
-                axes["plot"].errorbar(x = xticks + ((1 if fine_tuned else -1) * half_bar_width),
-                                      y = mos_by_fine_tuned.loc[model, "mean"],
-                                      yerr = mos_by_fine_tuned.loc[model, "sem"],
-                                      fmt = "o",
-                                      color = "0.4")
+                axes["bar"].errorbar(x = xticks + ((1 if fine_tuned else -1) * half_bar_width),
+                                     y = mos_by_fine_tuned.loc[model, "mean"],
+                                     yerr = mos_by_fine_tuned.loc[model, "sem"],
+                                     fmt = "o",
+                                     color = "0.4")
         if bar_plot_margin is not None:
             low, high = min(mos["mean"] - (mos["sem"] if args.error_bars else 0)), max(mos["mean"] + (mos["sem"] if args.error_bars else 0))
-            axes["plot"].set_ylim(bottom = (1 - bar_plot_margin) * low, top = (1 + bar_plot_margin) * high) # add limits
+            axes["bar"].set_ylim(bottom = (1 - bar_plot_margin) * low, top = (1 + bar_plot_margin) * high) # add limits
                 
     # plot a violion plot
-    else:
+    if (not args.bar_plot) or args.combined:
         violin_parts = sns.violinplot(
                        data = listening_test,
                        x = "facet",
@@ -258,16 +262,16 @@ if __name__ == "__main__":
                        split = True,
                        inner = "quart",
                        fill = True,
-                       ax = axes["plot"]
+                       ax = axes["violin"]
                        )
         for i, patch in enumerate(violin_parts.findobj(PolyCollection)):
             patch.set_facecolor(FACET_COLORS[FACETS_FOR_PLOTTING[i // 2]])
             patch.set_alpha(alpha_for_fine_tune[i % 2 == 1])
-        axes["plot"].legend_.remove() # remove legend
+        axes["violin"].legend_.remove() # remove legend
         # listening_test = listening_test.set_index(keys = ["model", "facet"], drop = True)["rating"]
         # plotting_indicies = listening_test.sort_index(level = "facet").index
         # violin_plot_data = list(map(lambda model_facet: listening_test.loc[model_facet].to_list(), plotting_indicies))
-        # violin_parts = axes["plot"].violinplot(
+        # violin_parts = axes["violin"].violinplot(
         #     dataset = violin_plot_data,
         #     positions = sorted(np.concatenate((xticks - half_bar_width, xticks + half_bar_width), axis = 0)),
         #     vert = True,
@@ -282,10 +286,19 @@ if __name__ == "__main__":
         #     patch.set_edgecolor("black") # set the edgecolor
         #     patch.set_alpha(alpha_for_fine_tune[FINE_TUNING_SUFFIX in model]) # set alpha
     
-    axes["plot"].set_xlabel("Subset", fontsize = axis_label_fontsize)
-    axes["plot"].set_xticks(ticks = xticks, labels = list(map(make_facet_name_fancy, FACETS_FOR_PLOTTING)), fontsize = axis_tick_fontsize, rotation = 0) # get subset names
-    axes["plot"].set_ylabel("Rating", fontsize = axis_label_fontsize)
-    # axes["plot"].legend(fontsize = axis_tick_fontsize) # legend is illogical with the current alpha adjustment scheme
+    if args.combined:
+        top_plot_type, bottom_plot_type = list(zip(*mosaic))[0]
+        # axes[top_plot_type].set_xlabel(xlabel, fontsize = axis_label_fontsize)
+        axes[bottom_plot_type].set_xlabel(xlabel, fontsize = axis_label_fontsize)
+        axes[top_plot_type].set_xticks(ticks = [], labels = []) # no x tick labels
+        axes[bottom_plot_type].set_xticks(ticks = xticks, labels = list(map(make_facet_name_fancy, FACETS_FOR_PLOTTING)), fontsize = axis_tick_fontsize, rotation = 0) # get subset names
+        axes[top_plot_type].set_ylabel(ylabel, fontsize = axis_label_fontsize)
+        axes[bottom_plot_type].set_ylabel(ylabel, fontsize = axis_label_fontsize)
+    else:
+        plot_type = "bar" if args.bar_plot else "violin"
+        axes[plot_type].set_xticks(ticks = xticks, labels = list(map(make_facet_name_fancy, FACETS_FOR_PLOTTING)), fontsize = axis_tick_fontsize, rotation = 0)
+        axes[plot_type].set_xlabel(xlabel, fontsize = axis_label_fontsize)
+        axes[plot_type].set_ylabel(ylabel, fontsize = axis_label_fontsize)
 
     # save plot
     output_filepath = f"{dirname(args.dataset_filepath)}/{PLOTS_DIR_NAME}/listening_test.pdf" # get output filepath
