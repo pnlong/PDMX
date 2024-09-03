@@ -23,7 +23,7 @@ import random
 from itertools import product
 import subprocess
 import matplotlib.pyplot as plt
-from matplotlib.colors import to_rgb
+from matplotlib.patches import Patch
 from matplotlib.collections import PolyCollection
 import seaborn as sns
 
@@ -214,12 +214,12 @@ if __name__ == "__main__":
 
     # create plot
     mosaic = [["bar"], ["violin"]] if args.combined else ([["bar"]] if args.bar_plot else [["violin"]])
-    fig, axes = plt.subplot_mosaic(mosaic = mosaic, constrained_layout = True, figsize = (5, 2.6 * (1.6 if args.combined else 1)))
+    fig, axes = plt.subplot_mosaic(mosaic = mosaic, constrained_layout = True, figsize = (5, 2.3 * (1.6 if args.combined else 1)))
 
     # plot hyperparameters
     axis_label_fontsize = "medium"
     xlabel = "Subset"
-    ylabel = {"violin": "Rating", "bar": "Mean Opinion Score"}
+    ylabel = {"violin": "Mean Opinion Score", "bar": "Mean Opinion Score"}
     axis_tick_fontsize = "x-small"
     total_bar_width = 0.8
     individual_bar_width = total_bar_width / 2
@@ -238,7 +238,7 @@ if __name__ == "__main__":
                                 height = mos.at[(args.model_size + (f"_{FINE_TUNING_SUFFIX}" if fine_tuned else ""), facet), "mean"],
                                 width = individual_bar_width,
                                 align = "center",
-                                label = "Fine Tuned" if fine_tuned else "Base",
+                                label = fine_tuned,
                                 color = FACET_COLORS[facet],
                                 alpha = alpha_for_fine_tune[fine_tuned],
                                 edgecolor = linecolor, linewidth = linewidth # comment out this line to remove borders from bar plot
@@ -291,6 +291,7 @@ if __name__ == "__main__":
         #     patch.set_edgecolor("black") # set the edgecolor
         #     patch.set_alpha(alpha_for_fine_tune[FINE_TUNING_SUFFIX in model]) # set alpha
     
+    # add axis labels
     if args.combined:
         top_plot_type, bottom_plot_type = list(zip(*mosaic))[0]
         # axes[top_plot_type].set_xlabel(xlabel, fontsize = axis_label_fontsize)
@@ -304,6 +305,17 @@ if __name__ == "__main__":
         axes[plot_type].set_xticks(ticks = xticks, labels = list(map(make_facet_name_fancy, FACETS_FOR_PLOTTING)), fontsize = axis_tick_fontsize, rotation = 0)
         axes[plot_type].set_xlabel(xlabel, fontsize = axis_label_fontsize)
         axes[plot_type].set_ylabel(ylabel[plot_type], fontsize = axis_label_fontsize)
+
+    # add legend
+    legend_edgecolor = str(float(linecolor) * 1.5)
+    legend_facecolor = str(float(legend_edgecolor) * 1.5)
+    axes["violin" if (not (args.combined or args.bar_plot)) else "bar"].legend(
+        handles = [
+            Patch(facecolor = linecolor, edgecolor = legend_edgecolor, alpha = alpha_for_fine_tune[False], label = "Base"),
+            Patch(facecolor = linecolor, edgecolor = legend_edgecolor, alpha = alpha_for_fine_tune[True], label = "Fine-Tuned"),
+        ],
+        fontsize = axis_tick_fontsize, alignment = "center", loc = "upper left",
+    )
 
     # save plot
     output_filepath = f"{dirname(args.dataset_filepath)}/{PLOTS_DIR_NAME}/listening_test.pdf" # get output filepath

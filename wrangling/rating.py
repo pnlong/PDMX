@@ -4,7 +4,7 @@
 
 # Analyze full dataset to see if there are differences between different facets.
 
-# python /home/pnlong/model_musescore/wrangling/ratings.py
+# python /home/pnlong/model_musescore/wrangling/rating.py
 
 # IMPORTS
 ##################################################
@@ -77,8 +77,10 @@ if __name__ == "__main__":
     # load in dataset
     dataset = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)
 
-    # deal with ratings column
+    # wrangle columns
     dataset["rating"] = list(map(discretize_rating, dataset["rating"]))
+    for mmt_statistic_column in MMT_STATISTIC_COLUMNS[1:]:
+        dataset[mmt_statistic_column] *= 100 # convert consistency columns to percentages
 
     ##################################################
 
@@ -100,10 +102,11 @@ if __name__ == "__main__":
 
     # create plot
     mosaic = list(zip(MMT_STATISTIC_COLUMNS)) if args.column else [MMT_STATISTIC_COLUMNS]
-    figsize = (4, 4) if args.column else (8, 2.5)
+    figsize = (4, 3) if args.column else (8, 2.5)
     fig, axes = plt.subplot_mosaic(mosaic = mosaic, constrained_layout = True, figsize = figsize)
     plt.set_loglevel("WARNING")
-    axis_tick_fontsize = "small"
+    axis_tick_fontsize = "x-small"
+    axes_label_fontsize = "small"
 
     # get current data frame
     width_proportion = 0.92 # proportion of 0.1 each bar is wide
@@ -117,9 +120,6 @@ if __name__ == "__main__":
         axes[mmt_statistic_column].tick_params(axis = "both", which = "major", labelsize = axis_tick_fontsize) # set tick label font size
         # axes[mmt_statistic_column].tick_params(axis = "both", which = "minor", labelsize = axis_tick_fontsize) # set tick label font size
 
-        # variables
-        statistic_fancy = " ".join(mmt_statistic_column.split("_")).title() # stylize the name of the mmt statistic
-
         # little bit of data wrangling
         data_mmt_statistic = df[mmt_statistic_column]
         # data_mmt_statistic = data_mmt_statistic[~pd.isna(data_mmt_statistic["sem"])] # no na values
@@ -127,15 +127,15 @@ if __name__ == "__main__":
         # plot
         axes[mmt_statistic_column].bar(x = x_values, height = data_mmt_statistic["mean"], width = RATING_ROUND_TO_THE_NEAREST * width_proportion, align = "center", color = LIGHT_GREY if args.error_bars else GREY)
         if args.error_bars:
-            axes[mmt_statistic_column].errorbar(x = x_values, y = data_mmt_statistic["mean"], yerr = data_mmt_statistic["sem"], fmt = "o", color = GREY)
+            axes[mmt_statistic_column].errorbar(x = x_values, y = data_mmt_statistic["mean"], yerr = data_mmt_statistic["sem"], fmt = ".", color = GREY)
 
         # y and x axis labels
         if (not args.column) or (args.column and (mmt_statistic_column == MMT_STATISTIC_COLUMNS[-1])):
-            axes[mmt_statistic_column].set_xlabel("Rating", fontsize = axis_tick_fontsize)
+            axes[mmt_statistic_column].set_xlabel("Rating", fontsize = axes_label_fontsize)
         elif args.column and (mmt_statistic_column != MMT_STATISTIC_COLUMNS[-1]):
             axes[mmt_statistic_column].sharex(other = axes[MMT_STATISTIC_COLUMNS[-1]])
             # axes[mmt_statistic_column].set_xticklabels([])
-        axes[mmt_statistic_column].set_ylabel(statistic_fancy, fontsize = axis_tick_fontsize)
+        axes[mmt_statistic_column].set_ylabel("".join(map(lambda word: word[0], mmt_statistic_column.split("_"))).upper() + (" (%)" if ("consistency" in mmt_statistic_column) else ""), fontsize = axes_label_fontsize)
         # axes[mmt_statistic_column].grid()
 
         # set range of x axis to avoid weird outliers

@@ -119,23 +119,27 @@ if __name__ == "__main__":
     ##################################################
 
     # create figure
-    figsize = (4, 4) if args.column else (8, 2.2)
+    figsize = (4, 2.7) if args.column else (8, 2.2)
     fig, axes = plt.subplot_mosaic(mosaic = [["genres"]], constrained_layout = True, figsize = figsize)
     xlabel, ylabel = "Genre", "Percent of Songs (%)"
     xaxis_tick_label_rotation = 0
 
-    # plot by facet
+    # plot hyperparameters
     axis_tick_fontsize = "small"
     total_width = 0.8
     width = total_width / len(FACETS_FOR_PLOTTING)
     offset = np.arange(start = 0.5 * (width - total_width), stop = 0.5 * total_width , step = width) # offsets
     xticks = np.arange(len(genres))
     yticks = 10 ** np.arange(start = 0, stop = 3, step = 1)
+    bar_edgecolor = "0.2"
+    bar_edgewidth = 0.55
+
+    # plot by facet
     for i, facet in enumerate(FACETS_FOR_PLOTTING):
         if args.column:
-            axes["genres"].barh(y = xticks + offset[i], width = data[facet], height = width, align = "center", log = True, label = facet, color = FACET_COLORS[facet])
+            axes["genres"].barh(y = xticks + offset[i], width = data[facet], height = width, align = "center", log = True, label = facet, color = FACET_COLORS[facet], edgecolor = bar_edgecolor, linewidth = bar_edgewidth)
         else:
-            axes["genres"].bar(x = xticks + offset[i], height = data[facet], width = width, align = "center", log = True, label = facet, color = FACET_COLORS[facet])
+            axes["genres"].bar(x = xticks + offset[i], height = data[facet], width = width, align = "center", log = True, label = facet, color = FACET_COLORS[facet], edgecolor = bar_edgecolor, linewidth = bar_edgewidth)
     if args.column:
         # axes["genres"].set_ylabel(xlabel, fontsize = axis_tick_fontsize)
         axes["genres"].set_yticks(ticks = xticks, labels = genres, fontsize = axis_tick_fontsize, rotation = xaxis_tick_label_rotation) # get genre names
