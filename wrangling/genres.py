@@ -132,7 +132,7 @@ if __name__ == "__main__":
     xticks = np.arange(len(genres))
     yticks = 10 ** np.arange(start = 0, stop = 3, step = 1)
     bar_edgecolor = "0.2"
-    bar_edgewidth = 0.55
+    bar_edgewidth = 0.45
 
     # plot by facet
     for i, facet in enumerate(FACETS_FOR_PLOTTING):

@@ -142,10 +142,7 @@ if __name__ == "__main__":
         axes[mmt_statistic_column].set_xlim(left = 3.0 - (0.5 * RATING_ROUND_TO_THE_NEAREST), right = 5.0 + (0.5 * RATING_ROUND_TO_THE_NEAREST))
 
         # improve range of y axis
-        if args.error_bars:
-            min_val, max_val = min(data_mmt_statistic["mean"] - data_mmt_statistic["sem"]), max(data_mmt_statistic["mean"] + data_mmt_statistic["sem"])
-        else:
-            min_val, max_val = min(data_mmt_statistic["mean"]), max(data_mmt_statistic["mean"])
+        min_val, max_val = min(data_mmt_statistic["mean"] - (data_mmt_statistic["sem"] if args.error_bars else 0)), max(data_mmt_statistic["mean"] + (data_mmt_statistic["sem"] if args.error_bars else 0))
         margin = margin_proportion * (max_val - min_val)
         axes[mmt_statistic_column].set_ylim(bottom = min_val - margin, top = max_val + margin)
 
