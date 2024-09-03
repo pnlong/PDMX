@@ -226,6 +226,7 @@ if __name__ == "__main__":
     half_bar_width = 0.5 * individual_bar_width
     alpha_for_fine_tune = (1.0, 0.6)
     bar_plot_margin = 0.02 # set None if there is no margin and matplotlib automatically decides
+    linewidth = 1.0
     xticks = np.arange(len(FACETS_FOR_PLOTTING))
 
     # plot a bar plot
@@ -246,7 +247,7 @@ if __name__ == "__main__":
                 axes["bar"].errorbar(x = xticks + ((1 if fine_tuned else -1) * half_bar_width),
                                      y = mos_by_fine_tuned.loc[model, "mean"],
                                      yerr = mos_by_fine_tuned.loc[model, "sem"],
-                                     fmt = "o",
+                                     fmt = "o", elinewidth = linewidth,
                                      color = "0.4")
         if bar_plot_margin is not None:
             low, high = min(mos["mean"] - (mos["sem"] if args.error_bars else 0)), max(mos["mean"] + (mos["sem"] if args.error_bars else 0))
@@ -261,7 +262,7 @@ if __name__ == "__main__":
                        hue = "fine_tuned",
                        split = True,
                        inner = "quart",
-                       fill = True, linewidth = 1,
+                       fill = True, linewidth = linewidth,
                        ax = axes["violin"]
                        )
         for i, patch in enumerate(violin_parts.findobj(PolyCollection)):
