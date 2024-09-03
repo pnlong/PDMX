@@ -245,7 +245,8 @@ if __name__ == "__main__":
                                       fmt = "o",
                                       color = "0.4")
         if bar_plot_margin is not None:
-            axes["plot"].set_ylim(bottom = (1 - bar_plot_margin) * min(mos["mean"] - mos["sem"]), top = (1 + bar_plot_margin) * max(mos["mean"] + mos["sem"])) # add limits
+            low, high = min(mos["mean"] - (mos["sem"] if args.error_bars else 0)), max(mos["mean"] + (mos["sem"] if args.error_bars else 0))
+            axes["plot"].set_ylim(bottom = (1 - bar_plot_margin) * low, top = (1 + bar_plot_margin) * high) # add limits
                 
     # plot a violion plot
     else:
