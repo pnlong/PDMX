@@ -241,7 +241,7 @@ if __name__ == "__main__":
                                 label = "Fine Tuned" if fine_tuned else "Base",
                                 color = FACET_COLORS[facet],
                                 alpha = alpha_for_fine_tune[fine_tuned],
-                                edgecolor = linecolor, linewidth = linewidth
+                                edgecolor = linecolor, linewidth = linewidth # comment out this line to remove borders from bar plot
                                 )
         if args.error_bars: # error bars if needed
             mos_by_fine_tuned = mos.droplevel(level = "facet", axis = 0)
