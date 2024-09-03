@@ -217,7 +217,7 @@ if __name__ == "__main__":
     fig, axes = plt.subplot_mosaic(mosaic = mosaic, constrained_layout = True, figsize = (5, 2.6 * (1.6 if args.combined else 1)))
 
     # plot hyperparameters
-    axis_label_fontsize = "small"
+    axis_label_fontsize = "medium"
     xlabel = "Subset"
     ylabel = {"violin": "Rating", "bar": "Mean Opinion Score"}
     axis_tick_fontsize = "x-small"
