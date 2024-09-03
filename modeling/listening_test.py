@@ -261,7 +261,7 @@ if __name__ == "__main__":
                        hue = "fine_tuned",
                        split = True,
                        inner = "quart",
-                       fill = True,
+                       fill = True, linewidth = 0,
                        ax = axes["violin"]
                        )
         for i, patch in enumerate(violin_parts.findobj(PolyCollection)):
