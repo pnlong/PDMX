@@ -221,7 +221,7 @@ if __name__ == "__main__":
     individual_bar_width = total_bar_width / 2
     half_bar_width = 0.5 * individual_bar_width
     alpha_for_fine_tune = (1.0, 0.6)
-    bar_plot_margin = 0.08 # set None if there is no margin and matplotlib automatically decides
+    bar_plot_margin = 0.02 # set None if there is no margin and matplotlib automatically decides
     xticks = np.arange(len(FACETS_FOR_PLOTTING))
 
     # plot a bar plot
