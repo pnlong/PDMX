@@ -239,9 +239,6 @@ if __name__ == "__main__":
     # set up the logger
     logging.basicConfig(level = logging.INFO, format = "%(message)s")
 
-    # save random seed so this can be replicated
-    random.seed(0)
-
     ##################################################
 
 
@@ -309,6 +306,7 @@ if __name__ == "__main__":
 
     # get random facet
     dataset[f"facet:{RANDOM_FACET_NAME}"] = np.zeros(shape = len(dataset), dtype = np.bool_)
+    random.seed(0) # save random seed so this can be replicated
     dataset.loc[random.sample(population = range(len(dataset)), k = sum(dataset[f"facet:{FACETS[-1]}"])), f"facet:{RANDOM_FACET_NAME}"] = True
 
     # get partitions set up
@@ -321,7 +319,9 @@ if __name__ == "__main__":
             output_file.write("\n".join(paths))
 
     # go through the different facets
-    facets = FACETS + FACETS_HQ + [RANDOM_FACET_NAME]
+    paths_used_to_train = set()
+    facets = FACETS + [RANDOM_FACET_NAME] + FACETS_HQ
+    random.seed(0) # save random seed so this can be replicated
     for facet in facets:
 
         # filter dataset
@@ -337,11 +337,14 @@ if __name__ == "__main__":
             n_valid, n_test = int(partitions["valid"] * len(data)), int(partitions["test"] * len(data)) # get the validation and test partitions from the ratios
             n_train = len(data) - n_valid - n_test # as to not exclude any files, the train partition is simply what's not in the validation or test partition
             paths = random.sample(population = data, k = len(data)) # shuffle paths
-            save_paths_to_file(paths = paths[:n_train], output_filepath = f"{output_dir}/train.txt") # train partition
+            train_paths = paths[:n_train]
+            paths_used_to_train.update(train_paths)
+            save_paths_to_file(paths = train_paths, output_filepath = f"{output_dir}/train.txt") # train partition
             save_paths_to_file(paths = paths[n_train:(n_train + n_valid)], output_filepath = f"{output_dir}/valid.txt") # validation partition
             if n_test > 0:
                 save_paths_to_file(paths = paths[(n_train + n_valid):], output_filepath = f"{output_dir}/test.txt") # test partition
         elif facet in FACETS_HQ: # these are only for evals, so no need for different partitions
+            data = list(filter(lambda path: path not in paths_used_to_train, data))
             paths = random.sample(population = data, k = len(data)) # shuffle paths
             save_paths_to_file(paths = paths, output_filepath = f"{output_dir}/valid.txt") # train partition
     # update
