@@ -12,8 +12,8 @@
 ##################################################
 
 # software filepaths
-software_dir="/home/pnlong/model_musescore"
-software="${software_dir}/modeling/train.py"
+software_dir=$(dirname "${0}")
+software="${software_dir}/train.py"
 
 # defaults
 base_dir="/home/pnlong/musescore/remi"
