@@ -333,7 +333,7 @@ if __name__ == "__main__":
             mkdir(output_dir)
 
         # partition files
-        if facet in FACETS: # normal partitioning
+        if (facet in FACETS) or (facet == RANDOM_FACET_NAME): # normal partitioning
             n_valid, n_test = int(partitions["valid"] * len(data)), int(partitions["test"] * len(data)) # get the validation and test partitions from the ratios
             n_train = len(data) - n_valid - n_test # as to not exclude any files, the train partition is simply what's not in the validation or test partition
             paths = random.sample(population = data, k = len(data)) # shuffle paths
