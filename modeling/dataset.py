@@ -147,6 +147,9 @@ class MusicDataset(torch.utils.data.Dataset):
         # check the shape of the loaded notes
         assert notes.shape[1] == 5
 
+        # ensure notes are valid
+        notes[:, 2] = np.clip(a = notes[:, 2], a_min = 0, a_max = 127) # ensure pitches are valid
+
         # data augmentation
         if self.use_augmentation:
 
