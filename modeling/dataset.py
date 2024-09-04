@@ -44,10 +44,12 @@ import utils
 
 # output directory
 OUTPUT_DIR = "/data1/pnlong/musescore/remi"
+RANDOM_FACET_NAME = "random"
 
 # facets of the dataset
 HQ_RATING_THRESHOLDS = [0, 3.0, 3.5, 4.0, 4.5]
-FACETS_HQ = list(map(lambda hq_rating_threshold: f"{FACETS[-1]}-{hq_rating_threshold:.1f}" if (hq_rating_threshold > 0) else "not_rated_deduplicated", HQ_RATING_THRESHOLDS)) # high quality facet names
+NOT_RATED_FACET = "not_rated_deduplicated"
+FACETS_HQ = list(map(lambda hq_rating_threshold: f"{FACETS[-1]}-{hq_rating_threshold:.1f}" if (hq_rating_threshold > 0) else NOT_RATED_FACET, HQ_RATING_THRESHOLDS)) # high quality facet names
 
 # partition names
 PARTITIONS = {"train": 0.9, "valid": 0.1, "test": 0.0} # no test partition
@@ -302,6 +304,10 @@ if __name__ == "__main__":
         else:
             dataset[f"facet:{facet_hq}"] = (dataset["rating"] == 0)
 
+    # get random facet
+    dataset[f"facet:{RANDOM_FACET_NAME}"] = np.zeros(shape = len(dataset), dtype = np.bool_)
+    dataset.loc[random.sample(population = range(len(dataset)), k = sum(dataset[f"facet:{FACETS[-1]}"])), f"facet:{RANDOM_FACET_NAME}"] = True
+
     # get partitions set up
     partitions = dict(zip(PARTITIONS.keys(), (1 - args.ratio_valid - args.ratio_test, args.ratio_valid, args.ratio_test)))
 
@@ -312,7 +318,8 @@ if __name__ == "__main__":
             output_file.write("\n".join(paths))
 
     # go through the different facets
-    for facet in (FACETS + FACETS_HQ):
+    facets = FACETS + FACETS_HQ + [RANDOM_FACET_NAME]
+    for facet in facets:
 
         # filter dataset
         data = dataset[dataset[f"facet:{facet}"]]["output_path"].to_list() # filter down to only necessary column, output_path
