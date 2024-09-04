@@ -13,7 +13,7 @@
 
 # software filepaths
 software_dir="/home/pnlong/model_musescore"
-software="${software_dir}/remi_train.py"
+software="${software_dir}/modeling/train.py"
 
 # defaults
 base_dir="/home/pnlong/musescore/remi"
