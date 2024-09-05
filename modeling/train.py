@@ -382,7 +382,7 @@ if __name__ == "__main__":
         wandb.log({"train": loss["train"]}, step = step)
 
         # save state dict
-        if step % args.save_steps == 0:
+        if (step % args.save_steps) == 0:
             steps_for_save = int(step / args.valid_steps)
             torch.save(obj = model.state_dict(), f = f"{checkpoints_dir}/model.{steps_for_save}.pth") # save the model
             torch.save(obj = optimizer.state_dict(), f = f"{checkpoints_dir}/optimizer.{steps_for_save}.pth") # save the optimizer state
