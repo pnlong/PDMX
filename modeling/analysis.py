@@ -43,6 +43,8 @@ plt.style.use("default")
 
 COLUMNS = ["facet"] + OUTPUT_COLUMNS
 
+FACETS_FOR_TABLE = sorted(FACETS) + [RANDOM_FACET]
+
 ##################################################
 
 
@@ -116,15 +118,16 @@ if __name__ == "__main__":
     # output mmt statistics and perplexity
     bar_width = 100
     correct_model = list(map(lambda model_name: model_name.startswith(model), dataset["model"]))
+    sort_facets = lambda facets: pd.Index(facets.to_series().apply(lambda facet: FACETS_FOR_TABLE.index(facet)))
     float_formatter = lambda num: f"{num:.2f}"
     logging.info(f"\n{' MMT STATISTICS ':=^{bar_width}}\n") # mmt statistics
     dataset[MMT_STATISTIC_COLUMNS[1]] *= 100 # convert scale consistency to percentage
     dataset[MMT_STATISTIC_COLUMNS[2]] *= 100 # convert groove consistency to percentage
-    mmt_statistics = dataset.loc[correct_model, ["facet", "model"] + MMT_STATISTIC_COLUMNS].groupby(by = ["model", "facet"]).agg(["mean", "sem"])
+    mmt_statistics = dataset.loc[correct_model, ["facet", "model"] + MMT_STATISTIC_COLUMNS].groupby(by = ["model", "facet"]).agg(["mean", "sem"]).sort_index(axis = 0, level = "facet", ascending = True, key = sort_facets)
     logging.info(mmt_statistics.to_string(float_format = float_formatter))
     logging.info(f"\n{' PERPLEXITY ':=^{bar_width}}\n") # perplexity
     loss_facet_columns = list(filter(lambda column: column.startswith("loss:"), dataset.columns))
-    perplexity = dataset.loc[correct_model, ["facet", "model"] + loss_facet_columns].groupby(by = ["model", "facet"]).agg(loss_to_perplexity) # group by model and facet
+    perplexity = dataset.loc[correct_model, ["facet", "model"] + loss_facet_columns].groupby(by = ["model", "facet"]).agg(loss_to_perplexity).sort_index(axis = 0, level = "facet", ascending = True, key = sort_facets) # group by model and facet
     perplexity = perplexity.rename(columns = dict(zip(loss_facet_columns, map(lambda loss_facet_column: loss_facet_column[len("loss:"):].replace(f"{FACETS[-1]}", "").replace("-", "").replace("_", ""), loss_facet_columns)))) # rename columns
     logging.info(perplexity.to_string(float_format = float_formatter))
     logging.info("\n" + "".join(("=" for _ in range(bar_width))))
@@ -133,23 +136,22 @@ if __name__ == "__main__":
     output_filepath_table = f"{output_dir}/results.txt"
     def get_latex_table_helper(fine_tuned: bool = False) -> str:
         """Helper function to output a latex table."""
-        facets = sorted(FACETS) + [RANDOM_FACET]
         table = pd.DataFrame(
             data = {
-                "facet": list(map(lambda facet: f"\\RaggedRight{{{make_facet_name_fancy(facet = facet)}}}", facets)),
-                "fine_tuned": utils.rep(x = "\cmark" if fine_tuned else "", times = len(facets)),
+                "facet": list(map(lambda facet: f"\\RaggedRight{{{make_facet_name_fancy(facet = facet)}}}", FACETS_FOR_TABLE)),
+                "fine_tuned": utils.rep(x = "\cmark" if fine_tuned else "", times = len(FACETS_FOR_TABLE)),
             }
         )
         model_name = model + (f"_{FINE_TUNING_SUFFIX}" if fine_tuned else "")
         mmt_statistics_model = mmt_statistics.xs(key = model_name, level = 0, axis = 0)
         for mmt_statistic in MMT_STATISTIC_COLUMNS:
-            table[mmt_statistic] = list(map(lambda facet: f"{mmt_statistics_model.at[facet, (mmt_statistic, 'mean')]:.2f} $\pm$ {mmt_statistics_model.at[facet, (mmt_statistic, 'sem')]:.2f}", facets))
+            table[mmt_statistic] = list(map(lambda facet: f"{mmt_statistics_model.at[facet, (mmt_statistic, 'mean')]:.2f} $\pm$ {mmt_statistics_model.at[facet, (mmt_statistic, 'sem')]:.2f}", FACETS_FOR_TABLE))
             significant_function = np.argmax if mmt_statistic != MMT_STATISTIC_COLUMNS[1] else np.argmin
             i_significant = significant_function(mmt_statistics_model[(mmt_statistic, "mean")])
             table.at[i_significant, mmt_statistic] = "\\bf{" + table.at[i_significant, mmt_statistic] + "}"
         perplexity_model = perplexity.xs(key = model_name, level = 0, axis = 0)
         for perplexity_column in filter(lambda perplexity_column: perplexity_column != FACETS[0], perplexity.columns):
-            table[perplexity_column] = list(map(lambda facet: f"{perplexity_model.at[facet, perplexity_column]:.2f}", facets))
+            table[perplexity_column] = list(map(lambda facet: f"{perplexity_model.at[facet, perplexity_column]:.2f}", FACETS_FOR_TABLE))
             i_significant = np.argmin(a = perplexity_model[perplexity_column]) # lower perplexity is better
             table.at[i_significant, perplexity_column] = "\\bf{" + table.at[i_significant, perplexity_column] + "}"
         table_string = ""
