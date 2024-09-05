@@ -37,7 +37,7 @@ plt.style.use("default")
 
 PLOTS_DIR_NAME = "plots"
 
-RATING_ROUND_TO_THE_NEAREST = 0.1 # round to the nearest n-th to discretize ratings
+RATING_ROUND_TO_THE_NEAREST = 0.05 # round to the nearest n-th to discretize ratings
 
 ##################################################
 

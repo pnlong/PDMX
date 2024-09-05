@@ -80,7 +80,7 @@ if __name__ == "__main__":
     output_path = args.output_path
     if output_path is None:
         path_info = args.path[:-len(".npy")].split("/")[-4:]
-        output_dir = f"/home/pnlong/musescore/remi/generated_audio/{path_info[1]}"
+        output_dir = f"/home/pnlong/musescore/experiments/generated_audio/{path_info[1]}"
         if not exists(output_dir):
             makedirs(output_dir, exist_ok = True)
         output_path = f"{output_dir}/{path_info[0]}.{path_info[-1]}.wav"

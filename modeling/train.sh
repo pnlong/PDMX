@@ -16,8 +16,8 @@ software_dir=$(dirname "${0}")
 software="${software_dir}/train.py"
 
 # defaults
-base_dir="/home/pnlong/musescore/remi"
-fine_tuning_facet_name="rated_deduplicated-4.0"
+base_dir="/home/pnlong/musescore/experiments"
+fine_tuning_facet_name="fine_tuning"
 data_dir="${base_dir}/all"
 gpu=-1 # gpu number
 resume=""

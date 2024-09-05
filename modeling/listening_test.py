@@ -134,7 +134,7 @@ if __name__ == "__main__":
             Given the input path, return the output audio path prefix.
             """
 
-            path_info = path[:-len(".npy")].split("/")[-4:] # /home/pnlong/musescore/remi/all/20M/eval/0.npy
+            path_info = path[:-len(".npy")].split("/")[-4:] # /home/pnlong/musescore/experiments/all/20M/eval/0.npy
             output_dir = args.output_dir
             if not exists(output_dir):
                 mkdir(output_dir)

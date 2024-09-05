@@ -62,6 +62,7 @@ DROPOUT = 0.2
 # training constants
 N_STEPS = 100000
 N_VALID_STEPS = 1000
+N_SAVE_STEPS = 5000
 EARLY_STOPPING_TOLERANCE = 20
 LEARNING_RATE = 0.0005
 LEARNING_RATE_WARMUP_STEPS = 5000
@@ -128,6 +129,7 @@ def parse_args(args = None, namespace = None):
     # training
     parser.add_argument("--steps", default = N_STEPS, type = int, help = "Number of steps")
     parser.add_argument("--valid_steps", default = N_VALID_STEPS, type = int, help = "Validation frequency")
+    parser.add_argument("--save_steps", default = N_SAVE_STEPS, type = int, help = "Frequency to save model parameters")
     parser.add_argument("--early_stopping", action = argparse.BooleanOptionalAction, default = False, help = "Whether to use early stopping")
     parser.add_argument("--early_stopping_tolerance", default = EARLY_STOPPING_TOLERANCE, type = int, help = "Number of extra validation rounds before early stopping")
     parser.add_argument("-lr", "--learning_rate", default = LEARNING_RATE, type = float, help = "Learning rate")
@@ -378,6 +380,13 @@ if __name__ == "__main__":
         
         # log train info for wandb
         wandb.log({"train": loss["train"]}, step = step)
+
+        # save state dict
+        if step % args.save_steps == 0:
+            steps_for_save = int(step / args.valid_steps)
+            torch.save(obj = model.state_dict(), f = f"{checkpoints_dir}/model.{steps_for_save}.pth") # save the model
+            torch.save(obj = optimizer.state_dict(), f = f"{checkpoints_dir}/optimizer.{steps_for_save}.pth") # save the optimizer state
+            torch.save(obj = scheduler.state_dict(), f = f"{checkpoints_dir}/scheduler.{steps_for_save}.pth") # save the scheduler state
 
         ##################################################
 

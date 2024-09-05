@@ -43,13 +43,15 @@ import utils
 ##################################################
 
 # output directory
-OUTPUT_DIR = "/data1/pnlong/musescore/remi"
-RANDOM_FACET_NAME = "random"
+OUTPUT_DIR = "/data1/pnlong/musescore/experiments"
 
 # facets of the dataset
-HQ_RATING_THRESHOLDS = [0, 3.0, 3.5, 4.0, 4.5]
+RANDOM_FACET = "random"
+FINE_TUNING_FACET = "fine_tuning"
 NOT_RATED_FACET = "not_rated_deduplicated"
-FACETS_HQ = list(map(lambda hq_rating_threshold: f"{FACETS[-1]}-{hq_rating_threshold:.1f}" if (hq_rating_threshold > 0) else NOT_RATED_FACET, HQ_RATING_THRESHOLDS)) # high quality facet names
+FACETS_PPL_PREFIX = FACETS[-1]
+FACETS_PPL = list(map(lambda quartile: f"{FACETS_PPL_PREFIX}-{quartile}" if (quartile > 0) else NOT_RATED_FACET, range(5))) # high quality facet names
+HELD_OUT_FRACTION = 0.1 # how much to hold out for perplexity facets
 
 # partition names
 PARTITIONS = {"train": 0.9, "valid": 0.1, "test": 0.0} # no test partition
@@ -297,56 +299,74 @@ if __name__ == "__main__":
     # PARTITION
     ##################################################
 
-    # get high quality facet
-    for hq_rating_threshold, facet_hq in zip(HQ_RATING_THRESHOLDS, FACETS_HQ):
-        if hq_rating_threshold > 0:
-            dataset[f"facet:{facet_hq}"] = (dataset[f"facet:{FACETS[-1]}"] & (dataset["rating"] > hq_rating_threshold))
-        else:
-            dataset[f"facet:{facet_hq}"] = (dataset["rating"] == 0)
+    # set random seeds
+    random.seed(0)
+    np.random.seed(0)
+    torch.manual_seed(0)
+    
+    # helper function for saving to a file
+    def save_paths_to_file(paths: List[str], output_filepath: str) -> None:
+        """Given a list of paths, save to a file."""
 
-    # get random facet
-    dataset[f"facet:{RANDOM_FACET_NAME}"] = np.zeros(shape = len(dataset), dtype = np.bool_)
-    random.seed(0) # save random seed so this can be replicated
-    dataset.loc[random.sample(population = range(len(dataset)), k = sum(dataset[f"facet:{FACETS[-1]}"])), f"facet:{RANDOM_FACET_NAME}"] = True
+        # ensure output directory exists
+        if not exists(dirname(output_filepath)):
+            mkdir(dirname(output_filepath))
+
+        # write to file
+        with open(output_filepath, "w") as output_file:
+            output_file.write("\n".join(paths))
 
     # get partitions set up
     partitions = dict(zip(PARTITIONS.keys(), (1 - args.ratio_valid - args.ratio_test, args.ratio_valid, args.ratio_test)))
 
-    # helper function for saving to a file
-    def save_paths_to_file(paths: List[str], output_filepath: str) -> None:
-        """Given a list of paths, save to a file."""
-        with open(output_filepath, "w") as output_file:
-            output_file.write("\n".join(paths))
+    # get rating quartiles for the rated deduplicated subset
+    quartiles = list(range(0, 101, 25))
+    rating_quartiles = np.percentile(a = dataset.loc[dataset[f"facet:{FACETS[-1]}"], "rating"], q = quartiles)
+    logging.info(f"Rating Quartiles:")
+    for quartile, rating_quartile in zip(quartiles, rating_quartiles):
+        logging.info(f"  - {quartile}th: {rating_quartile:.2f}")
+    rating_quartiles[0] -= 0.01 # just so that the first quartile facet includes the minimum
 
-    # go through the different facets
-    paths_used_to_train = set()
-    facets = FACETS + [RANDOM_FACET_NAME] + FACETS_HQ
-    random.seed(0) # save random seed so this can be replicated
-    for facet in facets:
+    # create validation partitions for perplexity facets
+    off_limit_paths_valid = set()
+    for facet in FACETS_PPL:
+        if facet == NOT_RATED_FACET:
+            paths_mask = (dataset[f"facet:{FACETS[2]}"] & (dataset["rating"] == 0)) # unrated facet, which is a subset of the deduplicated facet
+        else:
+            i = int(facet[len(f"{FACETS_PPL_PREFIX}-"):])
+            paths_mask = (dataset[f"facet:{FACETS[-1]}"] & (dataset["rating"] > rating_quartiles[i - 1]) & (dataset["rating"] <= rating_quartiles[i]))
+        paths = dataset.loc[paths_mask, "output_path"].to_list() # filter down to only necessary column, output_path
+        paths_valid = random.sample(population = paths, k = int(len(paths) * HELD_OUT_FRACTION))
+        save_paths_to_file(paths = paths_valid, output_filepath = f"{args.output_dir}/{facet}/valid.txt")
+        off_limit_paths_valid.update(paths_valid)
 
-        # filter dataset
-        data = dataset[dataset[f"facet:{facet}"]]["output_path"].to_list() # filter down to only necessary column, output_path
+    # get random and fine tuning facets
+    dataset[f"facet:{RANDOM_FACET}"] = np.zeros(shape = len(dataset), dtype = np.bool_)
+    dataset.loc[random.sample(population = range(len(dataset)), k = sum(dataset[f"facet:{FACETS[-1]}"])), f"facet:{RANDOM_FACET}"] = True # set randomly to True (same amount as rated_deduplicated subset)
+    dataset[f"facet:{FINE_TUNING_FACET}"] = (dataset[f"facet:{FACETS[-1]}"] & (dataset["rating"] > rating_quartiles[len(rating_quartiles) // 2])) # strictly greater than the middle quartile
 
-        # create subdirectory
-        output_dir = f"{args.output_dir}/{facet}"
-        if not exists(output_dir):
-            mkdir(output_dir)
+    # go through normal facets and create various partitions
+    for facet in FACETS + [RANDOM_FACET, FINE_TUNING_FACET]:
 
-        # partition files
-        if (facet in FACETS) or (facet == RANDOM_FACET_NAME): # normal partitioning
-            n_valid, n_test = int(partitions["valid"] * len(data)), int(partitions["test"] * len(data)) # get the validation and test partitions from the ratios
-            n_train = len(data) - n_valid - n_test # as to not exclude any files, the train partition is simply what's not in the validation or test partition
-            paths = random.sample(population = data, k = len(data)) # shuffle paths
-            train_paths = paths[:n_train]
-            paths_used_to_train.update(train_paths)
-            save_paths_to_file(paths = train_paths, output_filepath = f"{output_dir}/train.txt") # train partition
-            save_paths_to_file(paths = paths[n_train:(n_train + n_valid)], output_filepath = f"{output_dir}/valid.txt") # validation partition
-            if n_test > 0:
-                save_paths_to_file(paths = paths[(n_train + n_valid):], output_filepath = f"{output_dir}/test.txt") # test partition
-        elif facet in FACETS_HQ: # these are only for evals, so no need for different partitions
-            data = list(filter(lambda path: path in paths_used_to_train, data))
-            paths = random.sample(population = data, k = len(data)) # shuffle paths
-            save_paths_to_file(paths = paths, output_filepath = f"{output_dir}/valid.txt") # train partition
+        # get and shuffle paths for this facet
+        paths = dataset.loc[dataset[f"facet:{facet}"], "output_path"].to_list() # filter down to only necessary column, output_path
+        paths = random.sample(population = paths, k = len(paths)) # shuffle paths
+        n_valid, n_test = int(partitions["valid"] * len(paths)), int(partitions["test"] * len(paths)) # get the validation and test partitions from the ratios
+        n_train = len(paths) - n_valid - n_test # as to not exclude any files, the train partition is simply what's not in the validation or test partition
+        
+        # ensure no data leaks
+        paths_train, paths_valid = paths[:n_train], paths[n_train:(n_train + n_valid)] # get base train and validation partitions
+        leaks = list(filter(lambda path: path in off_limit_paths_valid, paths_train)) # get data leaks from train partitions
+        paths_train = list(filter(lambda path: path not in off_limit_paths_valid, paths_train)) # ensure no leaks in train partition
+        paths_valid += leaks # add any data leaks to the validation partition
+
+        # save to files
+        output_dir = f"{args.output_dir}/{facet}" # get output directory
+        save_paths_to_file(paths = paths_train, output_filepath = f"{output_dir}/train.txt") # train partition
+        save_paths_to_file(paths = paths_valid, output_filepath = f"{output_dir}/valid.txt") # validation partition
+        if n_test > 0:
+            save_paths_to_file(paths = paths[(n_train + n_valid):], output_filepath = f"{output_dir}/test.txt") # test partition
+
     # update
     logging.info("Partitioned data.")
 

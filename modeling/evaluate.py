@@ -35,7 +35,7 @@ sys.path.insert(0, dirname(dirname(realpath(__file__))))
 
 from wrangling.full import MMT_STATISTIC_COLUMNS, CHUNK_SIZE, pitch_class_entropy, scale_consistency, groove_consistency, get_tracks_string
 from wrangling.deduplicate import FACETS
-from dataset import FACETS_HQ, MusicDataset, pad
+from dataset import FACETS_PPL, MusicDataset, pad
 from train import OUTPUT_DIR, FINE_TUNING_SUFFIX
 from train import BATCH_SIZE as TRAIN_BATCH_SIZE
 from representation import Indexer, get_encoding, encode_notes, decode
@@ -58,7 +58,7 @@ TEMPERATURE = 1.0
 FILTER = "top_k"
 
 # facets to use as loss sets
-LOSS_FACETS = [FACETS[0]] + FACETS_HQ
+LOSS_FACETS = [FACETS[0]] + FACETS_PPL
 
 # output columns
 OUTPUT_COLUMNS = ["model", "path"] + MMT_STATISTIC_COLUMNS + ["tracks"] + list(map(lambda loss_facet: f"loss:{loss_facet}", LOSS_FACETS))
