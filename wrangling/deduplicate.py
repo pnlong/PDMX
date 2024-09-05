@@ -33,7 +33,7 @@ sys.path.insert(0, dirname(realpath(__file__)))
 sys.path.insert(0, dirname(dirname(realpath(__file__))))
 
 from full import OUTPUT_DIR, DATASET_DIR_NAME, CHUNK_SIZE, MMT_STATISTIC_COLUMNS
-from quality import PLOTS_DIR_NAME
+from quality import PLOTS_DIR_NAME, make_facet_name_fancy
 import utils
 
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
@@ -250,7 +250,9 @@ if __name__ == "__main__":
     output_filepath_magnitudes = f"{extra_output_dir}/magnitudes.csv"
     output_filepath = f"{output_dir}/{basename(dirname(args.dataset_filepath))}_deduplicated.csv"
     output_filepath_merged = f"{output_dir}/{basename(dirname(args.dataset_filepath))}.csv"
-    output_filepath_plot = f"{output_dir}/{PLOTS_DIR_NAME}/duplicates.pdf"
+    plots_dir = f"{output_dir}/{PLOTS_DIR_NAME}"
+    output_filepath_plot = f"{plots_dir}/duplicates.pdf"
+    output_filepath_table = f"{plots_dir}/subsets.txt"
 
     ##################################################
 
@@ -451,11 +453,20 @@ if __name__ == "__main__":
     faceted[MMT_STATISTIC_COLUMNS[2]] *= 100 # convert groove consistency to percentage
     faceted = faceted.groupby(by = "facet").agg(["mean", "sem"])
     logging.info(faceted.to_string(float_format = float_formatter))
-    logging.info("\n" + "".join(("=" for _ in range(bar_width))) + "\n")
-    for facet in faceted.index:
-        logging.info(" & ".join((f"${faceted.at[facet, (mmt_statistic, 'mean')]:.2f} \pm {faceted.at[facet, (mmt_statistic, 'sem')]:.2f}$" for mmt_statistic in MMT_STATISTIC_COLUMNS)))
-    del faceted
-    # logging.info(pd.DataFrame(data = list(map(lambda facet: dataset[dataset[f"facet:{facet}"]][MMT_STATISTIC_COLUMNS].mean(), FACETS)), index = FACETS).to_string(float_format = float_formatter))
+    
+    # output latex table to file
+    with open(output_filepath_table, "w") as output_file:
+        table = pd.DataFrame(
+            data = {
+                "facet": list(map(lambda facet: f"\\RaggedRight{{{make_facet_name_fancy(facet)}}}", faceted.index)),
+                "timesize": list(map(lambda facet: str(round(sum(dataset.loc[dataset[f"facet:{facet}"], "song_length.seconds"]) / (60 * 60))) + " / " + str(round(sum(dataset[f"facet:{facet}"]), -3)) + "K", faceted.index))
+            }
+        )
+        for mmt_statistic in MMT_STATISTIC_COLUMNS:
+            table[mmt_statistic] = list(map(lambda facet: f"${faceted.at[facet, (mmt_statistic, 'mean')]:.2f} \pm {faceted.at[facet, (mmt_statistic, 'sem')]:.2f}$", faceted.index))
+        for i in table.index:
+            output_file.write(" & ".join(table.loc[i, :].values.tolist()) + " \\\\\n")
+    del table, faceted
 
     # helper function to output statistics
     def output_statistics(rated_only: bool = False) -> None:
