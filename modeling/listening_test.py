@@ -159,8 +159,8 @@ if __name__ == "__main__":
                 return min(amount_per_group)
         with multiprocessing.Pool(processes = args.jobs) as pool:
             top_instrumentations_mask = np.array(list(tqdm(iterable = pool.map(func = minimum_common_amount_per_group, iterable = top_instrumentations, chunksize = CHUNK_SIZE),
-                                                        desc = "Choosing Different Instrumentations",
-                                                        total = len(top_instrumentations))))
+                                                           desc = "Choosing Different Instrumentations",
+                                                           total = len(top_instrumentations))))
         top_instrumentations = top_instrumentations[top_instrumentations_mask > 0] # only include where there is an example of that instrumentation in all groups
         n_different_instrumentations_other_than_top = min(len(top_instrumentations), args.n_samples_per_group) - 1
         n_samples_per_instrumentation = [args.n_samples_per_group - n_different_instrumentations_other_than_top] + utils.rep(x = 1, times = n_different_instrumentations_other_than_top)

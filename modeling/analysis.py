@@ -26,7 +26,7 @@ from wrangling.full import DATASET_DIR_NAME, MMT_STATISTIC_COLUMNS
 from wrangling.full import OUTPUT_DIR as DATASET_OUTPUT_DIR
 from wrangling.deduplicate import FACETS
 from wrangling.quality import make_facet_name_fancy, PLOTS_DIR_NAME
-from dataset import OUTPUT_DIR
+from dataset import OUTPUT_DIR, RANDOM_FACET
 from train import RELEVANT_PARTITIONS, FINE_TUNING_SUFFIX
 from evaluate import OUTPUT_COLUMNS, loss_to_perplexity
 import utils
@@ -133,7 +133,7 @@ if __name__ == "__main__":
     output_filepath_table = f"{output_dir}/results.txt"
     def get_latex_table_helper(fine_tuned: bool = False) -> str:
         """Helper function to output a latex table."""
-        facets = sorted(FACETS)
+        facets = sorted(FACETS) + [RANDOM_FACET]
         table = pd.DataFrame(
             data = {
                 "facet": list(map(lambda facet: f"\\RaggedRight{{{make_facet_name_fancy(facet = facet)}}}", facets)),
