@@ -442,6 +442,10 @@ if __name__ == "__main__":
     # OUTPUT STATISTICS
     ##################################################
 
+    # make necessary conversions
+    dataset[MMT_STATISTIC_COLUMNS[1]] *= 100 # convert scale consistency to percentage
+    dataset[MMT_STATISTIC_COLUMNS[2]] *= 100 # convert groove consistency to percentage
+
     # bar
     bar_width = 104 # how wide are the separation bars
 
@@ -449,8 +453,6 @@ if __name__ == "__main__":
     float_formatter = lambda num: f"{num:.2f}"
     logging.info(f"\n{' MMT STATISTICS ':=^{bar_width}}\n")
     faceted = pd.concat(objs = list(map(lambda facet: dataset[dataset[f"facet:{facet}"]][MMT_STATISTIC_COLUMNS].assign(facet = facet), FACETS)), axis = 0)
-    faceted[MMT_STATISTIC_COLUMNS[1]] *= 100 # convert scale consistency to percentage
-    faceted[MMT_STATISTIC_COLUMNS[2]] *= 100 # convert groove consistency to percentage
     faceted = faceted.groupby(by = "facet").agg(["mean", "sem"])
     logging.info(faceted.to_string(float_format = float_formatter))
     
@@ -458,15 +460,24 @@ if __name__ == "__main__":
     with open(output_filepath_table, "w") as output_file:
         table = pd.DataFrame(
             data = {
-                "facet": list(map(lambda facet: f"\\RaggedRight{{{make_facet_name_fancy(facet)}}}", faceted.index)),
-                "timesize": list(map(lambda facet: str(round(sum(dataset.loc[dataset[f"facet:{facet}"], "song_length.seconds"]) / (60 * 60))) + " / " + str(round(sum(dataset[f"facet:{facet}"]), -3)) + "K", faceted.index))
+                "facet": list(map(lambda facet: f"\\RaggedRight{{{make_facet_name_fancy(facet = facet)}}}", faceted.index)),
+                "timesize": list(map(lambda facet: f"{round(sum(dataset.loc[dataset[f'facet:{facet}'], 'song_length.seconds']) / (60 * 60)):,} / {sum(dataset[f'facet:{facet}']) // 1000:,}K", faceted.index))
             }
         )
         for mmt_statistic in MMT_STATISTIC_COLUMNS:
-            table[mmt_statistic] = list(map(lambda facet: f"${faceted.at[facet, (mmt_statistic, 'mean')]:.2f} \pm {faceted.at[facet, (mmt_statistic, 'sem')]:.2f}$", faceted.index))
+            table[mmt_statistic] = list(map(lambda facet: f"{faceted.at[facet, (mmt_statistic, 'mean')]:.2f} $\pm$ {faceted.at[facet, (mmt_statistic, 'sem')]:.2f}", faceted.index))
+            i_significant = np.argmax(a = faceted[mmt_statistic]["mean"]) if mmt_statistic != MMT_STATISTIC_COLUMNS[1] else np.argmin(a = faceted[mmt_statistic]["mean"])
+            table.at[i_significant, mmt_statistic] = "\\bf{" + table.at[i_significant, mmt_statistic] + "}"
         for i in table.index:
             output_file.write(" & ".join(table.loc[i, :].values.tolist()) + " \\\\\n")
-    del table, faceted
+        output_file.write("\\midrule\n")
+        fine_tuned = dataset[dataset[f"facet:{FACETS[-1]}"] & (dataset["rating"] > np.percentile(a = dataset.loc[dataset[f"facet:{FACETS[-1]}"], "rating"], q = 50))]
+        output_file.write(" & ".join([
+            "\\RaggedRight{{Fine-Tuning*}}",
+            f"{round(sum(fine_tuned['song_length.seconds']) / (60 * 60)):,} / {len(fine_tuned) // 1000:,}K",
+            ] + list(map(lambda mmt_statistic: f"{fine_tuned[mmt_statistic].mean():.2f} $\pm$ {fine_tuned[mmt_statistic].sem():.2f}", MMT_STATISTIC_COLUMNS))
+            ) + " \\\\\n")
+    del fine_tuned, table, faceted
 
     # helper function to output statistics
     def output_statistics(rated_only: bool = False) -> None:
