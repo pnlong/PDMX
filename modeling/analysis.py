@@ -43,7 +43,7 @@ plt.style.use("default")
 
 COLUMNS = ["facet"] + OUTPUT_COLUMNS
 
-FACETS_FOR_TABLE = sorted(FACETS) + [RANDOM_FACET]
+FACETS_FOR_TABLE = sorted(FACETS) # + [RANDOM_FACET]
 
 ##################################################
 
@@ -118,7 +118,7 @@ if __name__ == "__main__":
     # output mmt statistics and perplexity
     bar_width = 100
     correct_model = list(map(lambda model_name: model_name.startswith(model), dataset["model"]))
-    sort_facets = lambda facets: pd.Index(facets.to_series().apply(lambda facet: FACETS_FOR_TABLE.index(facet)))
+    sort_facets = lambda facets: pd.Index(facets.to_series().apply(lambda facet: FACETS_FOR_TABLE.index(facet) if facet in FACETS_FOR_TABLE else len(FACETS_FOR_TABLE)))
     float_formatter = lambda num: f"{num:.2f}"
     logging.info(f"\n{' MMT STATISTICS ':=^{bar_width}}\n") # mmt statistics
     dataset[MMT_STATISTIC_COLUMNS[1]] *= 100 # convert scale consistency to percentage
@@ -134,11 +134,13 @@ if __name__ == "__main__":
 
     # output latex table to file
     output_filepath_table = f"{output_dir}/results.txt"
-    def get_latex_table_helper(fine_tuned: bool = False) -> str:
+    make_facet_for_table = lambda facet: f"\\bf{{{'+'.join(map(lambda word: word[0].upper(), facet.split('_')))}}}"  # display facet for table
+    # make_facet_for_table = lambda facet: f"\\RaggedRight{{{make_facet_name_fancy(facet = facet)}}}" # display facet for table
+    def get_latex_table_helper(fine_tuned: bool = False, include_perplexity: bool = False) -> str:
         """Helper function to output a latex table."""
         table = pd.DataFrame(
             data = {
-                "facet": list(map(lambda facet: f"\\RaggedRight{{{make_facet_name_fancy(facet = facet)}}}", FACETS_FOR_TABLE)),
+                "facet": list(map(make_facet_for_table, FACETS_FOR_TABLE)),
                 "fine_tuned": utils.rep(x = "\cmark" if fine_tuned else "", times = len(FACETS_FOR_TABLE)),
             }
         )
@@ -146,14 +148,17 @@ if __name__ == "__main__":
         mmt_statistics_model = mmt_statistics.xs(key = model_name, level = 0, axis = 0)
         for mmt_statistic in MMT_STATISTIC_COLUMNS:
             table[mmt_statistic] = list(map(lambda facet: f"{mmt_statistics_model.at[facet, (mmt_statistic, 'mean')]:.2f} $\pm$ {mmt_statistics_model.at[facet, (mmt_statistic, 'sem')]:.2f}", FACETS_FOR_TABLE))
-            significant_function = np.argmax if mmt_statistic != MMT_STATISTIC_COLUMNS[1] else np.argmin
-            i_significant = significant_function(mmt_statistics_model[(mmt_statistic, "mean")])
-            table.at[i_significant, mmt_statistic] = "\\bf{" + table.at[i_significant, mmt_statistic] + "}"
-        perplexity_model = perplexity.xs(key = model_name, level = 0, axis = 0)
-        for perplexity_column in filter(lambda perplexity_column: perplexity_column != FACETS[0], perplexity.columns):
-            table[perplexity_column] = list(map(lambda facet: f"{perplexity_model.at[facet, perplexity_column]:.2f}", FACETS_FOR_TABLE))
-            i_significant = np.argmin(a = perplexity_model[perplexity_column]) # lower perplexity is better
-            table.at[i_significant, perplexity_column] = "\\bf{" + table.at[i_significant, perplexity_column] + "}"
+            i_significant = np.argsort(a = mmt_statistics_model[(mmt_statistic, "mean")], axis = 0)
+            i_significant = i_significant[::-1] if (mmt_statistic != MMT_STATISTIC_COLUMNS[1]) else i_significant
+            table.at[i_significant[0], mmt_statistic] = "\\bf{" + table.at[i_significant, mmt_statistic] + "}"
+            table.at[i_significant[1], mmt_statistic] = "\\underline{" + table.at[i_significant, mmt_statistic] + "}"
+        if include_perplexity:
+            perplexity_model = perplexity.xs(key = model_name, level = 0, axis = 0)
+            for perplexity_column in filter(lambda perplexity_column: perplexity_column != FACETS[0], perplexity.columns):
+                table[perplexity_column] = list(map(lambda facet: f"{perplexity_model.at[facet, perplexity_column]:.2f}", FACETS_FOR_TABLE))
+                i_significant = np.argsort(a = perplexity_model[perplexity_column], axis = 0) # lower peplexity is better
+                table.at[i_significant[0], perplexity_column] = "\\bf{" + table.at[i_significant, perplexity_column] + "}"
+                table.at[i_significant[1], perplexity_column] = "\\underline{" + table.at[i_significant, perplexity_column] + "}"
         table_string = ""
         for i in table.index:
             table_string += " & ".join(table.loc[i, :].values.tolist()) + " \\\\\n"

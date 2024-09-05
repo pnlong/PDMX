@@ -457,10 +457,11 @@ if __name__ == "__main__":
     logging.info(faceted.to_string(float_format = float_formatter))
     
     # output latex table to file
+    make_facet_for_table = lambda facet: f"\\RaggedRight{{{make_facet_name_fancy(facet = facet)}}}" # make facet for the table
     with open(output_filepath_table, "w") as output_file:
         table = pd.DataFrame(
             data = {
-                "facet": list(map(lambda facet: f"\\RaggedRight{{{make_facet_name_fancy(facet = facet)}}}", faceted.index)),
+                "facet": list(map(make_facet_for_table, faceted.index)),
                 "timesize": list(map(lambda facet: f"{round(sum(dataset.loc[dataset[f'facet:{facet}'], 'song_length.seconds']) / (60 * 60)):,} / {sum(dataset[f'facet:{facet}']) // 1000:,}K", faceted.index))
             }
         )

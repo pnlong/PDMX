@@ -52,7 +52,7 @@ plt.style.use("default")
 ##################################################
 
 OUTPUT_DIR = f"{DATASET_OUTPUT_DIR}/listening_test" # where to output generated samples
-MODEL_SIZE = "65M" # model size to evaluate
+MODEL_SIZE = "20M" # model size to evaluate
 N_SAMPLES_PER_GROUP = 10
 
 ##################################################
