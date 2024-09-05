@@ -88,7 +88,7 @@ def loss_to_perplexity(losses: List[float]) -> float:
 def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(prog = "Evaluate", description = "Evaluate a REMI-Style Model.")
-    parser.add_argument("-i", "--input_dir", default = OUTPUT_DIR, type = str, help = "Dataset facet directory containing the model(s) (as subdirectories) to evaluate")
+    parser.add_argument("-d", "--input_dir", default = OUTPUT_DIR, type = str, help = "Dataset facet directory containing the model(s) (as subdirectories) to evaluate")
     # model
     parser.add_argument("--seq_len", default = SEQ_LEN, type = int, help = "Sequence length to generate")
     parser.add_argument("--temperature", nargs = "+", default = TEMPERATURE, type = float, help = f"Sampling temperature (default: {TEMPERATURE})")

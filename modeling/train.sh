@@ -7,6 +7,7 @@
 # A place to store the command-line inputs for different REMI-models to train.
 
 # sh /home/pnlong/model_musescore/modeling/train.sh
+# sh modeling/train.sh -d "${data_dir}" -g "${gpu}" -s; sh modeling/train.sh -d "${data_dir}" -g "${gpu}" -sf; python modeling/evaluate.py -d "${data_dir}" -g "${gpu}"
 
 # CONSTANTS
 ##################################################
