@@ -55,7 +55,7 @@ FACET_COLORS = dict(zip(FACETS_FOR_PLOTTING, list(TABLEAU_COLORS.keys())[:len(FA
 def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(prog = "Genres", description = "Create genres plot for paper.")
-    parser.add_argument("-d", "--dataset_filepath", type = str, default = f"{OUTPUT_DIR}/{DATASET_DIR_NAME}.csv", help = "Filepath to full dataset.")
+    parser.add_argument("-df", "--dataset_filepath", type = str, default = f"{OUTPUT_DIR}/{DATASET_DIR_NAME}.csv", help = "Filepath to full dataset.")
     parser.add_argument("-c", "--column", action = "store_true", help = "Whether plot is a column or a row.")
     return parser.parse_args(args = args, namespace = namespace)
 

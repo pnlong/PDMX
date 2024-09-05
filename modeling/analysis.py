@@ -67,7 +67,7 @@ def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(prog = "Evaluate Analysis", description = "Analyze the evaluation a REMI-Style Model.")
     parser.add_argument("-d", "--input_dir", default = OUTPUT_DIR, type = str, help = "Directory containing facets (as subdirectories) to evaluate")
-    parser.add_argument("-d", "--dataset_filepath", default = f"{DATASET_OUTPUT_DIR}/{DATASET_DIR_NAME}.csv", type = str, help = "Dataset from which facets are derived")
+    parser.add_argument("-df", "--dataset_filepath", default = f"{DATASET_OUTPUT_DIR}/{DATASET_DIR_NAME}.csv", type = str, help = "Dataset from which facets are derived")
     parser.add_argument("-m", "--model", default = None, type = str, help = "Name of the model to evaluate for each different facet")
     return parser.parse_args(args = args, namespace = namespace)
 
@@ -99,7 +99,7 @@ if __name__ == "__main__":
         dataset = pd.read_csv(filepath_or_buffer = output_filepath_dataset, sep = ",", header = 0, index_col = False)
     else:
         dataset = pd.DataFrame(columns = COLUMNS)
-        for facet in FACETS:
+        for facet in FACETS + [RANDOM_FACET]:
             data = pd.read_csv(filepath_or_buffer = f"{args.input_dir}/{facet}/evaluation.csv", sep = ",", header = 0, index_col = False)
             data["facet"] = utils.rep(x = facet, times = len(data))
             dataset = pd.concat(objs = (dataset, data[COLUMNS]), axis = 0, ignore_index = True)

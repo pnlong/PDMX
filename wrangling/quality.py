@@ -107,7 +107,7 @@ def group_by(df: pd.DataFrame, by: Union[str, List[str]]) -> pd.DataFrame:
 def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(prog = "Analyze Dataset", description = "Analyze full dataset for music-quality differences within variables.")
-    parser.add_argument("-d", "--dataset_filepath", type = str, default = f"{OUTPUT_DIR}/{DATASET_DIR_NAME}.csv", help = "Filepath to full dataset.")
+    parser.add_argument("-df", "--dataset_filepath", type = str, default = f"{OUTPUT_DIR}/{DATASET_DIR_NAME}.csv", help = "Filepath to full dataset.")
     parser.add_argument("-b", "--by", action = "store", type = str, nargs = "+", help = "Variable(s) on which to facet.")
     return parser.parse_args(args = args, namespace = namespace)
 

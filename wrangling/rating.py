@@ -46,7 +46,7 @@ LIGHT_GREY = "#bfbfbf"
 def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(prog = "Ratings", description = "Create ratings plot for paper.")
-    parser.add_argument("-d", "--dataset_filepath", type = str, default = f"{OUTPUT_DIR}/{DATASET_DIR_NAME}.csv", help = "Filepath to full dataset.")
+    parser.add_argument("-df", "--dataset_filepath", type = str, default = f"{OUTPUT_DIR}/{DATASET_DIR_NAME}.csv", help = "Filepath to full dataset.")
     parser.add_argument("-c", "--column", action = "store_true", help = "Whether plot is a column or a row.")
     parser.add_argument("-eb", "--error_bars", action = "store_true", help = "Whether to add error bars.")
     return parser.parse_args(args = args, namespace = namespace)
