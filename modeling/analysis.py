@@ -135,8 +135,8 @@ if __name__ == "__main__":
 
     # output latex table to file
     output_filepath_table = f"{output_dir}/results.txt"
-    # make_facet_for_table = lambda facet: f"\\bf{{{'+'.join(map(lambda word: word[0].upper(), facet.split('_')))}}}"  # display facet for table
-    make_facet_for_table = lambda facet: f"\\RaggedRight{{{make_facet_name_fancy(facet = facet)}}}" # display facet for table
+    make_facet_for_table = lambda facet: "\\textbf{" + " $\cap$ ".join(map(lambda word: word[0].upper(), facet.split("_"))) + "}"  # display facet for table
+    # make_facet_for_table = lambda facet: f"\\RaggedRight{{{make_facet_name_fancy(facet = facet)}}}" # display facet for table
     def get_latex_table_helper(fine_tuned: bool = False, include_perplexity: bool = False) -> str:
         """Helper function to output a latex table."""
         table = pd.DataFrame(
