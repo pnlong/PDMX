@@ -466,7 +466,8 @@ if __name__ == "__main__":
         )
         for mmt_statistic in MMT_STATISTIC_COLUMNS:
             table[mmt_statistic] = list(map(lambda facet: f"{faceted.at[facet, (mmt_statistic, 'mean')]:.2f} $\pm$ {faceted.at[facet, (mmt_statistic, 'sem')]:.2f}", faceted.index))
-            i_significant = np.argmax(a = faceted[mmt_statistic]["mean"]) if mmt_statistic != MMT_STATISTIC_COLUMNS[1] else np.argmin(a = faceted[mmt_statistic]["mean"])
+            significant_function = np.argmax if mmt_statistic != MMT_STATISTIC_COLUMNS[1] else np.argmin
+            i_significant = significant_function(faceted[(mmt_statistic, "mean")])
             table.at[i_significant, mmt_statistic] = "\\bf{" + table.at[i_significant, mmt_statistic] + "}"
         for i in table.index:
             output_file.write(" & ".join(table.loc[i, :].values.tolist()) + " \\\\\n")

@@ -27,7 +27,7 @@ from wrangling.full import OUTPUT_DIR as DATASET_OUTPUT_DIR
 from wrangling.deduplicate import FACETS
 from wrangling.quality import make_facet_name_fancy, PLOTS_DIR_NAME
 from dataset import OUTPUT_DIR
-from train import RELEVANT_PARTITIONS
+from train import RELEVANT_PARTITIONS, FINE_TUNING_SUFFIX
 from evaluate import OUTPUT_COLUMNS, loss_to_perplexity
 import utils
 
@@ -106,35 +106,66 @@ if __name__ == "__main__":
         del data
         dataset = dataset.sort_values(by = ["facet", "model"], axis = 0, ascending = True, ignore_index = True)
         dataset.to_csv(path_or_buf = output_filepath_dataset, sep = ",", na_rep = utils.NA_STRING, header = True, index = False, mode = "w") # output dataset
-
-    # output mmt statistics and perplexity
-    bar_width = 100
-    correct_model = list(map(lambda model: model.startswith(args.model), dataset["model"]))
-    float_formatter = lambda num: f"{num:.2f}"
-    logging.info(f"\n{' MMT STATISTICS ':=^{bar_width}}\n") # mmt statistics
-    dataset[MMT_STATISTIC_COLUMNS[1]] *= 100 # convert scale consistency to percentage
-    dataset[MMT_STATISTIC_COLUMNS[2]] *= 100 # convert groove consistency to percentage
-    mmt_statistics = dataset[["facet", "model"] + MMT_STATISTIC_COLUMNS][correct_model].groupby(by = ["model", "facet"]).agg(["mean", "sem"])
-    logging.info(mmt_statistics.to_string(float_format = float_formatter))
-    logging.info("\n" + "".join(("=" for _ in range(bar_width))) + "\n")
-    for facet, model in mmt_statistics.index:
-        logging.info(" & ".join((f"${mmt_statistics.at[(facet, model), (mmt_statistic, 'mean')]:.2f} \pm {mmt_statistics.at[(facet, model), (mmt_statistic, 'sem')]:.2f}$" for mmt_statistic in MMT_STATISTIC_COLUMNS)))
-    logging.info(f"\n{' PERPLEXITY ':=^{bar_width}}\n") # perplexity
-    loss_facet_columns = list(filter(lambda column: column.startswith("loss:"), dataset.columns))
-    perplexity = dataset[["facet", "model"] + loss_facet_columns][correct_model].groupby(by = ["model", "facet"]).agg(loss_to_perplexity) # group by model and facet
-    perplexity = perplexity.rename(columns = dict(zip(loss_facet_columns, map(lambda loss_facet_column: loss_facet_column[len("loss:"):].replace(f"{FACETS[-1]}", "").replace("-", "").replace("_", ""), loss_facet_columns)))) # rename columns
-    logging.info(perplexity.to_string(float_format = float_formatter))
-    logging.info("\n" + "".join(("=" for _ in range(bar_width))) + "\n")
-    del correct_model, mmt_statistics, perplexity
-
-    # load in dataset
-    dataset_real = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)
-
+    
     # determine model to analyze; assumes the same models have been created for each facet
     models = set(pd.unique(values = dataset["model"]))
     model = (str(max(map(lambda model: int(model.split("_")[0][:-1]), models))) + "M") if args.model is None else args.model
     if model not in models:
         raise RuntimeError(f"`{model}` is not a valid model.")
+
+    # output mmt statistics and perplexity
+    bar_width = 100
+    correct_model = list(map(lambda model_name: model_name.startswith(model), dataset["model"]))
+    float_formatter = lambda num: f"{num:.2f}"
+    logging.info(f"\n{' MMT STATISTICS ':=^{bar_width}}\n") # mmt statistics
+    dataset[MMT_STATISTIC_COLUMNS[1]] *= 100 # convert scale consistency to percentage
+    dataset[MMT_STATISTIC_COLUMNS[2]] *= 100 # convert groove consistency to percentage
+    mmt_statistics = dataset.loc[correct_model, ["facet", "model"] + MMT_STATISTIC_COLUMNS].groupby(by = ["model", "facet"]).agg(["mean", "sem"])
+    logging.info(mmt_statistics.to_string(float_format = float_formatter))
+    logging.info(f"\n{' PERPLEXITY ':=^{bar_width}}\n") # perplexity
+    loss_facet_columns = list(filter(lambda column: column.startswith("loss:"), dataset.columns))
+    perplexity = dataset.loc[correct_model, ["facet", "model"] + loss_facet_columns].groupby(by = ["model", "facet"]).agg(loss_to_perplexity) # group by model and facet
+    perplexity = perplexity.rename(columns = dict(zip(loss_facet_columns, map(lambda loss_facet_column: loss_facet_column[len("loss:"):].replace(f"{FACETS[-1]}", "").replace("-", "").replace("_", ""), loss_facet_columns)))) # rename columns
+    logging.info(perplexity.to_string(float_format = float_formatter))
+    logging.info("\n" + "".join(("=" for _ in range(bar_width))))
+
+    # output latex table to file
+    output_filepath_table = f"{output_dir}/results.txt"
+    def get_latex_table_helper(fine_tuned: bool = False) -> str:
+        """Helper function to output a latex table."""
+        facets = sorted(FACETS)
+        table = pd.DataFrame(
+            data = {
+                "facet": list(map(lambda facet: f"\\RaggedRight{{{make_facet_name_fancy(facet = facet)}}}", facets)),
+                "fine_tuned": utils.rep(x = "\cmark" if fine_tuned else "", times = len(facets)),
+            }
+        )
+        model_name = model + (f"_{FINE_TUNING_SUFFIX}" if fine_tuned else "")
+        mmt_statistics_model = mmt_statistics.xs(key = model_name, level = 0, axis = 0)
+        for mmt_statistic in MMT_STATISTIC_COLUMNS:
+            table[mmt_statistic] = list(map(lambda facet: f"{mmt_statistics_model.at[facet, (mmt_statistic, 'mean')]:.2f} $\pm$ {mmt_statistics_model.at[facet, (mmt_statistic, 'sem')]:.2f}", facets))
+            significant_function = np.argmax if mmt_statistic != MMT_STATISTIC_COLUMNS[1] else np.argmin
+            i_significant = significant_function(mmt_statistics_model[(mmt_statistic, "mean")])
+            table.at[i_significant, mmt_statistic] = "\\bf{" + table.at[i_significant, mmt_statistic] + "}"
+        perplexity_model = perplexity.xs(key = model_name, level = 0, axis = 0)
+        for perplexity_column in filter(lambda perplexity_column: perplexity_column != FACETS[0], perplexity.columns):
+            table[perplexity_column] = list(map(lambda facet: f"{perplexity_model.at[facet, perplexity_column]:.2f}", facets))
+            i_significant = np.argmin(a = perplexity_model[perplexity_column]) # lower perplexity is better
+            table.at[i_significant, perplexity_column] = "\\bf{" + table.at[i_significant, perplexity_column] + "}"
+        table_string = ""
+        for i in table.index:
+            table_string += " & ".join(table.loc[i, :].values.tolist()) + " \\\\\n"
+        return table_string
+    with open(output_filepath_table, "w") as output_file:
+        output_file.write(get_latex_table_helper(fine_tuned = False))
+        output_file.write("\\midrule\n")
+        output_file.write(get_latex_table_helper(fine_tuned = True))
+    logging.info(f"Saved table to {output_filepath_table}.")
+    logging.info("".join(("=" for _ in range(bar_width))) + "\n")
+    del correct_model, mmt_statistics, perplexity
+
+    # load in dataset
+    dataset_real = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)
 
     # remove part of dataset we don't need
     dataset = dataset[dataset["model"] == model]
