@@ -14,7 +14,8 @@
 
 # software filepaths
 software_dir=$(dirname "${0}")
-software="${software_dir}/train.py"
+software_base=${0##*/}
+software="${software_dir}/${software_base%.sh}.py"
 
 # defaults
 base_dir="/home/pnlong/musescore/experiments"
@@ -71,7 +72,7 @@ while getopts ':d:g:rfsmlh' opt; do
       exit 0
       ;;
     :)
-      echo -e "option requires an argument.\n${usage}"
+      echo -e "Option requires an argument.\n${usage}"
       exit 1
       ;;
     ?)
