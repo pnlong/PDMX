@@ -477,6 +477,7 @@ if __name__ == "__main__":
             f"{round(sum(fine_tuned['song_length.seconds']) / (60 * 60)):,} / {len(fine_tuned) // 1000:,}K",
             ] + list(map(lambda mmt_statistic: f"{fine_tuned[mmt_statistic].mean():.2f} $\pm$ {fine_tuned[mmt_statistic].sem():.2f}", MMT_STATISTIC_COLUMNS))
             ) + " \\\\\n")
+    logging.info(f"Saved table to {output_filepath_table}.")
     del fine_tuned, table, faceted
 
     # helper function to output statistics
