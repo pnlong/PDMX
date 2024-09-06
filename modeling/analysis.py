@@ -112,7 +112,7 @@ if __name__ == "__main__":
 
     # load in real dataset
     dataset_real = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)
-    fine_tuned = dataset_real[dataset_real[f"facet:{FACETS[-1]}"] & (dataset_real["rating"] > np.percentile(a = dataset_real.loc[dataset_real[f"facet:{FACETS[-1]}"], "rating"], q = 50))][MMT_STATISTIC_COLUMNS].mean()
+    fine_tuning_mmt_statistics = dataset_real[dataset_real[f"facet:{FACETS[-1]}"] & (dataset_real["rating"] > np.percentile(a = dataset_real.loc[dataset_real[f"facet:{FACETS[-1]}"], "rating"], q = 50))][MMT_STATISTIC_COLUMNS].mean()
 
     # determine model to analyze; assumes the same models have been created for each facet
     models = set(pd.unique(values = dataset["model"]))
@@ -153,7 +153,7 @@ if __name__ == "__main__":
         mmt_statistics_model = mmt_statistics.xs(key = model_name, level = 0, axis = 0)
         for mmt_statistic in MMT_STATISTIC_COLUMNS:
             table[mmt_statistic] = list(map(lambda facet: f"{mmt_statistics_model.at[facet, (mmt_statistic, 'mean')]:.2f} $\pm$ {mmt_statistics_model.at[facet, (mmt_statistic, 'sem')]:.2f}", FACETS_FOR_TABLE))
-            i_significant = np.argsort(a = np.absolute(mmt_statistics_model[(mmt_statistic, "mean")] - fine_tuned[mmt_statistic]), axis = 0)
+            i_significant = np.argsort(a = np.absolute(mmt_statistics_model[(mmt_statistic, "mean")] - fine_tuning_mmt_statistics[mmt_statistic]), axis = 0)
             table.at[i_significant[0], mmt_statistic] = "\\bf{" + table.at[i_significant[0], mmt_statistic] + "}"
             table.at[i_significant[1], mmt_statistic] = "\\underline{" + table.at[i_significant[1], mmt_statistic] + "}"
         if include_perplexity:
