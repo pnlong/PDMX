@@ -109,6 +109,8 @@ if __name__ == "__main__":
         dataset = dataset.sort_values(by = ["facet", "model"], axis = 0, ascending = True, ignore_index = True)
         dataset.to_csv(path_or_buf = output_filepath_dataset, sep = ",", na_rep = utils.NA_STRING, header = True, index = False, mode = "w") # output dataset
     dataset = dataset[np.isin(dataset["facet"], test_elements = FACETS_FOR_TABLE)] # ensure correct facets
+    dataset[MMT_STATISTIC_COLUMNS[1]] *= 100 # convert scale consistency to percentage
+    dataset[MMT_STATISTIC_COLUMNS[2]] *= 100 # convert groove consistency to percentage
 
     # load in real dataset
     dataset_real = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)
@@ -128,8 +130,6 @@ if __name__ == "__main__":
     sort_facets = lambda facets: pd.Index(facets.to_series().apply(lambda facet: FACETS_FOR_TABLE.index(facet) if facet in FACETS_FOR_TABLE else len(FACETS_FOR_TABLE)))
     float_formatter = lambda num: f"{num:.2f}"
     logging.info(f"\n{' MMT STATISTICS ':=^{bar_width}}\n") # mmt statistics
-    dataset[MMT_STATISTIC_COLUMNS[1]] *= 100 # convert scale consistency to percentage
-    dataset[MMT_STATISTIC_COLUMNS[2]] *= 100 # convert groove consistency to percentage
     mmt_statistics = dataset.loc[correct_model, ["facet", "model"] + MMT_STATISTIC_COLUMNS].groupby(by = ["model", "facet"]).agg(["mean", "sem"]).sort_index(axis = 0, level = "facet", ascending = True, key = sort_facets)
     logging.info(mmt_statistics.to_string(float_format = float_formatter))
     logging.info(f"\n{' PERPLEXITY ':=^{bar_width}}\n") # perplexity
