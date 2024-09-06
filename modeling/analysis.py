@@ -113,6 +113,8 @@ if __name__ == "__main__":
     # load in real dataset
     dataset_real = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)
     fine_tuning_mmt_statistics = dataset_real[dataset_real[f"facet:{FACETS[-1]}"] & (dataset_real["rating"] > np.percentile(a = dataset_real.loc[dataset_real[f"facet:{FACETS[-1]}"], "rating"], q = 50))][MMT_STATISTIC_COLUMNS].mean()
+    fine_tuning_mmt_statistics[MMT_STATISTIC_COLUMNS[1]] *= 100
+    fine_tuning_mmt_statistics[MMT_STATISTIC_COLUMNS[2]] *= 100
 
     # determine model to analyze; assumes the same models have been created for each facet
     models = set(pd.unique(values = dataset["model"]))
