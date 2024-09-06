@@ -110,6 +110,10 @@ if __name__ == "__main__":
         dataset.to_csv(path_or_buf = output_filepath_dataset, sep = ",", na_rep = utils.NA_STRING, header = True, index = False, mode = "w") # output dataset
     dataset = dataset[np.isin(dataset["facet"], test_elements = FACETS_FOR_TABLE)] # ensure correct facets
 
+    # load in real dataset
+    dataset_real = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)
+    fine_tuned = dataset_real[dataset_real[f"facet:{FACETS[-1]}"] & (dataset_real["rating"] > np.percentile(a = dataset_real.loc[dataset_real[f"facet:{FACETS[-1]}"], "rating"], q = 50))]
+
     # determine model to analyze; assumes the same models have been created for each facet
     models = set(pd.unique(values = dataset["model"]))
     model = (str(max(map(lambda model: int(model.split("_")[0][:-1]), models))) + "M") if args.model is None else args.model
@@ -149,8 +153,7 @@ if __name__ == "__main__":
         mmt_statistics_model = mmt_statistics.xs(key = model_name, level = 0, axis = 0)
         for mmt_statistic in MMT_STATISTIC_COLUMNS:
             table[mmt_statistic] = list(map(lambda facet: f"{mmt_statistics_model.at[facet, (mmt_statistic, 'mean')]:.2f} $\pm$ {mmt_statistics_model.at[facet, (mmt_statistic, 'sem')]:.2f}", FACETS_FOR_TABLE))
-            i_significant = np.argsort(a = mmt_statistics_model[(mmt_statistic, "mean")], axis = 0)
-            i_significant = i_significant[::-1] if (mmt_statistic != MMT_STATISTIC_COLUMNS[1]) else i_significant
+            i_significant = np.argsort(a = np.absolute(mmt_statistics_model[(mmt_statistic, "mean")] - fine_tuned[mmt_statistic].mean()), axis = 0)
             table.at[i_significant[0], mmt_statistic] = "\\bf{" + table.at[i_significant[0], mmt_statistic] + "}"
             table.at[i_significant[1], mmt_statistic] = "\\underline{" + table.at[i_significant[1], mmt_statistic] + "}"
         if include_perplexity:
@@ -171,9 +174,6 @@ if __name__ == "__main__":
     logging.info(f"Saved table to {output_filepath_table}.")
     logging.info("".join(("=" for _ in range(bar_width))) + "\n")
     del correct_model, mmt_statistics, perplexity
-
-    # load in dataset
-    dataset_real = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)
 
     # remove part of dataset we don't need
     dataset = dataset[dataset["model"] == model]
