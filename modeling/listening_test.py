@@ -303,23 +303,6 @@ if __name__ == "__main__":
                 patch.set_edgecolor(linecolor)
                 patch.set_alpha(alpha_for_fine_tune[i % 2 == 1])
             axes[violin_plot_name].legend_.remove() # remove legend
-            # listening_test = listening_test.set_index(keys = ["model", "facet"], drop = True)["rating"]
-            # plotting_indicies = listening_test.sort_index(level = "facet").index
-            # violin_plot_data = list(map(lambda model_facet: listening_test.loc[model_facet].to_list(), plotting_indicies))
-            # violin_parts = axes[violin_plot_name].violinplot(
-            #     dataset = violin_plot_data,
-            #     positions = sorted(np.concatenate((xticks - half_bar_width, xticks + half_bar_width), axis = 0)),
-            #     vert = True,
-            #     width = 0.5,
-            #     showmeans = False,
-            #     showextrema = False,
-            #     showmedians = False,
-            #     quantiles = None, # alternatively, [0.0, 0.25, 0.5, 0.75, 1.0]
-            # )
-            # for patch, model, facet in zip(violin_parts["bodies"], *zip(*plotting_indicies)): # set colors
-            #     patch.set_facecolor(FACET_COLORS[facet]) # set color of each violin
-            #     patch.set_edgecolor("black") # set the edgecolor
-            #     patch.set_alpha(alpha_for_fine_tune[FINE_TUNING_SUFFIX in model]) # set alpha
         
         # add axis labels
         axes[f"{bottom_row},{col}"].set_xlabel(xlabel, fontsize = axis_label_fontsize)
