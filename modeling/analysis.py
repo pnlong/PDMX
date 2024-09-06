@@ -43,8 +43,6 @@ plt.style.use("default")
 
 COLUMNS = ["facet"] + OUTPUT_COLUMNS
 
-FACETS_FOR_TABLE = sorted(FACETS) # + [RANDOM_FACET]
-
 ##################################################
 
 
@@ -71,6 +69,7 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("-d", "--input_dir", default = OUTPUT_DIR, type = str, help = "Directory containing facets (as subdirectories) to evaluate")
     parser.add_argument("-df", "--dataset_filepath", default = f"{DATASET_OUTPUT_DIR}/{DATASET_DIR_NAME}.csv", type = str, help = "Dataset from which facets are derived")
     parser.add_argument("-m", "--model", default = None, type = str, help = "Name of the model to evaluate for each different facet")
+    parser.add_argument("-ir", "--include_random", action = "store_true", help = "Whether or not to include random subset in table")
     return parser.parse_args(args = args, namespace = namespace)
 
 ##################################################
@@ -108,7 +107,10 @@ if __name__ == "__main__":
         del data
         dataset = dataset.sort_values(by = ["facet", "model"], axis = 0, ascending = True, ignore_index = True)
         dataset.to_csv(path_or_buf = output_filepath_dataset, sep = ",", na_rep = utils.NA_STRING, header = True, index = False, mode = "w") # output dataset
-    dataset = dataset[np.isin(dataset["facet"], test_elements = FACETS_FOR_TABLE)] # ensure correct facets
+    
+    # wrangle dataset slightly
+    facets_for_table = sorted(FACETS) + ([RANDOM_FACET] if args.include_random else [])
+    dataset = dataset[np.isin(dataset["facet"], test_elements = facets_for_table)] # ensure correct facets
     dataset[MMT_STATISTIC_COLUMNS[1]] *= 100 # convert scale consistency to percentage
     dataset[MMT_STATISTIC_COLUMNS[2]] *= 100 # convert groove consistency to percentage
 
@@ -127,7 +129,7 @@ if __name__ == "__main__":
     # output mmt statistics and perplexity
     bar_width = 100
     correct_model = list(map(lambda model_name: model_name.startswith(model), dataset["model"]))
-    sort_facets = lambda facets: pd.Index(facets.to_series().apply(lambda facet: FACETS_FOR_TABLE.index(facet) if facet in FACETS_FOR_TABLE else len(FACETS_FOR_TABLE)))
+    sort_facets = lambda facets: pd.Index(facets.to_series().apply(lambda facet: facets_for_table.index(facet) if facet in facets_for_table else len(facets_for_table)))
     float_formatter = lambda num: f"{num:.2f}"
     logging.info(f"\n{' MMT STATISTICS ':=^{bar_width}}\n") # mmt statistics
     mmt_statistics = dataset.loc[correct_model, ["facet", "model"] + MMT_STATISTIC_COLUMNS].groupby(by = ["model", "facet"]).agg(["mean", "sem"]).sort_index(axis = 0, level = "facet", ascending = True, key = sort_facets)
@@ -147,21 +149,21 @@ if __name__ == "__main__":
         """Helper function to output a latex table."""
         table = pd.DataFrame(
             data = {
-                "facet": list(map(make_facet_for_table, FACETS_FOR_TABLE)),
-                "fine_tuned": utils.rep(x = "\cmark" if fine_tuned else "", times = len(FACETS_FOR_TABLE)),
+                "facet": list(map(make_facet_for_table, facets_for_table)),
+                "fine_tuned": utils.rep(x = "\cmark" if fine_tuned else "", times = len(facets_for_table)),
             }
         )
         model_name = model + (f"_{FINE_TUNING_SUFFIX}" if fine_tuned else "")
         mmt_statistics_model = mmt_statistics.xs(key = model_name, level = 0, axis = 0)
         for mmt_statistic in MMT_STATISTIC_COLUMNS:
-            table[mmt_statistic] = list(map(lambda facet: f"{mmt_statistics_model.at[facet, (mmt_statistic, 'mean')]:.2f} $\pm$ {mmt_statistics_model.at[facet, (mmt_statistic, 'sem')]:.2f}", FACETS_FOR_TABLE))
+            table[mmt_statistic] = list(map(lambda facet: f"{mmt_statistics_model.at[facet, (mmt_statistic, 'mean')]:.2f} $\pm$ {mmt_statistics_model.at[facet, (mmt_statistic, 'sem')]:.2f}", facets_for_table))
             i_significant = np.argsort(a = np.absolute(mmt_statistics_model[(mmt_statistic, "mean")] - fine_tuning_mmt_statistics[mmt_statistic]), axis = 0)
             table.at[i_significant[0], mmt_statistic] = "\\bf{" + table.at[i_significant[0], mmt_statistic] + "}"
             table.at[i_significant[1], mmt_statistic] = "\\underline{" + table.at[i_significant[1], mmt_statistic] + "}"
         if include_perplexity:
             perplexity_model = perplexity.xs(key = model_name, level = 0, axis = 0)
             for perplexity_column in filter(lambda perplexity_column: perplexity_column != FACETS[0], perplexity.columns):
-                table[perplexity_column] = list(map(lambda facet: f"{perplexity_model.at[facet, perplexity_column]:.2f}", FACETS_FOR_TABLE))
+                table[perplexity_column] = list(map(lambda facet: f"{perplexity_model.at[facet, perplexity_column]:.2f}", facets_for_table))
                 i_significant = np.argsort(a = perplexity_model[perplexity_column], axis = 0) # lower peplexity is better
                 table.at[i_significant[0], perplexity_column] = "\\bf{" + table.at[i_significant[0], perplexity_column] + "}"
                 table.at[i_significant[1], perplexity_column] = "\\underline{" + table.at[i_significant[1], perplexity_column] + "}"
