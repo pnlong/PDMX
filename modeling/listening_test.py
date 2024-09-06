@@ -237,6 +237,8 @@ if __name__ == "__main__":
     linewidth = 1.0
     linecolor = "0.2"
     xticks = np.arange(len(facets))
+    legend_edgecolor = str(float(linecolor) * 1.5)
+    legend_facecolor = str(float(legend_edgecolor) * 1.5)
 
     # determine mosaic, create plot
     if not any((args.bar_plot, args.violin_plot)):
@@ -318,8 +320,6 @@ if __name__ == "__main__":
         axes[f"{top_row},{col}"].set_title(col.title(), fontsize = subtitle_fontsize)
 
     # add legend
-    legend_edgecolor = str(float(linecolor) * 1.5)
-    legend_facecolor = str(float(legend_edgecolor) * 1.5)
     axes[f"{top_row},{right_col}"].legend(
         handles = [
             Patch(facecolor = linecolor, edgecolor = legend_edgecolor, alpha = alpha_for_fine_tune[False], label = "Base"),
