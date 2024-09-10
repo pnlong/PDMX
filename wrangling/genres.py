@@ -126,6 +126,7 @@ if __name__ == "__main__":
 
     # plot hyperparameters
     axis_tick_fontsize = "small"
+    legend_fontsize = "x-small"
     total_width = 0.8
     width = total_width / len(FACETS_FOR_PLOTTING)
     offset = np.arange(start = 0.5 * (width - total_width), stop = 0.5 * total_width , step = width) # offsets
@@ -158,8 +159,8 @@ if __name__ == "__main__":
     handles, labels = axes["genres"].get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     axes["genres"].legend(handles = by_label.values(), labels = list(map(make_facet_name_fancy, by_label.keys())),
-                          fontsize = axis_tick_fontsize, alignment = "center",
-                          ncol = 1, title = "Subset", title_fontproperties = {"size": axis_tick_fontsize, "weight": "bold"},
+                          fontsize = legend_fontsize, alignment = "center",
+                          ncol = 1, title = "Subset", title_fontproperties = {"size": legend_fontsize, "weight": "bold"},
                           fancybox = True, shadow = True)
 
     # save image
