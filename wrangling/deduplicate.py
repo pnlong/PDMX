@@ -44,6 +44,16 @@ plt.style.use("default")
 ##################################################
 
 
+# GET FACET NAME FOR LATEX TABLE
+##################################################
+
+# make the facet name fancy for the latex table
+make_facet_for_table = lambda facet: "\\textbf{" + "$\cap$".join(map(lambda word: word[0].upper(), facet.split("_"))) + "}"  # display facet for table
+# make_facet_for_table = lambda facet: f"\\RaggedRight{{{make_facet_name_fancy(facet = facet)}}}" # display facet for table
+
+##################################################
+
+
 # CONSTANTS
 ##################################################
 
@@ -457,7 +467,6 @@ if __name__ == "__main__":
     logging.info(faceted.to_string(float_format = float_formatter))
     
     # output latex table to file
-    make_facet_for_table = lambda facet: f"\\RaggedRight{{{make_facet_name_fancy(facet = facet)}}}" # make facet for the table
     with open(output_filepath_table, "w") as output_file:
         table = pd.DataFrame(
             data = {
