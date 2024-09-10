@@ -111,14 +111,14 @@ if __name__ == "__main__":
     # wrangle dataset slightly
     facets_for_table = sorted(FACETS) + ([RANDOM_FACET] if args.include_random else [])
     dataset = dataset[np.isin(dataset["facet"], test_elements = facets_for_table)] # ensure correct facets
-    dataset[MMT_STATISTIC_COLUMNS[1]] *= 100 # convert scale consistency to percentage
-    dataset[MMT_STATISTIC_COLUMNS[2]] *= 100 # convert groove consistency to percentage
+    for mmt_statistic_column in MMT_STATISTIC_COLUMNS[1:]:
+        dataset[mmt_statistic_column] *= 100 # convert consistency columns to percentages
 
     # load in real dataset
     dataset_real = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)
     fine_tuning_mmt_statistics = dataset_real[dataset_real[f"facet:{FACETS[-1]}"] & (dataset_real["rating"] > np.percentile(a = dataset_real.loc[dataset_real[f"facet:{FACETS[-1]}"], "rating"], q = 50))][MMT_STATISTIC_COLUMNS].mean()
-    fine_tuning_mmt_statistics[MMT_STATISTIC_COLUMNS[1]] *= 100
-    fine_tuning_mmt_statistics[MMT_STATISTIC_COLUMNS[2]] *= 100
+    for mmt_statistic_column in MMT_STATISTIC_COLUMNS[1:]:
+        fine_tuning_mmt_statistics[mmt_statistic_column] *= 100 # convert consistency columns to percentages
 
     # determine model to analyze; assumes the same models have been created for each facet
     models = set(pd.unique(values = dataset["model"]))
@@ -147,7 +147,7 @@ if __name__ == "__main__":
         """Helper function to output a latex table."""
         table = pd.DataFrame(
             data = {
-                "facet": list(map(make_facet_for_table, facets_for_table)),
+                "facet": list(map(lambda facet: make_facet_for_table(facet = facet) if (facet != RANDOM_FACET) else ("\\RaggedRight{" + RANDOM_FACET.title() + "}"), facets_for_table)),
                 "fine_tuned": utils.rep(x = "\cmark" if fine_tuned else "", times = len(facets_for_table)),
             }
         )

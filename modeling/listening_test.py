@@ -68,7 +68,7 @@ FACET_COLORS[RANDOM_FACET] = "tab:purple"
 def parse_args(args = None, namespace = None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(prog = "Listening Test", description = "Generate audio samples for a listening test.")
-    parser.add_argument("-df", "--dataset_filepath", default = f"{DATASET_OUTPUT_DIR}/evaluation.csv", type = str, help = "Dataset with evaluated samples for all subsets and models.")
+    parser.add_argument("-df", "--evaluation_dataset_filepath", default = f"{DATASET_OUTPUT_DIR}/evaluation.csv", type = str, help = "Dataset with evaluated samples for all subsets and models (ends in `evaluation.csv`).")
     parser.add_argument("-o", "--output_dir", default = OUTPUT_DIR, type = str, help = "Output directory where audio samples will be stored.")
     parser.add_argument("-m", "--model_size", default = MODEL_SIZE, type = str, help = "Model size from which to generate listening samples.")
     parser.add_argument("-n", "--n_samples_per_group", default = N_SAMPLES_PER_GROUP, type = int, help = "Number of samples per group to generate.")
@@ -127,7 +127,7 @@ if __name__ == "__main__":
         vocabulary = utils.inverse_dict(Indexer(data = encoding["event_code_map"]).get_dict()) # for decoding
 
         # load in dataset
-        dataset = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)
+        dataset = pd.read_csv(filepath_or_buffer = args.evaluation_dataset_filepath, sep = ",", header = 0, index_col = False)
         dataset = dataset[dataset["model"].map(lambda model: model.split("_")[0]) == args.model_size] # get only relevant samples (correct model size)
 
         ##################################################
@@ -217,12 +217,16 @@ if __name__ == "__main__":
     if not exists(listening_test_results_filepath):
         sys.exit()
     full_listening_test = pd.read_csv(filepath_or_buffer = listening_test_results_filepath, sep = ",", header = 0, index_col = 0)
-    full_listening_test = full_listening_test.rename(columns = {"page": "model", "cond": "facet", "is_ft": "fine_tuned", "rating_score": "rating", "rating_stimulus": "statistic"}).drop(columns = ["project", "time"]) # rename columns to work in our infrastructure
-    full_listening_test["model"] = list(map(lambda model: model.split("-")[0], full_listening_test["model"])) # remove page number
+    full_listening_test = full_listening_test.rename(columns = {"session_uuid": "user", "model": "facet", "trial_id": "model", "is_ft": "fine_tuned", "rating_score": "rating", "rating_stimulus": "statistic"}) # rename columns to work in our infrastructure
     full_listening_test["statistic"] = full_listening_test["statistic"].str.lower() # ensure statistic is lower case
-    
+    full_listening_test["fine_tuned"] = list(map(lambda model: FINE_TUNING_SUFFIX in model.split("-")[0], full_listening_test["model"]))
+    full_listening_test = full_listening_test[["user", "facet", "fine_tuned", "statistic", "rating"]]
+    logging.info(f"{len(set(full_listening_test['user']))} respondents.")
+
     # plot hyper parameters
     mosaic_tile_size = (5, 1.84)
+    tile_height_to_legend_proportion = 4
+    separate_legend = False
     alpha_for_fine_tune = (1.0, 0.6)
     axis_label_fontsize = "medium"
     xlabel = "Subset"
@@ -246,10 +250,10 @@ if __name__ == "__main__":
     rows = (["bar"] if args.bar_plot else []) + (["violin"] if args.violin_plot else [])
     if not any((args.quality, args.richness, args.correctness)):
         args.quality, args.richness, args.correctness = True, True, True
-    cols = (["quality"] if args.quality else []) + (["richness"] if args.richness else []) + (["correctness"] if args.correctness else [])
+    cols = (["correctness"] if args.correctness else []) + (["richness"] if args.quality else []) + (["quality"] if args.richness else [])
     top_row, bottom_row = rows[0], rows[-1]
-    left_col, right_col = cols[0], cols[-1]
-    mosaic = [[f"{row},{col}" for col in cols] for row in rows]
+    left_col, middle_col, right_col = cols[0], cols[len(cols) // 2], cols[-1]
+    mosaic = [[f"{row},{col}" for col in cols] for row in np.repeat(a = rows, repeats = tile_height_to_legend_proportion if separate_legend else 1).tolist()] + ([["legend"] * len(cols)] if separate_legend else [])
     fig, axes = plt.subplot_mosaic(mosaic = mosaic, constrained_layout = True, figsize = (mosaic_tile_size[0] * len(cols), mosaic_tile_size[1] * len(rows)))
     
     # plot by columns
@@ -261,11 +265,11 @@ if __name__ == "__main__":
         # plot a bar plot
         if args.bar_plot:
             bar_plot_name = f"bar,{col}"
-            mos = listening_test[["model", "facet", "rating"]].groupby(by = ["model", "facet"]).agg(["mean", "sem"])["rating"]
+            mos = listening_test[["fine_tuned", "facet", "rating"]].groupby(by = ["fine_tuned", "facet"]).agg(["mean", "sem"])["rating"]
             for xtick, facet in zip(xticks, facets):
                 for fine_tuned in (False, True):
                     axes[bar_plot_name].bar(x = xtick + ((1 if fine_tuned else -1) * half_bar_width),
-                                    height = mos.at[(args.model_size + (f"_{FINE_TUNING_SUFFIX}" if fine_tuned else ""), facet), "mean"],
+                                    height = mos.at[(fine_tuned, facet), "mean"],
                                     width = individual_bar_width,
                                     align = "center",
                                     label = fine_tuned,
@@ -274,14 +278,12 @@ if __name__ == "__main__":
                                     edgecolor = linecolor, linewidth = linewidth # comment out this line to remove borders from bar plot
                                     )
             if error_bars: # error bars if needed
-                mos_by_fine_tuned = mos.droplevel(level = "facet", axis = 0)
                 for fine_tuned in (False, True):
-                    model = args.model_size + (f"_{FINE_TUNING_SUFFIX}" if fine_tuned else "")
                     axes[bar_plot_name].errorbar(x = xticks + ((1 if fine_tuned else -1) * half_bar_width),
-                                        y = mos_by_fine_tuned.loc[model, "mean"],
-                                        yerr = mos_by_fine_tuned.loc[model, "sem"],
-                                        fmt = ",", elinewidth = linewidth, color = linecolor, alpha = alpha_for_fine_tune[fine_tuned]
-                                        )
+                                                 y = list(map(lambda facet: mos.at[(fine_tuned, facet), "mean"], facets)),
+                                                 yerr = list(map(lambda facet: mos.at[(fine_tuned, facet), "sem"], facets)),
+                                                 fmt = ",", elinewidth = linewidth, color = linecolor, alpha = alpha_for_fine_tune[fine_tuned]
+                                                 )
             if bar_plot_margin is not None:
                 low, high = min(mos["mean"] - (mos["sem"] if error_bars else 0)), max(mos["mean"] + (mos["sem"] if error_bars else 0))
                 axes[bar_plot_name].set_ylim(bottom = (1 - bar_plot_margin) * low, top = (1 + bar_plot_margin) * high) # add limits
@@ -316,20 +318,33 @@ if __name__ == "__main__":
                 axes[f"{row},{col}"].set_ylabel(ylabel[row], fontsize = axis_label_fontsize)
         else:
             for row in rows:
-                axes[f"{row},{col}"].sharey(other = axes[f"{row},{left_col}"])
+                axes[f"{row},{col}"].set_ylabel("")
+        # else:
+        #     for row in rows:
+        #         axes[f"{row},{col}"].sharey(other = axes[f"{row},{left_col}"])
         axes[f"{top_row},{col}"].set_title(col.title(), fontsize = subtitle_fontsize)
 
     # add legend
-    axes[f"{top_row},{right_col}"].legend(
-        handles = [
-            Patch(facecolor = linecolor, edgecolor = legend_edgecolor, alpha = alpha_for_fine_tune[False], label = "Base"),
-            Patch(facecolor = linecolor, edgecolor = legend_edgecolor, alpha = alpha_for_fine_tune[True], label = "Fine-Tuned"),
-        ],
-        fontsize = axis_tick_fontsize, alignment = "center", loc = "upper right",
-    )
+    legend_handles = [
+        Patch(facecolor = linecolor, edgecolor = legend_edgecolor, alpha = alpha_for_fine_tune[False], label = "Base"),
+        Patch(facecolor = linecolor, edgecolor = legend_edgecolor, alpha = alpha_for_fine_tune[True], label = "Fine-Tuned"),
+    ]
+    if separate_legend:
+        axes["legend"].legend(
+            handles = legend_handles,
+            fontsize = axis_tick_fontsize, alignment = "center", loc = "center", ncol = len(legend_handles),
+            fancybox = True, shadow = True,
+        )
+        axes["legend"].axis("off")
+    else:
+        axes[f"{top_row},{middle_col}"].legend(
+            handles = legend_handles,
+            fontsize = axis_tick_fontsize, alignment = "center", loc = "upper left", ncol = 1,
+            fancybox = True, shadow = True,
+        )
 
     # save plot
-    output_filepath = f"{dirname(args.dataset_filepath)}/{PLOTS_DIR_NAME}/listening_test.pdf" # get output filepath
+    output_filepath = f"{dirname(args.evaluation_dataset_filepath)}/{PLOTS_DIR_NAME}/listening_test.pdf" # get output filepath
     if not exists(dirname(output_filepath)): # make sure output directory exists
         mkdir(dirname(output_filepath))
     fig.savefig(output_filepath, dpi = 200, transparent = True, bbox_inches = "tight") # save image

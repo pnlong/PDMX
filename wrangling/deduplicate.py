@@ -48,7 +48,7 @@ plt.style.use("default")
 ##################################################
 
 # make the facet name fancy for the latex table
-make_facet_for_table = lambda facet: "\\textbf{" + "$\cap$".join(map(lambda word: word[0].upper(), facet.split("_"))) + "}"  # display facet for table
+make_facet_for_table = lambda facet: "\\RaggedRight{\\textbf{" + "$\cap$".join(map(lambda word: word[0].upper(), facet.split("_"))) + "}}" # display facet for table
 # make_facet_for_table = lambda facet: f"\\RaggedRight{{{make_facet_name_fancy(facet = facet)}}}" # display facet for table
 
 ##################################################
@@ -453,8 +453,8 @@ if __name__ == "__main__":
     ##################################################
 
     # make necessary conversions
-    dataset[MMT_STATISTIC_COLUMNS[1]] *= 100 # convert scale consistency to percentage
-    dataset[MMT_STATISTIC_COLUMNS[2]] *= 100 # convert groove consistency to percentage
+    for mmt_statistic_column in MMT_STATISTIC_COLUMNS[1:]:
+        dataset[mmt_statistic_column] *= 100 # convert consistency columns to percentages
 
     # bar
     bar_width = 104 # how wide are the separation bars
@@ -476,9 +476,9 @@ if __name__ == "__main__":
         )
         for mmt_statistic in MMT_STATISTIC_COLUMNS:
             table[mmt_statistic] = list(map(lambda facet: f"{faceted.at[facet, (mmt_statistic, 'mean')]:.2f} $\pm$ {faceted.at[facet, (mmt_statistic, 'sem')]:.2f}", faceted.index))
-            significant_function = np.argmax if mmt_statistic != MMT_STATISTIC_COLUMNS[1] else np.argmin
-            i_significant = significant_function(faceted[(mmt_statistic, "mean")])
-            table.at[i_significant, mmt_statistic] = "\\bf{" + table.at[i_significant, mmt_statistic] + "}"
+            # significant_function = np.argmax if mmt_statistic != MMT_STATISTIC_COLUMNS[1] else np.argmin
+            # i_significant = significant_function(faceted[(mmt_statistic, "mean")])
+            # table.at[i_significant, mmt_statistic] = "\\bf{" + table.at[i_significant, mmt_statistic] + "}"
         for i in table.index:
             output_file.write(" & ".join(table.loc[i, :].values.tolist()) + " \\\\\n")
         output_file.write("\\midrule\n")
