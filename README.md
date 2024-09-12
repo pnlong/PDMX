@@ -32,25 +32,27 @@ We introduce `MusicRender`, an extension of [MusPy](https://hermandong.com/muspy
 from pdmx import MusicRender
 ```
 
-Let's say `music` is a `MusicRender` object. We can write `music` to various output formats, where the output filetype is inferred from the filetype of `path` (`.wav` is audio, `.midi` is symbolic).
+Let's say `music` is a `MusicRender` object. We can save `music` to a JSON or YAML file at the location `path`:
+
+```python
+music.save(path = path)
+```
+
+Though we could just as easily use `write()` as well, where `path` ends with `.json` or `.yaml`. The benefit of this method is that we can write `music` to various other output formats, where the output filetype is inferred from the filetype of `path` (`.wav` is audio, `.midi` is symbolic).
 
 ```python
 music.write(path = path)
 ```
 
-We can also save `music` to a JSON file at the location `path`.
+When writing to audio or symbolic formats, performance directive (e.g. dynamics, tempo markings) are realized to their fullest extent. This functionality should not be confused with the `music.realize_expressive_features()` method, which realizes the directives inside a `MusicRender` object. This method should not be used explicitly before writing, as it is implicitly called during that process and any directives will be doubly applied.
+
+### `load()`
+
+We store PDMX as JSONified `MusicRender` objects (see the `write()` or `save()` methods above). We can reinstate these objects into Python by reading them with the `load()` function, which returns a `MusicRender` object given the path to a JSON or YAML file.
 
 ```python
-music.save_json(path = path)
-```
-
-### `load_json()`
-
-We store PDMX as JSONified `MusicRender` objects (see the `save_json()` method above). We can reinstate these objects into Python by reading them with the `load_json()` function, which returns a `MusicRender` object given the path to the JSON file.
-
-```python
-from pdmx import load_json
-music = load_json(path = path)
+from pdmx import load
+music = load(path = path)
 ```
 
 ### `read_musescore()`

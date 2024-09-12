@@ -118,7 +118,7 @@ if __name__ == "__main__":
         # save as music object
         path_output = dataset.at[i, "path_output"]
         music = read_musescore(path = dataset.at[i, "path"], timeout = 10)
-        music.save_json(path = path_output, compressed = COMPRESS_JSON_MUSIC_FILES) # save as music object
+        music.save(path = path_output, compressed = COMPRESS_JSON_MUSIC_FILES) # save as music object
         dataset.at[i, "path"] = path_output # update path
 
         # copy over metadata path

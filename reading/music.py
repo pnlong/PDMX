@@ -474,11 +474,17 @@ class MusicRender(muspy.music.Music):
         if len(all_objs) > 0:
             max_time_obj = max(all_objs, key = self._get_max_time_obj_helper)
             max_time = max_time_obj.time + (max_time_obj.duration if hasattr(max_time_obj, "duration") else 0) # + self.resolution # add a quarter note at the end for buffer
+            max_time += 1 # is trivial in the grand scheme, but for muspy stuff
         else:
             max_time = 0
         # final_beat = self.beats[-1].time if len(self.beats) >= 1 else 0 # (2 * self.beats[-1].time) - self.beats[-2].time
         # return int(max(max_time, final_beat))
         return max_time
+    def get_end_time(self) -> int:
+        """
+        Alias for get_song_length().
+        """
+        return self.get_song_length()
 
     ##################################################
 
@@ -486,19 +492,17 @@ class MusicRender(muspy.music.Music):
     # SAVE AS JSON
     ##################################################
 
-    def save_json(self, path: str, ensure_ascii: bool = False, compressed: bool = None, **kwargs) -> str:
-        """Save a Music object to a JSON file.
+    def save(self, path: str, kind: str = None, ensure_ascii: bool = False, compressed: bool = None, **kwargs) -> str:
+        """Save a Music object to a JSON or YAML file.
 
         Parameters
         ----------
         path : str
             Path to save the JSON data.
-        ensure_ascii : bool, default: False
-            Whether to escape non-ASCII characters. Will be passed to PyYAML's `yaml.dump`.
         compressed : bool, optional
-            Whether to save as a compressed JSON file (`.json.gz`). Has no effect when `path` is a file object. Defaults to infer from the extension (`.gz`).
+            Whether to save as a compressed JSON or YAML file (`.json.gz` or `.yaml.gz`). Has no effect when `path` is a file object. Defaults to infer from the extension (`.gz`).
         **kwargs
-            Keyword arguments to pass to :py:func:`json.dumps`.
+            Keyword arguments to pass to :py:func:`json.dumps` or `yaml.dump`.
 
         Returns
         -------
@@ -510,6 +514,16 @@ class MusicRender(muspy.music.Music):
         When a path is given, use UTF-8 encoding and gzip compression if `compressed=True`.
 
         """
+
+        if kind is None:
+            if path.endswith(".json"):
+                kind = "json"
+            elif path.endswith(".yaml"):
+                kind = "yaml"
+            else:
+                raise ValueError("Cannot infer file format from the extension (expect JSON or YAML).")
+        else:
+            kind = kind.lower()
         
         # convert self to dictionary
         data = {
@@ -525,11 +539,14 @@ class MusicRender(muspy.music.Music):
             "tracks": to_dict(obj = self.tracks),
             "song_length": self.song_length,
             "infer_velocity": self.infer_velocity,
-            "absolute_time": self.absolute_time
+            "absolute_time": self.absolute_time,
         }
 
         # convert dictionary to json obj
-        data = json.dumps(obj = data, ensure_ascii = ensure_ascii, **kwargs)
+        if kind == "json":
+            data = json.dumps(obj = data, ensure_ascii = ensure_ascii, **kwargs)
+        else:
+            data = yaml.safe_dump(data = data, allow_unicode = ensure_ascii, **kwargs)
 
         # determine if compression is inferred
         if compressed is None:
@@ -547,18 +564,27 @@ class MusicRender(muspy.music.Music):
         # return the path to which it was saved
         return path
 
-    # wraps the main load_json() function into an instance method
-    def load_json(self, path: str):
-        """Load a Music object from a JSON file.
+    # wraps the main load() function into an instance method
+    def load(self, path: str, kind: str = None):
+        """Load a Music object from a JSON or YAML file.
 
         Parameters
         ----------
         path : str
-            Path to the JSON data.
+            Path to the data.
         """
 
         # load .json file
-        music = load_json(path = path)
+        if kind is None:
+            if path.endswith((".json",)):
+                kind = "json"
+            elif path.endswith((".yaml", ".yml")):
+                kind = "yaml"
+            else:
+                raise ValueError("Cannot infer file format from the extension (expect JSON or YAML).")
+        else:
+            kind = kind.lower()
+        music = load(path = path, kind = kind)
 
         # set equal to self
         self.metadata = music.metadata
@@ -658,14 +684,18 @@ class MusicRender(muspy.music.Music):
 
         # infer kind if necessary
         if kind is None:
-            if path.lower().endswith(("wav", "aiff", "flac", "oga")):
+            if path.lower().endswith((".wav", ".aiff", ".flac", ".oga",)):
                 kind = "audio"
-            elif path.lower().endswith((".mid", ".midi")):
+            elif path.lower().endswith((".mid", ".midi",)):
                 kind = "midi"
-            elif path.lower().endswith((".mxl", ".xml", ".mxml", ".musicxml")):
+            elif path.lower().endswith((".mxl", ".xml", ".mxml", ".musicxml",)):
                 kind = "musicxml"
+            elif path.lower().endswith((".json",)):
+                kind = "json"
+            elif path.lower().endswith((".yaml", ".yml")):
+                kind = "yaml"
             else:
-                raise ValueError("Cannot infer file format from the extension (expect MIDI, MusicXML, WAV, AIFF, FLAC or OGA).")
+                raise ValueError("Cannot infer file format from the extension (expect MIDI, MusicXML, WAV, AIFF, FLAC, OGA, JSON, or YAML).")
         
         # output
         if kind.lower() == "audio": # write audio
@@ -679,8 +709,10 @@ class MusicRender(muspy.music.Music):
             else:
                 music = self
             return write_musicxml(path = path, music = music, **kwargs)
+        elif kind.lower() in ("json", "yaml"):
+            return self.save(path = path, kind = kind)
         else:
-            raise ValueError(f"Expect `kind` to be 'midi', 'musicxml', or 'audio', but got : {kind}.")
+            raise ValueError(f"Expect `kind` to be 'midi', 'musicxml', 'audio', or 'json', but got : {kind}.")
 
     ##################################################
         
@@ -822,22 +854,34 @@ def load_annotation(annotation: dict):
             raise KeyError("Unknown annotation type.")
 
 
-def load_json(path: str) -> MusicRender:
-    """Load a Music object from a JSON file.
+def load(path: str, kind: str = None) -> MusicRender:
+    """Load a Music object from a JSON or YAML file.
 
     Parameters
     ----------
     path : str
-        Path to the JSON data.
+        Path to the data.
     """
+
+    # infer kind
+    if kind is None:
+        if ".json" in path:
+            kind = "json"
+        elif (".yaml" in path) or (".yml" in path):
+            kind = "yaml"
+        else:
+            raise ValueError("Cannot infer file format from the extension (expect JSON or YAML).")
+    else:
+        kind = kind.lower()
+    loader = json.load if (kind == "json") else yaml.safe_load
 
     # if file is compressed
     if path.lower().endswith(".gz"):
         with gzip.open(path, "rt", encoding = "utf-8") as file:
-            data = json.load(fp = file)
+            data = loader(file)
     else:
         with open(path, "rt", encoding = "utf-8") as file:
-            data = json.load(fp = file)
+            data = loader(file)
 
     # extract info from nested dictionaries
     metadata = Metadata(
