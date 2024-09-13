@@ -38,7 +38,7 @@ Let's say `music` is a `MusicRender` object. We can save `music` to a JSON or YA
 music.save(path = path)
 ```
 
-Though we could just as easily use `write()` as well, where `path` ends with `.json` or `.yaml`. The benefit of this method is that we can write `music` to various other output formats, where the output filetype is inferred from the filetype of `path` (`.wav` is audio, `.midi` is symbolic).
+However, we could just as easily use `write()`, where `path` ends with `.json` or `.yaml`. The benefit of this method is that we can write `music` to various other output formats, where the output filetype is inferred from the filetype of `path` (`.wav` is audio, `.midi` is symbolic).
 
 ```python
 music.write(path = path)
