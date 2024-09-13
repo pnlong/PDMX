@@ -14,7 +14,7 @@ import logging
 from os.path import exists, basename, dirname
 from os import mkdir, makedirs, chdir, remove
 import sys
-from shutil import rmtree
+from shutil import rmtree, copy
 import pandas as pd
 import numpy as np
 import multiprocessing
@@ -102,6 +102,9 @@ if __name__ == "__main__":
     # set random seed
     random.seed(0)
 
+    # output path in listening test directory
+    get_listening_test_output_path = lambda model, facet, i: f"{args.output_dir}/{model}.{facet}.{i}.wav"
+
     ##################################################
 
     
@@ -182,7 +185,7 @@ if __name__ == "__main__":
                 sampled_paths = dataset_instrumentation[(dataset_instrumentation["model"] == model) & (dataset_instrumentation["facet"] == facet)]["path"].to_list()
                 sampled_paths = random.sample(population = sampled_paths, k = n_samples_per_instrumentation[i])
                 paths.extend(sampled_paths)
-                output_paths.extend(map(lambda j: f"{args.output_dir}/{model}.{facet}.{starting_index + j}.wav", range(len(sampled_paths))))
+                output_paths.extend(map(lambda j: get_listening_test_output_path(model = model, facet = facet, i = starting_index + j), range(len(sampled_paths))))
 
         # use multiprocessing
         with multiprocessing.Pool(processes = args.jobs) as pool:
@@ -217,10 +220,11 @@ if __name__ == "__main__":
     if not exists(listening_test_results_filepath):
         sys.exit()
     full_listening_test = pd.read_csv(filepath_or_buffer = listening_test_results_filepath, sep = ",", header = 0, index_col = 0)
-    full_listening_test = full_listening_test.rename(columns = {"session_uuid": "user", "model": "facet", "trial_id": "model", "is_ft": "fine_tuned", "rating_score": "rating", "rating_stimulus": "statistic"}) # rename columns to work in our infrastructure
+    full_listening_test = full_listening_test.rename(columns = {"session_uuid": "user", "model": "facet", "is_ft": "fine_tuned", "rating_score": "rating", "rating_stimulus": "statistic"}) # rename columns to work in our infrastructure
     full_listening_test["statistic"] = full_listening_test["statistic"].str.lower() # ensure statistic is lower case
-    full_listening_test["fine_tuned"] = list(map(lambda model: FINE_TUNING_SUFFIX in model.split("-")[0], full_listening_test["model"]))
-    full_listening_test = full_listening_test[["user", "facet", "fine_tuned", "statistic", "rating"]]
+    # full_listening_test["model"] = list(map(lambda model: model.split("-")[0], full_listening_test["trial_id"])) # model the song came from
+    full_listening_test["i"] = list(map(lambda model: model.split("-")[-1], full_listening_test["trial_id"])) # song id
+    full_listening_test = full_listening_test[["user", "facet", "fine_tuned", "i", "statistic", "rating"]]
     logging.info(f"{len(set(full_listening_test['user']))} respondents.")
 
     # plot hyper parameters
@@ -228,6 +232,7 @@ if __name__ == "__main__":
     tile_height_to_legend_proportion = 4
     separate_legend = False
     alpha_for_fine_tune = (1.0, 0.6)
+    fine_tune_labels = ("Base", "Fine-Tuned")
     axis_label_fontsize = "medium"
     xlabel = "Subset"
     ylabel = {"bar": "Mean Opinion Score", "violin": "Mean Opinion Score"}
@@ -326,8 +331,8 @@ if __name__ == "__main__":
 
     # add legend
     legend_handles = [
-        Patch(facecolor = linecolor, edgecolor = legend_edgecolor, alpha = alpha_for_fine_tune[False], label = "Base"),
-        Patch(facecolor = linecolor, edgecolor = legend_edgecolor, alpha = alpha_for_fine_tune[True], label = "Fine-Tuned"),
+        Patch(facecolor = linecolor, edgecolor = legend_edgecolor, alpha = alpha_for_fine_tune[False], label = fine_tune_labels[False]),
+        Patch(facecolor = linecolor, edgecolor = legend_edgecolor, alpha = alpha_for_fine_tune[True], label = fine_tune_labels[True]),
     ]
     if separate_legend:
         axes["legend"].legend(
@@ -349,6 +354,49 @@ if __name__ == "__main__":
         mkdir(dirname(output_filepath))
     fig.savefig(output_filepath, dpi = 200, transparent = True, bbox_inches = "tight") # save image
     logging.info(f"Listening Test plot saved to {output_filepath}.")
+
+    ##################################################
+
+
+    # GET TOP N BEST SAMPLES FOR EACH MODEL
+    ##################################################
+
+    def get_top_n_best_samples_per_model(n: int = 3, statistic: str = "quality", output_dir: str = None):
+        """
+        Retrieves the Top-`n` best samples for each model for the demo.
+        """
+
+        # deal with output directory
+        if (output_dir is None) or (not exists(output_dir)):
+            output_dir = f"{dirname(dirname(realpath(__file__)))}/demo/resources/audio"
+            if not exists(output_dir):
+                makedirs(output_dir)
+
+        # get top n best for each grouping
+        groupby_columns = ["fine_tuned", "facet", "i"]
+        best_samples = full_listening_test[full_listening_test["statistic"] == statistic][groupby_columns + ["rating"]].groupby(by = groupby_columns).mean().reset_index(drop = False)
+        best_samples = best_samples.sort_values(by = groupby_columns[:-1] + ["rating"], axis = 0, ascending = False, ignore_index = True)
+        best_samples = best_samples.groupby(by = groupby_columns[:-1]).head(n = n).reset_index(drop = True)[groupby_columns]
+
+        # create output directory structure
+        fine_tune_dir_labels = tuple(map(lambda fine_tune_label: fine_tune_label.lower().replace("-", "_"), fine_tune_labels))
+        for fine_tune_dir_label in fine_tune_dir_labels:
+            fine_tune_dir_label_full = f"{output_dir}/{fine_tune_dir_label}"
+            if not exists(fine_tune_dir_label_full):
+                mkdir(fine_tune_dir_label_full)
+            for facet in facets:
+                facet_dir_label_full = f"{fine_tune_dir_label_full}/{facet}"
+                if not exists(facet_dir_label_full):
+                    mkdir(facet_dir_label_full)
+
+        # copy over audio files
+        for j, (fine_tuned, facet, i) in enumerate(best_samples.values):
+            original_path = get_listening_test_output_path(model = args.model_size + (f"_{FINE_TUNING_SUFFIX}" if fine_tuned else ""), facet = facet, i = i)
+            new_path = f"{output_dir}/{fine_tune_dir_labels[fine_tuned]}/{facet}/{j % n}.wav"
+            copy(src = original_path, dst = new_path)
+
+    # make the demo
+    # get_top_n_best_samples_per_model(n = 3)
 
     ##################################################
 
