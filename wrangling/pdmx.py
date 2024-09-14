@@ -134,11 +134,9 @@ if __name__ == "__main__":
 
     # use multiprocessing
     with multiprocessing.Pool(processes = args.jobs) as pool:
-        dataset["path"], dataset["metadata"] = list(zip(*list(tqdm(iterable = pool.map(func = get_file,
-                                                                                       iterable = dataset.index,
-                                                                                       chunksize = CHUNK_SIZE),
-                                                                   desc = f"Creating {DATASET_NAME}",
-                                                                   total = len(dataset)))))
+        dataset["path"], dataset["metadata"] = list(zip(*list(iterable = pool.map(func = get_file,
+                                                                                  iterable = tqdm(iterable = dataset.index, desc = f"Creating {DATASET_NAME}", total = len(dataset)),
+                                                                                  chunksize = CHUNK_SIZE))))
                                                         
     # remove unnecessary columns
     dataset = dataset.drop(columns = ["path_output", "metadata_output"])
