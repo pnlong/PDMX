@@ -12,11 +12,12 @@
 import argparse
 from os.path import exists, dirname
 from os import makedirs, mkdir
-from shutil import copyfile
+from shutil import copy
 import pandas as pd
 from tqdm import tqdm
 import multiprocessing
 import logging
+from typing import Tuple
 
 from os.path import dirname, realpath
 import sys
@@ -110,32 +111,35 @@ if __name__ == "__main__":
     ##################################################
 
     # helper function to save files
-    def get_file(i: int) -> None:
+    def get_file(i: int) -> Tuple[str, str]:
         """
         Given the dataset index, copy over song as music object, and metadata if applicable.
+        Returns data path and metadata path.
         """
 
         # save as music object
         path_output = dataset.at[i, "path_output"]
         music = read_musescore(path = dataset.at[i, "path"], timeout = 10)
         music.save(path = path_output, compressed = COMPRESS_JSON_MUSIC_FILES) # save as music object
-        dataset.at[i, "path"] = path_output # update path
+        path_output = path_output.replace(output_dir, ".")
 
         # copy over metadata path
         metadata_path = dataset.at[i, "metadata"]
         if metadata_path:
             metadata_path_new = dataset.at[i, "metadata_output"]
-            copyfile(src = metadata_path, dst = metadata_path_new) # copy over metadata
-            dataset.at[i, "metadata"] = metadata_path_new
+            copy(src = metadata_path, dst = metadata_path_new) # copy over metadata
+            metadata_path = metadata_path_new.replace(output_dir, ".")
+        
+        return path_output, metadata_path
 
     # use multiprocessing
     with multiprocessing.Pool(processes = args.jobs) as pool:
-        _ = list(tqdm(iterable = pool.imap_unordered(func = get_file,
-                                                     iterable = dataset.index,
-                                                     chunksize = CHUNK_SIZE),
-                            desc = f"Creating {DATASET_NAME}",
-                            total = len(dataset)))
-        
+        dataset["path"], dataset["metadata"] = list(zip(*list(tqdm(iterable = pool.map(func = get_file,
+                                                                                       iterable = dataset.index,
+                                                                                       chunksize = CHUNK_SIZE),
+                                                                   desc = f"Creating {DATASET_NAME}",
+                                                                   total = len(dataset)))))
+                                                        
     # remove unnecessary columns
     dataset = dataset.drop(columns = ["path_output", "metadata_output"])
     facet_columns = list(filter(lambda column: column.startswith("facet:"), dataset.columns))
