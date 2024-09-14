@@ -156,6 +156,7 @@ if __name__ == "__main__":
     # gzip if needed
     if args.gzip:
         chdir(dirname(output_dir))
+        logging.info("Gzipping dataset.")
         subprocess.run(args = ["tar", "-zcf", f"{basename(output_dir)}.tar.gz", basename(output_dir)], check = True)
     
     ##################################################
