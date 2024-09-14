@@ -10,9 +10,10 @@
 ##################################################
 
 import argparse
-from os.path import exists, dirname
-from os import makedirs, mkdir
+from os.path import exists, dirname, basename
+from os import makedirs, mkdir, chdir
 from shutil import copy
+import subprocess
 import pandas as pd
 from tqdm import tqdm
 import multiprocessing
@@ -55,6 +56,7 @@ def parse_args(args = None, namespace = None):
     parser = argparse.ArgumentParser(prog = DATASET_NAME, description = f"Create {DATASET_NAME} Dataset.")
     parser.add_argument("-df", "--dataset_filepath", type = str, default = f"{DATASET_OUTPUT_DIR}/{DATASET_DIR_NAME}.csv", help = "Filepath to full dataset.")
     parser.add_argument("-o", "--output_dir", type = str, default = OUTPUT_DIR, help = "Output directory")
+    parser.add_argument("-g", "--gzip", action = "store_true", help = "GZIP the output directory of the dataset")
     parser.add_argument("-j", "--jobs", type = int, default = int(multiprocessing.cpu_count() / 4), help = "Number of Jobs")
     return parser.parse_args(args = args, namespace = namespace)
 
@@ -149,6 +151,12 @@ if __name__ == "__main__":
     for column in subset_columns:
         with open(f"{facets_dir}/{column.split(':')[-1]}.txt", "w") as output_file:
             output_file.write("\n".join(dataset[dataset[column]]["path"]))
+        
+
+    # gzip if needed
+    if args.gzip:
+        chdir(dirname(output_dir))
+        subprocess.run(args = ["tar", "-zcf", f"{basename(output_dir)}.tar.gz", basename(output_dir)], check = True)
     
     ##################################################
 
