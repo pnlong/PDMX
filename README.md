@@ -8,7 +8,7 @@ Recent [copyright infringement lawsuits against leading music generation compani
 
 ## Installation
 
-To access the functionalities that we introduce, please clone the latest version of this [repository](https://github.com/pnlong/PDMX). Then, install relevant dependencies to the Conda environment `my_env` with `conda env update -n my_env --file environment.yml`.
+To access the functionalities that we introduce, please clone the latest version of this repository. Then, install relevant dependencies to the Conda environment `my_env` with `conda env update -n my_env --file environment.yml`.
 
 ### TL;DR
 
