@@ -1,5 +1,5 @@
-[![Zenodo](https://img.shields.io/badge/Dataset-f56c42?style=plastic&logo=zenodo&logoColor=black&logoSize=auto)](https://zenodo.org/records/13763756)
 [![arXiv](https://img.shields.io/badge/Paper-eeeeee?style=plastic&logo=arxiv&logoColor=red&logoSize=auto)](https://arxiv.org/)
+[![Zenodo](https://img.shields.io/badge/Dataset-f56c42?style=plastic&logo=zenodo&logoColor=black&logoSize=auto)](https://zenodo.org/records/13763756)
 [![GitHub license](https://img.shields.io/github/license/pnlong/PDMX?style=plastic)](https://github.com/pnlong/PDMX/blob/master/LICENSE)
 
 # PDMX: A Large-Scale *P*ublic *D*omain *M*usic*X*ML Dataset for Symbolic Music Processing
