@@ -1,8 +1,10 @@
-[![GitHub license](https://img.shields.io/github/license/pnlong/PDMX?style=plastic)](https://github.com/pnlong/PDMX/blob/master/LICENSE)
 [![Zenodo](https://img.shields.io/badge/Dataset-f56c42?style=plastic&logo=zenodo&logoColor=black&logoSize=auto)](https://zenodo.org/records/13763756)
+[![arXiv](https://img.shields.io/badge/Paper-eeeeee?style=plastic&logo=arxiv&logoColor=red&logoSize=auto)](https://arxiv.org/)
+[![GitHub license](https://img.shields.io/github/license/pnlong/PDMX?style=plastic)](https://github.com/pnlong/PDMX/blob/master/LICENSE)
+
 # PDMX: A Large-Scale *P*ublic *D*omain *M*usic*X*ML Dataset for Symbolic Music Processing
 
-Recent [copyright infringement lawsuits against leading music generation companies](https://www.riaa.com/record-companies-bring-landmark-cases-for-responsible-ai-againstsuno-and-udio-in-boston-and-new-york-federal-courts-respectively) have sent shockwaves throughout the AI-Music community, highlighting the need for copyright-free training data. Meanwhile, the most prevalent format for symbolic music processing, MIDI, is well-suited for modeling sequences of notes but omits an abundance of extra musical information present in sheet music, which the MusicXML format addresses. To mitigate these gaps, we present **[PDMX]()**: a large-scale open-source dataset of over 250K public domain MusicXML scores. We also introduce `MusicRender`, an extension of the Python library [MusPy](https://hermandong.com/muspy/doc/muspy.html)'s universal `Music` object, designed specifically to handle MusicXML. The dataset, and more specifics about it, can be downloaded on [Zenodo](https://zenodo.org/records/13763756).
+Recent [copyright infringement lawsuits against leading music generation companies](https://www.riaa.com/record-companies-bring-landmark-cases-for-responsible-ai-againstsuno-and-udio-in-boston-and-new-york-federal-courts-respectively) have sent shockwaves throughout the AI-Music community, highlighting the need for copyright-free training data. Meanwhile, the most prevalent format for symbolic music processing, MIDI, is well-suited for modeling sequences of notes but omits an abundance of extra musical information present in sheet music, which the MusicXML format addresses. To mitigate these gaps, we present **[PDMX](https://arxiv.org/)**: a large-scale open-source dataset of over 250K public domain MusicXML scores. We also introduce `MusicRender`, an extension of the Python library [MusPy](https://hermandong.com/muspy/doc/muspy.html)'s universal `Music` object, designed specifically to handle MusicXML. The dataset, and more specifics about it, can be downloaded on [Zenodo](https://zenodo.org/records/13763756).
 
 ---
 
@@ -68,7 +70,7 @@ music = read_musescore(path = path)
 
 ## Citing & Authors
 
-If you find this repository helpful, feel free to cite our publication [PDMX: A Large-Scale Public Domain MusicXML Dataset for Symbolic Music Processing]():
+If you find this repository helpful, feel free to cite our publication [PDMX: A Large-Scale Public Domain MusicXML Dataset for Symbolic Music Processing](https://arxiv.org/):
 
 ```bibtex
 @inproceedings{long2024pdmx,
