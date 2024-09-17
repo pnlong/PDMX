@@ -1,4 +1,4 @@
-[![arXiv](https://img.shields.io/badge/arXiv-XXXX%3AXXXX-b31b1b?style=flat&logo=arxiv&logoColor=b31b1b&logoSize=auto)](https://arxiv.org/)
+[![arXiv](https://img.shields.io/badge/cs.SD-XXXX%3AXXXX-b31b1b?style=flat&logo=arxiv&logoColor=b31b1b&logoSize=auto)](https://arxiv.org/)
 [![Zenodo](https://img.shields.io/badge/Dataset-10.5281%2Fzenodo.13763756-blue?style=flat&logo=zenodo&logoColor=blue&logoSize=auto)](https://zenodo.org/records/13763756)
 [![GitHub license](https://img.shields.io/github/license/pnlong/PDMX?style=flat)](https://github.com/pnlong/PDMX/blob/master/LICENSE)
 
@@ -73,7 +73,7 @@ music = read_musescore(path = path)
 If you find this repository helpful, feel free to cite our publication [PDMX: A Large-Scale Public Domain MusicXML Dataset for Symbolic Music Processing](https://arxiv.org/):
 
 ```bibtex
-@inproceedings{long2024pdmx,
+@article{long2024pdmx,
     title={{PDMX}: A Large-Scale Public Domain MusicXML Dataset for Symbolic Music Processing},
     author={Long, Phillip and Novack, Zachary and Berg-Kirkpatrick, Taylor and McAuley, Julian},
     journal={arXiv:},
