@@ -78,7 +78,7 @@ If you find this repository helpful, feel free to cite our publication [PDMX: A 
 @article{long2024pdmx,
     title={{PDMX}: A Large-Scale Public Domain MusicXML Dataset for Symbolic Music Processing},
     author={Long, Phillip and Novack, Zachary and Berg-Kirkpatrick, Taylor and McAuley, Julian},
-    journal={arXiv:},
+    journal={arXiv:2409.10831},
     year={2024},
 }
 ```
