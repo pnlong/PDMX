@@ -18,6 +18,7 @@ To access the functionalities that we introduce, please clone the latest version
 
 ```
 git clone https://github.com/pnlong/PDMX.git
+conda create -n myenv python=3.10
 conda env update -n my_env --file PDMX/environment.yml
 conda activate my_env
 ```

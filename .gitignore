@@ -3,3 +3,4 @@ wandb/
 read_musescore/__pycache__/
 old_scripts/
 demo/
+environment_full.yml
