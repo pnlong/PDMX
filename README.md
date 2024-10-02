@@ -12,9 +12,11 @@ Recent [copyright infringement lawsuits against leading music generation compani
 
 ## Installation
 
-To access the functionalities that we introduce, please clone the latest version of this repository. Then, install relevant dependencies to the Conda environment `my_env` with `conda env update -n my_env --file environment.yml`.
+To access the functionalities that we introduce, please clone the latest version of this repository. Then, install relevant dependencies to the Conda environment `my_env` with `conda env update -n my_env --file environment.yml`. Alternatively, you can use `pip` to create a virtual environment with `pip install -r requirements.txt`.
 
 ### TL;DR
+
+With *Conda*:
 
 ```
 git clone https://github.com/pnlong/PDMX.git
@@ -23,7 +25,13 @@ conda env update -n my_env --file PDMX/environment.yml
 conda activate my_env
 ```
 
+With `pip`:
 
+```
+python3 -m my_env .my_env
+source .my_env/bin/activate
+pip install -r requirements.txt
+```
 
 ## Important Methods
 
