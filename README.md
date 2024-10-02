@@ -20,14 +20,17 @@ With *Conda*:
 
 ```
 git clone https://github.com/pnlong/PDMX.git
+cd PDMX
 conda create -n myenv python=3.10
-conda env update -n my_env --file PDMX/environment.yml
+conda env update -n my_env --file environment.yml
 conda activate my_env
 ```
 
 With `pip`:
 
 ```
+git clone https://github.com/pnlong/PDMX.git
+cd PDMX
 python3 -m my_env .my_env
 source .my_env/bin/activate
 pip install -r requirements.txt
