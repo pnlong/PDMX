@@ -246,7 +246,7 @@ def to_mido_meta_track(music: "MusicRender") -> MidiTrack:
                 if annotation.annotation.__class__.__name__ == "Articulation": # looking for fermatas
                     if "fermata" not in annotation.annotation.subtype: # hidden as articulations
                         continue # if not a fermata-articulation, skip
-                longest_note_duration_at_current_time = max((note.duration for note in all_notes if note.time == annotation.time)) # go through notes and find longest duration note at the time of the fermata
+                longest_note_duration_at_current_time = max([note.duration for note in all_notes if note.time == annotation.time] + [0]) # go through notes and find longest duration note at the time of the fermata
                 meta_track.append(MetaMessage(type = "set_tempo", time = annotation.time, tempo = tempo_changes[current_tempo_index]["tempo"] * FERMATA_TEMPO_SLOWDOWN)) # start of fermata
                 meta_track.append(MetaMessage(type = "set_tempo", time = annotation.time + longest_note_duration_at_current_time, tempo = tempo_changes[current_tempo_index]["tempo"])) # end of fermata
                 del longest_note_duration_at_current_time
