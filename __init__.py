@@ -9,6 +9,7 @@
 from os.path import dirname, realpath
 import sys
 sys.path.insert(0, dirname(realpath(__file__)))
+del dirname, realpath
 
 # MusicRender object
 from reading.music import MusicRender
