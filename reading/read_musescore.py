@@ -1399,6 +1399,11 @@ def read_musescore(path: str, resolution: int = None, compressed: bool = None, t
 
 if __name__ == "__main__":
 
+    # imports
+    from tqdm import tqdm
+    import multiprocessing
+
+    # paths to load
     paths = [
         "/data2/pnlong/musescore/test_data/chopin/Chopin_Trois_Valses_Op64.mscz",
         "/data2/pnlong/musescore/test_data/goodman/in_the_mood.mscz",
@@ -1413,12 +1418,17 @@ if __name__ == "__main__":
         "/data2/pnlong/musescore/test_data/waldteufel/les_patineurs.mscz",
         ]
 
-    from tqdm import tqdm
-    for path in tqdm(iterable = paths, desc = "Reading MuseScore Files", total = len(paths)):
+    # helper function
+    def make_example(path: str):
+        """Make example."""
         stem = ".".join(path.split(".")[:-1])
         music = read_musescore(path = path)
         music.print(output_filepath = join(dirname(path), "mscx.yml"))
         music.write(f"{stem}.mid") # write as symbolic
         music.write(f"{stem}.wav") # write as audio
+
+    # multiprocessing
+    with multiprocessing.Pool(processes = int(multiprocessing.cpu_count() / 4)) as pool:
+        _ = list(pool.map(func = make_example, iterable = tqdm(iterable = paths, desc = f"Reading MuseScore Files", total = len(paths)), chunksize = 1))
 
 ##################################################

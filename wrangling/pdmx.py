@@ -132,6 +132,7 @@ if __name__ == "__main__":
             copy(src = metadata_path, dst = metadata_path_new) # copy over metadata
             metadata_path = metadata_path_new.replace(output_dir, ".")
         
+        # return paths
         return path_output, metadata_path
 
     # use multiprocessing
