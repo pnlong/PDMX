@@ -1081,10 +1081,13 @@ def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], ti
 
                 # Chord Symbol
                 elif elem.tag == "Harmony":
-                    root_str = TONAL_PITCH_CLASSES[int(_get_required_text(element = elem, path = "root")) + transpose_circle_of_fifths]
-                    name = _get_text(element = elem, path = "name")
-                    annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = ChordSymbol(root_str = root_str, name = name)))
-                    del root_str, name
+                    root = _get_text(element = elem, path = "root")
+                    if root is not None:
+                        root_str = TONAL_PITCH_CLASSES[int(root) + transpose_circle_of_fifths]
+                        name = _get_text(element = elem, path = "name")
+                        annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = ChordSymbol(root_str = root_str, name = name)))
+                        del root_str, name
+                    del root
                 
                 # Tuplet elements
                 elif elem.tag == "Tuplet":
