@@ -1410,6 +1410,7 @@ if __name__ == "__main__":
         "/data2/pnlong/musescore/test_data/toploader/dancing_in_the_moonlight.mscz",
         "/data2/pnlong/musescore/test_data/debussy/clair_de_lune.mscz",
         "/data2/pnlong/musescore/test_data/test0/QmcDL7KEmC9ZCeaXvBSnPWK26EtcoYicKmLhj8EwV7XeUG.mscz",
+        "/data2/pnlong/musescore/test_data/waldteufel/les_patineurs.mscz",
         ]
 
     from tqdm import tqdm
