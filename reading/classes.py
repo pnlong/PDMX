@@ -413,6 +413,27 @@ class RehearsalMark(Text):
     def __init__(self, text: str):
         super().__init__(text = text, is_system = True)
 
+# CHORD SYMBOL
+class ChordSymbol(Text):
+    """A container for ChordSymbol elements.
+
+    Attributes
+    ----------
+    root_str : str
+        Root pitch as a string, useful for distinguishing, e.g., C# and Db.
+    name : str, optional
+        The text contained in the ChordSymbol element.
+
+    """
+
+    _attributes = OrderedDict([("root_str", str), ("name", str)])
+    _optional_attributes = ["name"]
+
+    def __init__(self, root_str: str, name: str = None):
+        super().__init__(text = root_str + (name if name else ""), is_system = False)
+        self.root_str = root_str
+        self.name = name
+
 # TECH ANNOTATION
 class TechAnnotation(Text):
     """A container for PlayTechAnnotation elements.

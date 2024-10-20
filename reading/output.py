@@ -66,6 +66,8 @@ VELOCITY_INCREASE_FACTOR = 2 # factor by which to increase velocity when an expr
 ACCENT_VELOCITY_INCREASE_FACTOR = 1.5 # factor by which to increase velocity when an accent INSTANTANEOUSLY increases velocity
 FRACTION_TO_WIGGLE = 0.34 # fraction of MAX/MIN_PITCHWHEEL to bend notes for wiggle articulations (vibratos and sawtooths)
 DEFAULT_TEMPO = bpm2tempo(bpm = DEFAULT_QPM)
+N_TEMPO_SPANNER_SUBDIVISIONS = 5 # number of subdivisions for increasing/decreasing tempo with a tempo spanner
+GRACE_NOTE_FORWARD_SHIFT_CONSTANT = 0.15 # fraction of a quarter note's duration to shift a note forward if it is a grace note
 
 # dynamics
 MAX_VELOCITY = 127 # maximum velocity for midi
@@ -80,6 +82,8 @@ DYNAMIC_VELOCITY_MAP = {
 }
 DYNAMIC_DYNAMICS = set(tuple(DYNAMIC_VELOCITY_MAP.keys())[:tuple(DYNAMIC_VELOCITY_MAP.keys()).index("ffffff") + 1]) # dynamics that are actually dynamic markings and not sudden dynamic hikes
 
+# MIDI
+DRUM_CHANNEL = 9
 
 ##################################################
 
@@ -199,12 +203,14 @@ def to_mido_meta_track(music: "MusicRender") -> MidiTrack:
         combined_temporal_features = list(filter(lambda temporal_feature: temporal_feature.time <= max_note_time, music.tempos + music.time_signatures))
         combined_temporal_features = sorted(combined_temporal_features, key = lambda temporal_feature: temporal_feature.time) # get sorted list of tempos and time signatures
         current_time_signature = music.time_signatures[0] if len(music.time_signatures) > 0 else TimeSignature(time = 0) # instantiate current_time_signature
+        tempo_times = [] # keep track of tempo event times for tempo spanners later
         tempo_changes = [] # keep track of tempo changes to deal with tempo spanners later
         for temporal_feature in combined_temporal_features:
             if isinstance(temporal_feature, Tempo): # if tempo feature
                 current_tempo = bpm2tempo(bpm = temporal_feature.qpm)
                 meta_track.append(MetaMessage(type = "set_tempo", time = temporal_feature.time, tempo = current_tempo))
-                tempo_changes.append({"time": temporal_feature.time, "tempo": current_tempo})
+                tempo_times.append(temporal_feature.time)
+                tempo_changes.append(current_tempo)
             elif isinstance(temporal_feature, TimeSignature): # if time signature
                 meta_track.append(MetaMessage(type = "time_signature", time = temporal_feature.time, numerator = temporal_feature.numerator, denominator = temporal_feature.denominator))
                 current_time_signature = temporal_feature # update current_time_signature
@@ -214,7 +220,9 @@ def to_mido_meta_track(music: "MusicRender") -> MidiTrack:
     # key signatures
     for key_signature in filter(lambda key_signature: key_signature.time <= max_note_time, music.key_signatures):
         if (key_signature.root is not None) and (key_signature.mode in ("major", "minor")):
-            meta_track.append(MetaMessage(type = "key_signature", time = key_signature.time, key = PITCH_NAMES[key_signature.root] + ("m" if key_signature.mode == "minor" else "")))        
+            meta_track.append(MetaMessage(type = "key_signature", time = key_signature.time, key = PITCH_NAMES[key_signature.root] + ("m" if key_signature.mode == "minor" else ""))) 
+        elif key_signature.fifths is not None:
+            meta_track.append(MetaMessage(type = "key_signature", time = key_signature.time, key = PITCH_NAMES[CIRCLE_OF_FIFTHS[8 + key_signature.fifths][0]]))       
 
     # lyrics
     for lyric in filter(lambda lyric: lyric.time <= max_note_time, music.lyrics):
@@ -222,7 +230,10 @@ def to_mido_meta_track(music: "MusicRender") -> MidiTrack:
 
     # system and staff level annotations
     current_tempo_index = 0
-    for annotation in filter(lambda annotation: annotation.time <= max_note_time, music.annotations + sum((track.annotations for track in music.tracks), [])):
+    for annotation in (music.annotations + sum((track.annotations for track in music.tracks), [])):
+        # skip annotations out of the relevant time scope
+        if annotation.time <= max_note_time:
+            continue
         # ensure that values are valid
         if hasattr(annotation.annotation, "subtype"): # make sure subtype field is not none
             if annotation.annotation.subtype is None:
@@ -231,8 +242,8 @@ def to_mido_meta_track(music: "MusicRender") -> MidiTrack:
                 annotation.annotation.subtype = clean_up_subtype(subtype = annotation.annotation.subtype) # clean up the subtype
         # update current_tempo_index if necessary
         if metrical_time:
-            if current_tempo_index < len(tempo_changes) - 1: # avoid index error later on at last element in tempo_changes
-                if tempo_changes[current_tempo_index + 1]["time"] <= annotation.time: # update current_tempo_index if necessary
+            if current_tempo_index < (len(tempo_times) - 1): # avoid index error later on at last element in tempo_times
+                if tempo_times[current_tempo_index + 1] <= annotation.time: # update current_tempo_index if necessary
                     current_tempo_index += 1 # increment
         # Text and TextSpanner
         if annotation.annotation.__class__.__name__ in ("Text", "TextSpanner"):
@@ -240,32 +251,31 @@ def to_mido_meta_track(music: "MusicRender") -> MidiTrack:
         # RehearsalMark
         elif annotation.annotation.__class__.__name__ == "RehearsalMark":
             meta_track.append(MetaMessage(type = "marker", time = annotation.time, text = annotation.annotation.text))
-        elif not music.absolute_time:
+        elif metrical_time: # if absolute time, temporal features have presumably already been accounted for
             # Fermata and fermatas stored inside of Articulation
-            if (annotation.annotation.__class__.__name__ in ("Fermata", "Articulation")) and metrical_time: # only apply when metrical time in use
-                if annotation.annotation.__class__.__name__ == "Articulation": # looking for fermatas
-                    if "fermata" not in annotation.annotation.subtype: # hidden as articulations
-                        continue # if not a fermata-articulation, skip
+            if (annotation.annotation.__class__.__name__ == "Fermata") or (annotation.annotation.__class__.__name__ == "Articulation"): # only apply when metrical time in use
+                if (annotation.annotation.__class__.__name__ == "Articulation") and ("fermata" not in annotation.annotation.subtype): # looking for fermatas hidden as articulations
+                    continue # if not a fermata-articulation, skip
                 longest_note_duration_at_current_time = max([note.duration for note in all_notes if note.time == annotation.time] + [0]) # go through notes and find longest duration note at the time of the fermata
-                meta_track.append(MetaMessage(type = "set_tempo", time = annotation.time, tempo = tempo_changes[current_tempo_index]["tempo"] * FERMATA_TEMPO_SLOWDOWN)) # start of fermata
-                meta_track.append(MetaMessage(type = "set_tempo", time = annotation.time + longest_note_duration_at_current_time, tempo = tempo_changes[current_tempo_index]["tempo"])) # end of fermata
+                if longest_note_duration_at_current_time > 0:
+                    meta_track.append(MetaMessage(type = "set_tempo", time = annotation.time, tempo = tempo_changes[current_tempo_index] * FERMATA_TEMPO_SLOWDOWN)) # start of fermata
+                    meta_track.append(MetaMessage(type = "set_tempo", time = annotation.time + longest_note_duration_at_current_time, tempo = tempo_changes[current_tempo_index])) # end of fermata
                 del longest_note_duration_at_current_time
             # TempoSpanner
-            elif (annotation.annotation.__class__.__name__ == "TempoSpanner") and metrical_time: # only apply when metrical time in use
-                tempo_change_factor_magnitude = 1 # amount to multiply the tempo by
-                for time in range(annotation.time, annotation.time + annotation.annotation.duration, int(annotation.annotation.duration / 5)):
-                    tempo_change_factor = 1 # default, unknown TempoSpanner subtype
-                    if any((annotation.annotation.subtype.startswith(prefix) for prefix in ("lent", "rall", "rit", "smorz", "sost", "allarg"))): # slow-downs; lentando, rallentando, ritardando, smorzando, sostenuto, allargando
-                        tempo_change_factor = tempo_change_factor_magnitude
-                    elif any((annotation.annotation.subtype.startswith(prefix) for prefix in ("accel", "leg"))): # speed-ups; accelerando, leggiero
-                        tempo_change_factor = 1 / tempo_change_factor_magnitude
-                    meta_track.append(MetaMessage(type = "set_tempo", time = time, tempo = int(tempo_changes[current_tempo_index]["tempo"] * tempo_change_factor))) # add tempo change
-                    tempo_change_factor_magnitude += 1 # update the magnitude of the tempo change
+            elif annotation.annotation.__class__.__name__ == "TempoSpanner": # only apply when metrical time in use
+                if any((annotation.annotation.subtype.startswith(prefix) for prefix in ("lent", "rall", "rit", "smorz", "sost", "allarg"))): # slow-downs; lentando, rallentando, ritardando, smorzando, sostenuto, allargando
+                    tempo_change_factor_fn = lambda t: t
+                elif any((annotation.annotation.subtype.startswith(prefix) for prefix in ("accel", "leg"))): # speed-ups; accelerando, leggiero
+                    tempo_change_factor_fn = lambda t: 1 / t
+                else: # unknown TempoSpanner subtype
+                    tempo_change_factor_fn = lambda t: 1
+                for time, tempo_change_factor_magnitude in zip(range(annotation.time, annotation.time + annotation.annotation.duration, int(annotation.annotation.duration / N_TEMPO_SPANNER_SUBDIVISIONS)), range(1, 1 + N_TEMPO_SPANNER_SUBDIVISIONS)):                    
+                    meta_track.append(MetaMessage(type = "set_tempo", time = time, tempo = int(tempo_changes[current_tempo_index] * tempo_change_factor_fn(t = tempo_change_factor_magnitude)))) # add tempo change
                 end_tempo_spanner_tempo_index = current_tempo_index
-                if current_tempo_index < len(tempo_changes) - 1:
-                    end_tempo_spanner_tempo_index += int(annotation.time + annotation.annotation.duration > tempo_changes[current_tempo_index + 1]["time"]) # if the tempo changed during the tempo spanner
-                meta_track.append(MetaMessage(type = "set_tempo", time = annotation.time + annotation.annotation.duration, tempo = tempo_changes[end_tempo_spanner_tempo_index]["tempo"])) # reset tempo
-                del time, tempo_change_factor_magnitude, tempo_change_factor, end_tempo_spanner_tempo_index
+                if (current_tempo_index < (len(tempo_changes) - 1)) and ((annotation.time + annotation.annotation.duration) > tempo_times[current_tempo_index + 1]): # check if the tempo changed during the tempo spanner
+                    end_tempo_spanner_tempo_index += 1 # if the tempo changed during the tempo spanner
+                meta_track.append(MetaMessage(type = "set_tempo", time = annotation.time + annotation.annotation.duration, tempo = tempo_changes[end_tempo_spanner_tempo_index])) # reset tempo
+                del time, tempo_change_factor_magnitude, tempo_change_factor_fn, end_tempo_spanner_tempo_index
     del current_tempo_index, all_notes
 
     # end of track message
@@ -302,6 +312,7 @@ def get_expressive_features_per_note(note_times: list, all_annotations: list) ->
     """Return a dictionary where the keys are the set of note times, and the values are the expressive features present at that note time."""
 
     # create expressive features
+    note_time_indicies = {note_time: i for i, note_time in enumerate(note_times)}
     expressive_features: Dict[int, List[Annotation]] = dict(zip(note_times, ([] for _ in range(len(note_times))))) # dictionary where keys are time and values are expressive feature annotation objects
     for annotation in sorted(all_annotations, key = lambda annotation: annotation.time): # sort staff and system level annotations
         if hasattr(annotation.annotation, "subtype"):
@@ -316,15 +327,15 @@ def get_expressive_features_per_note(note_times: list, all_annotations: list) ->
             if (annotation.annotation.__class__.__name__ == "Dynamic") and (annotation.annotation.subtype not in DYNAMIC_DYNAMICS): # for sudden dynamic hikes do not fill with duration
                 continue
             if annotation_falls_on_note: # get index of the note after the current time when annotation falls on a note
-                current_note_time_index = note_times.index(annotation.time) + 1
+                current_note_time_index = note_time_indicies[annotation.time] + 1
             else: # get index of the note after the current time when annotation does not fall on a note
                 current_note_time_index = len(note_times) # default value
-                for i in range(len(note_times)):
-                    if note_times[i] > annotation.time: # first note time after the annotation time
-                        current_note_time_index = i
+                for note_time in note_times:
+                    if note_time > annotation.time: # first note time after the annotation time
+                        current_note_time_index = note_time_indicies[note_time]
                         break
             while current_note_time_index < len(note_times):
-                if note_times[current_note_time_index] >= annotation.time + annotation.annotation.duration: # when the annotation does not have any more effect on the notes being played
+                if note_times[current_note_time_index] >= (annotation.time + annotation.annotation.duration): # when the annotation does not have any more effect on the notes being played
                     break # break out of while loop
                 expressive_features[note_times[current_note_time_index]].append(annotation)
                 current_note_time_index += 1 # increment
@@ -336,11 +347,11 @@ def get_expressive_features_per_note(note_times: list, all_annotations: list) ->
             j = i - 1 # start index finder at the index before current
             while not any((annotation.annotation.subtype in DYNAMIC_DYNAMICS for annotation in expressive_features[note_times[j]] if annotation.annotation.__class__.__name__ == "Dynamic")) and (j > -1): # look for previous note times with a dynamic
                 j -= 1 # decrement j
-            if j == -1: # no notes with dynamics before this one, result to default values
+            if (j == -1): # no notes with dynamics before this one, result to default values
                 dynamic_annotation = Dynamic(subtype = DEFAULT_DYNAMIC, velocity = DYNAMIC_VELOCITY_MAP[DEFAULT_DYNAMIC])
             else: # we found a dynamic before this note time
                 dynamic_annotation = expressive_features[note_times[j]][0].annotation # we can assume the dynamic marking is at index 0 because of our sorting
-            expressive_features[note_time].insert(0, Annotation(time = note_time, annotation = dynamic_annotation))
+            expressive_features[note_time].insert(0, Annotation(time = note_time, annotation = dynamic_annotation)) # insert dynamic at position 0
         expressive_features[note_time] = sorted(expressive_features[note_time], key = sort_expressive_features_key) # sort expressive features in desired order
         if expressive_features[note_time][0].annotation.velocity is None: # make sure dynamic velocity is not none
             expressive_features[note_time][0].annotation.velocity = DYNAMIC_VELOCITY_MAP[DEFAULT_DYNAMIC] # set to default velocity
@@ -371,7 +382,7 @@ def to_mido_track(track: Track, music: "MusicRender", channel: int = None, use_n
 
     # determine channel
     if channel is None:
-        channel = 9 if track.is_drum else 0
+        channel = DRUM_CHANNEL if track.is_drum else 0
 
     # create a new .mid track
     midi_track = MidiTrack()
@@ -384,13 +395,13 @@ def to_mido_track(track: Track, music: "MusicRender", channel: int = None, use_n
     midi_track.append(Message(type = "program_change", program = track.program, channel = channel))
 
     # deal with expressive features
-    note_times = sorted(unique(l = [note.time for note in track.notes])) # times of notes, sorted ascending, removing duplicates
+    note_times = sorted(list({note.time for note in track.notes})) # times of notes, sorted ascending, removing duplicates
+    note_time_indicies = {note_time: i for i, note_time in enumerate(note_times)}
     expressive_features = get_expressive_features_per_note(note_times = note_times, all_annotations = track.annotations + music.annotations) # dictionary where keys are time and values are expressive feature annotation objects
 
     # note on and note off messages
     for note in track.notes:
-        # if music.infer_velocity:
-        #     note.velocity = expressive_features[note.time][0].annotation.velocity # the first index is always the dynamic
+        note.velocity = expressive_features[note.time][0].annotation.velocity # the first index is always the dynamic
         for annotation in expressive_features[note.time][1:]: # skip the first index, since we just dealt with it
             # ensure that values are valid
             if hasattr(annotation.annotation, "subtype"): # make sure subtype field is not none
@@ -405,13 +416,13 @@ def to_mido_track(track: Track, music: "MusicRender", channel: int = None, use_n
                     elif any((annotation.annotation.subtype.startswith(prefix) for prefix in ("smorz", "dim", "decr"))): # decrease-volume; smorzando, diminuendo, decrescendo
                         end_velocity /= VELOCITY_INCREASE_FACTOR
                     denominator = (annotation.time + annotation.annotation.duration) - note.time
-                    annotation.group = lambda time: ((((end_velocity - note.velocity) / denominator) * (time - note.time)) + note.velocity) if (denominator != 0) else end_velocity # we will use group to store a lambda function to calculate velocity
-                note.velocity += annotation.group(time = note.time)
+                    annotation.group = lambda time: (((((end_velocity - note.velocity) / denominator) * (time - note.time)) + note.velocity) if (denominator != 0) else end_velocity) # we will use group to store a lambda function to calculate velocity
+                note.velocity = annotation.group(time = note.time) # previously used +=
             # SlurSpanner
             elif annotation.annotation.__class__.__name__ == "SlurSpanner":
-                current_note_time_index = note_times.index(note.time)
+                current_note_time_index = note_time_indicies[note.time]
                 if current_note_time_index < len(note_times) - 1: # elsewise, there is no next note to slur to
-                    note.duration = note_times[current_note_time_index + 1] - note_times[current_note_time_index]
+                    note.duration = max(note_times[current_note_time_index + 1] - note_times[current_note_time_index], note.duration) # we don't want to make the note shorter
                 del current_note_time_index
             # PedalSpanner
             elif annotation.annotation.__class__.__name__ == "PedalSpanner":
@@ -420,9 +431,9 @@ def to_mido_track(track: Track, music: "MusicRender", channel: int = None, use_n
             elif annotation.annotation.__class__.__name__ == "Articulation":
                 if any((keyword in annotation.annotation.subtype for keyword in ("staccato", "staccatissimo", "spiccato", "pizzicato", "plucked", "marcato", "sforzato"))): # shortens note length
                     note.duration /= STACCATO_DURATION_CHANGE_FACTOR
-                if any((keyword in annotation.annotation.subtype for keyword in ("marcato", "sforzato", "accent"))) and music.infer_velocity: # increases velocity
-                    note.velocity += note.velocity * (max((ACCENT_VELOCITY_INCREASE_FACTOR * (0.8 if "soft" in annotation.annotation.subtype else 1)), 1) - 1)
-                if ("spiccato" in annotation.annotation.subtype) and music.infer_velocity: # decreases velocity
+                if any((keyword in annotation.annotation.subtype for keyword in ("marcato", "sforzato", "accent"))): # increases velocity
+                    note.velocity *= max((ACCENT_VELOCITY_INCREASE_FACTOR * (0.8 if "soft" in annotation.annotation.subtype else 1)), 1)
+                if ("spiccato" in annotation.annotation.subtype): # decreases velocity
                     note.velocity /= ACCENT_VELOCITY_INCREASE_FACTOR
                 if "wiggle" in annotation.annotation.subtype: # vibrato and sawtooth
                     times = linspace(start = note.time, stop = note.time + note.duration, num = 8, endpoint = False)
@@ -445,8 +456,10 @@ def to_mido_track(track: Track, music: "MusicRender", channel: int = None, use_n
             # TechAnnotation
             # elif annotation.annotation.__class__.__name__ == "TechAnnotation":
             #     pass # currently no implementation since we so rarely encounter these
+        if note.is_grace: # move the note slightly ahead if it is a grace note
+            note.time -= music.resolution * GRACE_NOTE_FORWARD_SHIFT_CONSTANT
         midi_track.extend(to_mido_note_on_note_off(note = note, channel = channel, use_note_off_message = use_note_off_message))
-
+        
     # end of track message
     midi_track.append(MetaMessage(type = "end_of_track"))
 
@@ -469,9 +482,14 @@ def write_midi(path: str, music: "MusicRender", use_note_off_message: bool = Fal
         Whether to use note-off messages. If False, note-on messages with zero velocity are used instead. The advantage to using note-on messages at zero velocity is that it can avoid sending additional status bytes when Running Status is employed.
 
     """
-    
+
     # ensure we are operating on a copy of music
     music = deepcopy(music)
+
+    # raise warning if music is not in metrical time
+    # if music.absolute_time:
+    #     warn("`music` object in absolute time (not metrical time). Converting to metrical time.", RuntimeWarning)
+    #     music.convert_from_absolute_to_metrical_time()
 
     # create a .mid file object
     midi = MidiFile(type = 1, ticks_per_beat = music.resolution)
@@ -485,7 +503,7 @@ def write_midi(path: str, music: "MusicRender", use_note_off_message: bool = Fal
         
         # assign channel number
         if track.is_drum:
-            channel = 9 # mido numbers channels 0 to 15 instead of 1 to 16
+            channel = DRUM_CHANNEL # mido numbers channels 0 to 15 instead of 1 to 16
         else:
             channel = i % 15 # .mid has 15 channels for instruments other than drums
             channel += int(channel > 8) # avoid drum channel by adding one if the channel is greater than 8
@@ -538,6 +556,7 @@ def write_audio(path: str, music: "MusicRender", audio_format: str = "auto", sou
         music = deepcopy(music)
 
         # write the MusicRender object to a temporary .mid file
+        # midi_path = f"{'.'.join(path.split('.')[:-1])}.mid" # for debugging
         midi_path = f"{temp_dir}/temp.mid"
         write_midi(path = midi_path, music = music)
 
