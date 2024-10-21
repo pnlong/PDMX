@@ -705,7 +705,8 @@ def parse_key(elem: Element) -> Tuple[int, str, int, str]:
         if fifths_text is None:
             fifths_text = _get_text(element = elem, path = "concertKey") # last 
     if fifths_text is None:
-        raise MuseScoreError("'accidental', 'subtype', or 'concertKey' subelement not found for KeySig element.")
+        return None, None, None, None
+        # raise MuseScoreError("'accidental', 'subtype', or 'concertKey' subelement not found for KeySig element.")
     fifths = int(fifths_text)
     if mode is None:
         return None, None, fifths, None
@@ -739,7 +740,10 @@ def get_spanner_duration(spanner: Element, measure_len: int) -> int:
     """Returns the duration (in universal time) of a spanner element."""
 
     # get the duration (in measures) of the spanner
-    spanner_duration = float(_get_required_text(element = spanner, path = "next/location/measures")) # the duration of the spanner
+    spanner_duration = _get_text(element = spanner, path = "next/location/measures") # the duration of the spanner
+    if spanner_duration is None: # if next/location/measures is not found
+        return 0
+    spanner_duration = float(spanner_duration) # convert to float
     fractions = _get_text(element = spanner, path = "next/location/fractions")
     if fractions is not None:
         spanner_duration += float(Fraction(fractions))
@@ -826,7 +830,8 @@ def parse_constant_features(staff: Element, resolution: int, measure_indicies: L
                 # Key signatures
                 if is_measure_written_out and elem.tag == "KeySig":
                     root, mode, fifths, root_str = parse_key(elem = elem)
-                    key_signatures.append(KeySignature(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), root = root, mode = mode, fifths = fifths, root_str = root_str))
+                    if fifths is not None:
+                        key_signatures.append(KeySignature(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), root = root, mode = mode, fifths = fifths, root_str = root_str))
 
                 # Time signatures
                 elif is_measure_written_out and elem.tag == "TimeSig":
