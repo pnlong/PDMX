@@ -331,7 +331,7 @@ def get_expressive_features_per_note(note_times: list, all_annotations: list) ->
             else: # get index of the note after the current time when annotation does not fall on a note
                 current_note_time_index = len(note_times) # default value
                 for note_time in note_times:
-                    if note_time > annotation.time: # first note time after the annotation time
+                    if note_time >= annotation.time: # first note time after the annotation time
                         current_note_time_index = note_time_indicies[note_time]
                         break
             while current_note_time_index < len(note_times):
@@ -420,6 +420,9 @@ def to_mido_track(track: Track, music: "MusicRender", channel: int = None, use_n
                 note.velocity = annotation.group(time = note.time) # previously used +=
             # SlurSpanner
             elif annotation.annotation.__class__.__name__ == "SlurSpanner":
+                is_note_last_in_slur = not any(slur_spanner is annotation for slur_spanner in filter(lambda annotation_: annotation_.annotation.__class__.__name__ == "SlurSpanner", expressive_features[note_times[note_time_indicies[note.time] + 1]])) # check if this is the last note in this slur
+                if is_note_last_in_slur: # if the note is the last note in the slur, we don't want to slur it
+                    continue
                 current_note_time_index = note_time_indicies[note.time]
                 if current_note_time_index < len(note_times) - 1: # elsewise, there is no next note to slur to
                     note.duration = max(note_times[current_note_time_index + 1] - note_times[current_note_time_index], note.duration) # we don't want to make the note shorter
@@ -459,7 +462,7 @@ def to_mido_track(track: Track, music: "MusicRender", channel: int = None, use_n
         if note.is_grace: # move the note slightly ahead if it is a grace note
             note.time -= music.resolution * GRACE_NOTE_FORWARD_SHIFT_CONSTANT
         midi_track.extend(to_mido_note_on_note_off(note = note, channel = channel, use_note_off_message = use_note_off_message))
-        
+
     # end of track message
     midi_track.append(MetaMessage(type = "end_of_track"))
 

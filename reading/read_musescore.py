@@ -730,7 +730,7 @@ def parse_lyric(elem: Element) -> str:
 # HELPER FUNCTIONS FOR PARSING
 ##################################################
 
-def get_spanner_duration(spanner: Element, resolution: int, default_measure_len: int) -> int:
+def get_spanner_duration(spanner: Element, measure_len: int) -> int:
     """Returns the duration (in universal time) of a spanner element."""
 
     # get the duration (in measures) of the spanner
@@ -740,13 +740,8 @@ def get_spanner_duration(spanner: Element, resolution: int, default_measure_len:
         spanner_duration += float(Fraction(fractions))
 
     # convert spanner to int
-    spanner_duration = float(spanner_duration) if spanner_duration else 0.0
-
-    if spanner_duration > 0 :
-        spanner_duration = int(resolution * 4 * spanner_duration)
-    else:
-        spanner_duration = default_measure_len
-
+    # spanner_duration = round(measure_len * spanner_duration) if spanner_duration > 0 else measure_len
+    spanner_duration = round(measure_len * spanner_duration)
     return spanner_duration
 
 ##################################################
@@ -773,6 +768,7 @@ def parse_constant_features(staff: Element, resolution: int, measure_indicies: L
     time_ = 0
     measure_len = round(resolution * 4)
     is_tuple = False
+    notes_left_in_tuple = 0
     downbeat_times: List[int] = []
 
     # record start time to check for timeout
@@ -800,10 +796,10 @@ def parse_constant_features(staff: Element, resolution: int, measure_indicies: L
         # Collect the measure start times
         downbeat_times.append(time_)
 
-        # Get measure duration
-        measure_len_text = measure.get("len")
-        if measure_len_text is not None:
-            measure_len = round(resolution * 4 * Fraction(measure_len_text))
+        # Get measure duration, but we don't want to recalculate every measure
+        # measure_len_text = measure.get("len")
+        # if measure_len_text is not None:
+        #     measure_len = round(resolution * 4 * Fraction(measure_len_text))
 
         # get voice elements
         voices = list(measure.findall(path = "voice"))  # MuseScore 3.x, 4.x
@@ -811,7 +807,7 @@ def parse_constant_features(staff: Element, resolution: int, measure_indicies: L
             voices = [measure]  # MuseScore 1.x and 2.x
 
         # Initialize position
-        max_position = float("-inf")
+        # max_position = float("-inf")
 
         # Iterate over voice elements
         for voice in voices:
@@ -830,7 +826,9 @@ def parse_constant_features(staff: Element, resolution: int, measure_indicies: L
                 # Time signatures
                 elif is_measure_written_out and elem.tag == "TimeSig":
                     numerator, denominator = parse_time(elem = elem)
+                    measure_len = round((resolution / (denominator / 4)) * numerator)
                     time_signatures.append(TimeSignature(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), numerator = numerator, denominator = denominator))
+                    del numerator, denominator
 
                 # Tempo elements
                 elif is_measure_written_out and elem.tag == "Tempo":
@@ -840,14 +838,19 @@ def parse_constant_features(staff: Element, resolution: int, measure_indicies: L
 
                 # Tempo spanner elements
                 elif is_measure_written_out and elem.tag == "Spanner" and elem.get("type") == "GradualTempoChange" and elem.find(path = "next/location/measures") is not None:
-                    annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = TempoSpanner(duration = get_spanner_duration(spanner = elem, resolution = resolution, default_measure_len = measure_len), subtype = _get_raw_text(element = elem, path = "GradualTempoChange/tempoChangeType"))))
-                    
+                    tempo_spanner_duration = get_spanner_duration(spanner = elem, measure_len = measure_len)
+                    if tempo_spanner_duration > 0:
+                        annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = TempoSpanner(duration = tempo_spanner_duration, subtype = _get_raw_text(element = elem, path = "GradualTempoChange/tempoChangeType"))))
+                    del tempo_spanner_duration
+
                 # Text spanner elements (system)
                 elif is_measure_written_out and elem.tag == "Spanner" and elem.get("type") == "TextLine" and elem.find(path = "next/location/measures") is not None:
                     text_line_is_system = "system" in elem.find(path = "TextLine").attrib.keys()
                     if text_line_is_system: # only append the text spanner if it is system text
-                        annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = TextSpanner(duration = get_spanner_duration(spanner = elem, resolution = resolution, default_measure_len = measure_len), text = _get_required_text(element = elem, path = "TextLine/beginText"), is_system = text_line_is_system)))
-                
+                        text_spanner_duration = get_spanner_duration(spanner = elem, measure_len = measure_len)
+                        if text_spanner_duration > 0:
+                            annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = TextSpanner(duration = text_spanner_duration, text = _get_required_text(element = elem, path = "TextLine/beginText"), is_system = text_line_is_system)))
+                        del text_spanner_duration
                 # System Text
                 elif is_measure_written_out and elem.tag == "SystemText": # save staff text for other function
                     annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = Text(text = _get_raw_text(element = elem, path = "text"), is_system = True, style = _get_raw_text(element = elem, path = "style"))))
@@ -860,17 +863,26 @@ def parse_constant_features(staff: Element, resolution: int, measure_indicies: L
                 elif elem.tag == "Fermata":
                     annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = Fermata(is_fermata_above = (_get_text(element = elem, path = "subtype") == "fermataAbove"))))
 
+                # Location elements
+                elif elem.tag == "location":
+                    duration = resolution * 4 * float(Fraction(_get_required_text(element = elem, path = "fractions")))
+                    position += duration
+
                 # Tuplet elements
                 elif elem.tag == "Tuplet":
                     is_tuple = True
                     normal_notes = int(_get_required_text(element = elem, path = "normalNotes"))
                     actual_notes = int(_get_required_text(element = elem, path = "actualNotes"))
                     tuple_ratio = normal_notes / actual_notes
+                    notes_left_in_tuple = actual_notes
 
-                # Location elements
-                elif elem.tag == "location":
-                    duration = resolution * 4 * float(Fraction(_get_required_text(element = elem, path = "fractions")))
-                    position += duration
+                # Handle last tuplet note
+                elif elem.tag == "endTuplet" or (is_tuple and notes_left_in_tuple == 0):
+                    old_duration = round(NOTE_TYPE_MAP[duration_type] * resolution)
+                    new_duration = normal_notes * old_duration - (actual_notes - 1) * round(old_duration * tuple_ratio)
+                    if duration != new_duration:
+                        position += int(new_duration - duration)
+                    is_tuple = False
 
                 # Rest elements
                 elif elem.tag == "Rest":
@@ -905,6 +917,7 @@ def parse_constant_features(staff: Element, resolution: int, measure_indicies: L
                     # Handle tuplets
                     if is_tuple:
                         duration *= tuple_ratio
+                        notes_left_in_tuple -= 1
 
                     # Handle dots
                     dots = elem.find(path = "dots")
@@ -924,20 +937,13 @@ def parse_constant_features(staff: Element, resolution: int, measure_indicies: L
                     if not is_grace:
                         position += duration
 
-                # Handle last tuplet note
-                elif elem.tag == "endTuplet":
-                    old_duration = round(NOTE_TYPE_MAP[duration_type] * resolution)
-                    new_duration = normal_notes * old_duration - (actual_notes - 1) * round(old_duration * tuple_ratio)
-                    if duration != new_duration:
-                        position += int(new_duration - duration)
-                    is_tuple = False
-
                 # update positions
-                if position > max_position:
-                    max_position = position
+                # if position > max_position:
+                #     max_position = position
         
         # update time
-        time_ += max_position # get the maximum position (don't want some unfinished voice)
+        # time_ += max_position # get the maximum position (don't want some unfinished voice)
+        time_ += measure_len
 
     # Sort tempos, key and time signatures
     tempos.sort(key = attrgetter("time"))
@@ -956,7 +962,7 @@ def parse_constant_features(staff: Element, resolution: int, measure_indicies: L
 # PARSE A STAFF FOR GENERAL MUSICAL INFORMATION
 ##################################################
 
-def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], timeout: int = None, transpose_chromatic: int = 0) -> Tuple[List[Note], List[Chord], List[Lyric], List[Annotation]]:
+def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], timeout: int = None, part_info: OrderedDict = OrderedDict([("transposeChromatic", 0)])) -> Tuple[List[Note], List[Chord], List[Lyric], List[Annotation]]:
     """Return notes and lyrics parsed from a staff element.
 
     This function only parses the notes and lyrics. Use
@@ -964,6 +970,7 @@ def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], ti
     signatures.
 
     """
+
     # Initialize lists
     notes: List[Note] = []
     chords: List[Chord] = []
@@ -975,8 +982,10 @@ def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], ti
     velocity = 64
     measure_len = round(resolution * 4)
     is_tuple = False
+    notes_left_in_tuple = 0
     ottava_shift = 0
     ottava_end = float("inf")
+    transpose_circle_of_fifths = TRANSPOSE_CHROMATIC_TO_CIRCLE_OF_FIFTHS_STEPS[part_info["transposeChromatic"] % -12] # number of semitones to transpose so that chord symbols are concert pitch
 
     # Record start time to check for timeout
     if timeout is not None:
@@ -984,9 +993,6 @@ def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], ti
 
     # Create a dictionary to handle ties
     ties: Dict[int, int] = {}
-
-    # number of semitones to transpose so that chord symbols are concert pitch
-    transpose_circle_of_fifths = TRANSPOSE_CHROMATIC_TO_CIRCLE_OF_FIFTHS_STEPS[transpose_chromatic % -12]
 
     # Iterate over all elements
     measures = staff.findall(path = "Measure")
@@ -999,11 +1005,12 @@ def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], ti
 
         # Get the measure element
         measure = measures[measure_idx_to_actually_read]
+        is_measure_written_out = (measure_idx == measure_idx_to_actually_read)
 
-        # Get measure duration
-        measure_len_text = measure.get("len")
-        if measure_len_text is not None:
-            measure_len = round(resolution * 4 * Fraction(measure_len_text))
+        # Get measure duration, but we don't want to recalculate every measure
+        # measure_len_text = measure.get("len")
+        # if measure_len_text is not None:
+        #     measure_len = round(resolution * 4 * Fraction(measure_len_text))
 
         # Get voice elements
         voices = list(measure.findall(path = "voice")) # MuseScore 3.x
@@ -1011,7 +1018,7 @@ def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], ti
             voices = [measure] # MuseScore 1.x and 2.x
 
         # Initialize position
-        max_position = float("-inf")
+        # max_position = float("-inf")
 
         # Iterate over voice elements
         for voice in voices:
@@ -1033,42 +1040,61 @@ def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], ti
 
                 # Hairpin elements
                 elif elem.tag == "Spanner" and elem.get("type") == "HairPin" and elem.find(path = "next/location/measures") is not None:
-                    annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = HairPinSpanner(duration = get_spanner_duration(spanner = elem, resolution = resolution, default_measure_len = measure_len), subtype = _get_text(element = elem, path = "HairPin/beginText"), hairpin_type = int(_get_required_text(element = elem, path = "HairPin/subtype")))))
-
+                    hairpin_duration = get_spanner_duration(spanner = elem, measure_len = measure_len)
+                    if hairpin_duration > 0:
+                        annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = HairPinSpanner(duration = hairpin_duration, subtype = _get_text(element = elem, path = "HairPin/beginText"), hairpin_type = int(_get_required_text(element = elem, path = "HairPin/subtype")))))
+                    del hairpin_duration
+                
                 # Text spanner elements (staff)
                 elif elem.tag == "Spanner" and elem.get("type") == "TextLine" and elem.find(path = "next/location/measures") is not None:
                     text_line_is_system = "system" in elem.find(path = "TextLine").attrib.keys()
                     if not text_line_is_system: # only append the text spanner if it is staff text
-                        annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = TextSpanner(duration = get_spanner_duration(spanner = elem, resolution = resolution, default_measure_len = measure_len), text = _get_raw_text(element = elem, path = "TextLine/beginText"), is_system = text_line_is_system)))
-                
+                        text_spanner_duration = get_spanner_duration(spanner = elem, measure_len = measure_len)
+                        if text_spanner_duration > 0:
+                            annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = TextSpanner(duration = text_spanner_duration, text = _get_raw_text(element = elem, path = "TextLine/beginText"), is_system = text_line_is_system)))
+                        del text_spanner_duration
+
                 # Staff Text
                 elif elem.tag == "StaffText":
                     annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = Text(text = _get_raw_text(element = elem), is_system = False, style = _get_raw_text(element = elem, path = "style"))))
 
                 # Pedals
                 elif elem.tag == "Spanner" and elem.get("type") == "Pedal" and elem.find(path = "next/location/measures") is not None:
-                    annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = PedalSpanner(duration = get_spanner_duration(spanner = elem, resolution = resolution, default_measure_len = measure_len))))
+                    pedal_duration = get_spanner_duration(spanner = elem, measure_len = measure_len)
+                    if pedal_duration > 0:
+                        annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = PedalSpanner(duration = pedal_duration)))
+                    del pedal_duration
 
                 # Trill Spanners
                 elif elem.tag == "Spanner" and elem.get("type") == "Trill" and elem.find(path = "next/location/measures") is not None:
-                    annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = TrillSpanner(duration = get_spanner_duration(spanner = elem, resolution = resolution, default_measure_len = measure_len), subtype = _get_text(element = elem, path = "Trill/subtype"), ornament = _get_text(element = elem, path = "Trill/Ornament/subtype"))))
+                    trill_duration = get_spanner_duration(spanner = elem, measure_len = measure_len)
+                    if trill_duration > 0:
+                        annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = TrillSpanner(duration = trill_duration, subtype = _get_text(element = elem, path = "Trill/subtype"), ornament = _get_text(element = elem, path = "Trill/Ornament/subtype"))))
+                    del trill_duration
 
                 # Vibrato Spanners
                 elif elem.tag == "Spanner" and elem.get("type") == "Vibrato" and elem.find(path = "next/location/measures") is not None:
-                    annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = VibratoSpanner(duration = get_spanner_duration(spanner = elem, resolution = resolution, default_measure_len = measure_len), subtype = _get_text(element = elem, path = "Vibrato/subtype"))))
+                    vibrato_duration = get_spanner_duration(spanner = elem, measure_len = measure_len)
+                    if vibrato_duration > 0:
+                        annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = VibratoSpanner(duration = vibrato_duration, subtype = _get_text(element = elem, path = "Vibrato/subtype"))))
+                    del vibrato_duration
 
                 # Glissando Spanners
                 elif elem.tag == "Spanner" and elem.get("type") == "Glissando" and elem.find(path = "next/location/measures") is not None:
-                    annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = GlissandoSpanner(duration = get_spanner_duration(spanner = elem, resolution = resolution, default_measure_len = measure_len), is_wavy = bool(_get_text(element = elem, path = "Trill/subtype")))))
-
+                    glissando_duration = get_spanner_duration(spanner = elem, measure_len = measure_len)
+                    if glissando_duration > 0:
+                        annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = GlissandoSpanner(duration = glissando_duration, is_wavy = bool(_get_text(element = elem, path = "Trill/subtype")))))
+                    del glissando_duration
+                
                 # Ottava Spanners
                 elif elem.tag == "Spanner" and elem.get("type") == "Ottava" and elem.find(path = "next/location/measures") is not None:
                     ottava_time = time_ + position
-                    ottava_duration = get_spanner_duration(spanner = elem, resolution = resolution, default_measure_len = measure_len)
+                    ottava_duration = get_spanner_duration(spanner = elem, measure_len = measure_len)
                     ottava_end = ottava_time + ottava_duration
                     ottava_subtype = _get_text(element = elem, path = "Ottava/subtype")
                     ottava_shift = 12 * OTTAVA_OCTAVE_SHIFT_FACTORS[int(sub(pattern = "[^0-9]", repl = "", string = ottava_subtype))] * (-1 if "b" in ottava_subtype else 1)
-                    annotations.append(Annotation(time = ottava_time, measure = get_nice_measure_number(i = measure_idx), annotation = OttavaSpanner(duration = ottava_duration, subtype = ottava_subtype)))
+                    if ottava_duration > 0:
+                        annotations.append(Annotation(time = ottava_time, measure = get_nice_measure_number(i = measure_idx), annotation = OttavaSpanner(duration = ottava_duration, subtype = ottava_subtype)))
                     del ottava_time, ottava_duration, ottava_subtype
 
                 # Technical Annotation
@@ -1088,18 +1114,34 @@ def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], ti
                         annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = ChordSymbol(root_str = root_str, name = name)))
                         del root_str, name
                     del root
-                
+
+                # Time signatures to keep track of for incrementing position
+                elif is_measure_written_out and elem.tag == "TimeSig":
+                    numerator, denominator = parse_time(elem = elem)
+                    measure_len = round((resolution / (denominator / 4)) * numerator)
+                    del numerator, denominator
+
+                # Location elements
+                elif elem.tag == "location":
+                    duration = resolution * 4 * float(Fraction(_get_required_text(element = elem, path = "fractions")))
+                    position += duration
+
                 # Tuplet elements
                 elif elem.tag == "Tuplet":
                     is_tuple = True
                     normal_notes = int(_get_required_text(element = elem, path = "normalNotes"))
                     actual_notes = int(_get_required_text(element = elem, path = "actualNotes"))
                     tuple_ratio = normal_notes / actual_notes
+                    notes_left_in_tuple = actual_notes
 
-                # Location elements
-                elif elem.tag == "location":
-                    duration = resolution * 4 * float(Fraction(_get_required_text(element = elem, path = "fractions")))
-                    position += duration
+                # Handle last tuplet note
+                elif elem.tag == "endTuplet" or (is_tuple and notes_left_in_tuple == 0):
+                    old_duration = round(NOTE_TYPE_MAP[duration_type] * resolution)
+                    new_duration = normal_notes * old_duration - (actual_notes - 1) * round(old_duration * tuple_ratio)
+                    if notes[-1].duration != new_duration:
+                        notes[-1].duration = new_duration
+                        position += int(new_duration - duration)
+                    is_tuple = False
 
                 # Rest elements
                 elif elem.tag == "Rest":
@@ -1134,6 +1176,7 @@ def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], ti
                     # Handle tuplets
                     if is_tuple:
                         duration *= tuple_ratio
+                        notes_left_in_tuple -= 1
 
                     # Handle dots
                     dots = elem.find(path = "dots")
@@ -1158,7 +1201,10 @@ def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], ti
                     
                         # Check for any slurs
                         elif spanner.get("type") == "Slur" and spanner.find(path = "next/location/measures") is not None:
-                            annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = SlurSpanner(duration = get_spanner_duration(spanner = spanner, resolution = resolution, default_measure_len = measure_len), is_slur = True)))
+                            slur_duration = get_spanner_duration(spanner = spanner, measure_len = measure_len)
+                            if slur_duration > 0:
+                                annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = SlurSpanner(duration = slur_duration, is_slur = True)))
+                            del slur_duration
 
                     # Check for ornament
                     if elem.find(path = "Ornament") is not None:
@@ -1215,18 +1261,19 @@ def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], ti
                             continue
                         
                         # Check if it is a tied note
-                        for spanner in note.findall(path = "Spanner"):
+                        for spanner in note.findall(path = "Spanner"): # Musescore 3.x
                             if spanner.get("type") == "Tie" and ((spanner.find(path = "next/location/measures") is not None) or (spanner.find(path = "next/location/fractions") is not None)):
                                 is_outgoing_tie = True
+                        if note.find(path = "Tie") is not None: # MuseScore 1.x and 2.x
+                            is_outgoing_tie = True
 
                         # Check if it is an incoming tied note
                         if pitch in ties.keys():
                             note_idx = ties[pitch]
                             notes[note_idx].duration += duration
-
-                            if is_outgoing_tie:
+                            if is_outgoing_tie: # if the tie continues
                                 ties[pitch] = note_idx
-                            else:
+                            else: # if the tie ended
                                 del ties[pitch]
 
                         # Append a new note to the note list
@@ -1234,10 +1281,8 @@ def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], ti
                             notes.append(Note(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), pitch = pitch, duration = duration, velocity = velocity, pitch_str = pitch_str))
                             chord.pitches.append(pitch)
                             chord.pitches_str.append(pitch_str)
-
-                        # start of a tie, make note of it
-                        if is_outgoing_tie:
-                            ties[pitch] = len(notes) - 1
+                            if is_outgoing_tie: # start of a tie, make note of it
+                                ties[pitch] = len(notes) - 1
 
                     # update position
                     if not is_grace: # is a normal note that time acts on normally
@@ -1248,21 +1293,13 @@ def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], ti
                         chords.append(chord)
                     del chord
 
-                # Handle last tuplet note
-                elif elem.tag == "endTuplet":
-                    old_duration = round(NOTE_TYPE_MAP[duration_type] * resolution)
-                    new_duration = normal_notes * old_duration - (actual_notes - 1) * round(old_duration * tuple_ratio)
-                    if notes[-1].duration != new_duration:
-                        notes[-1].duration = new_duration
-                        position += int(new_duration - duration)
-                    is_tuple = False
-
                 # update positions
-                if position > max_position:
-                    max_position = position
+                # if position > max_position:
+                #     max_position = position
 
         # update time
-        time_ += max_position # get the maximum position (don't want some unfinished voice)
+        # time_ += max_position # get the maximum position (don't want some unfinished voice)
+        time_ += measure_len
 
     # Sort notes
     notes.sort(key = attrgetter("time", "pitch", "duration", "velocity"))
@@ -1367,7 +1404,7 @@ def read_musescore(path: str, resolution: int = None, compressed: bool = None, t
 
         # parse the staff, extend/append to lists
         part_id = staff_part_map[staff_id]
-        (notes, chords, lyrics, annotations_staff) = parse_staff(staff = staff, resolution = resolution, measure_indicies = measure_indicies, timeout = timeout, transpose_chromatic = parts_info[part_id]["transposeChromatic"])
+        (notes, chords, lyrics, annotations_staff) = parse_staff(staff = staff, resolution = resolution, measure_indicies = measure_indicies, timeout = timeout, part_info = parts_info[part_id])
         if part_id in part_track_map:
             track_id = part_track_map[part_id]
             tracks[track_id].notes.extend(notes)
@@ -1405,16 +1442,16 @@ if __name__ == "__main__":
 
     # paths to load
     paths = [
-        "/data2/pnlong/musescore/test_data/chopin/Chopin_Trois_Valses_Op64.mscz",
-        "/data2/pnlong/musescore/test_data/goodman/in_the_mood.mscz",
-        "/data2/pnlong/musescore/test_data/laufey/from_the_start.mscz",
-        "/data2/pnlong/musescore/test_data/maroon/this_love.mscz",
-        "/data2/pnlong/musescore/test_data/test1/QmbboPyM7KRorFpbmqnoCYDjbN2Up2mY969kggS3JLqRCF.mscz",
-        "/data2/pnlong/musescore/test_data/test2/QmbbxbpgJHyNRzjkbyxdoV5saQ9HY38MauKMd5CijTPFiF.mscz",
-        "/data2/pnlong/musescore/test_data/test3/QmbbjJJAMixkH5vqVeffBS1h2tJHQG1DXpTJHJonpxGmSN.mscz",
-        "/data2/pnlong/musescore/test_data/toploader/dancing_in_the_moonlight.mscz",
-        "/data2/pnlong/musescore/test_data/debussy/clair_de_lune.mscz",
-        "/data2/pnlong/musescore/test_data/test0/QmcDL7KEmC9ZCeaXvBSnPWK26EtcoYicKmLhj8EwV7XeUG.mscz",
+        # "/data2/pnlong/musescore/test_data/chopin/Chopin_Trois_Valses_Op64.mscz",
+        # "/data2/pnlong/musescore/test_data/goodman/in_the_mood.mscz",
+        # "/data2/pnlong/musescore/test_data/laufey/from_the_start.mscz",
+        # "/data2/pnlong/musescore/test_data/maroon/this_love.mscz",
+        # "/data2/pnlong/musescore/test_data/test1/QmbboPyM7KRorFpbmqnoCYDjbN2Up2mY969kggS3JLqRCF.mscz",
+        # "/data2/pnlong/musescore/test_data/test2/QmbbxbpgJHyNRzjkbyxdoV5saQ9HY38MauKMd5CijTPFiF.mscz",
+        # "/data2/pnlong/musescore/test_data/test3/QmbbjJJAMixkH5vqVeffBS1h2tJHQG1DXpTJHJonpxGmSN.mscz",
+        # "/data2/pnlong/musescore/test_data/toploader/dancing_in_the_moonlight.mscz",
+        # "/data2/pnlong/musescore/test_data/debussy/clair_de_lune.mscz",
+        # "/data2/pnlong/musescore/test_data/test0/QmcDL7KEmC9ZCeaXvBSnPWK26EtcoYicKmLhj8EwV7XeUG.mscz",
         "/data2/pnlong/musescore/test_data/waldteufel/les_patineurs.mscz",
         ]
 
