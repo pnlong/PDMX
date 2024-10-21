@@ -394,12 +394,17 @@ def get_improved_measure_ordering(measures: List[Element], measure_indicies: Lis
 
     # scrape measures for repeat counts
     measure_repeat_counts = [0] * len(measure_indicies)
-    for i, measure_idx in enumerate(measure_indicies):
+    for i, measure_idx in enumerate(measure_indicies): # Musescore 3.x default
         measure = measures[measure_idx] # get the measure element
         measure_repeat_count = _get_text(element = measure, path = "measureRepeatCount") # check if this measure is a repeat
-        if measure_repeat_count:
+        if measure_repeat_count is not None:
             measure_repeat_counts[i] = int(measure_repeat_count)
-    
+    if sum(measure_repeat_counts) == 0: # Musescore 1.x and 2.x
+        for i, measure_idx in enumerate(measure_indicies): # Musescore 3.x default
+            measure = measures[measure_idx] # get the measure element
+            if measure.find(path = "voice/RepeatMeasure") is not None:
+                measure_repeat_counts[i] = 1
+
     # chunk into blocks
     i = len(measure_repeat_counts) - 1
     while i >= 0:
