@@ -495,7 +495,7 @@ def write_midi(path: str, music: "MusicRender", use_note_off_message: bool = Fal
     #     music.convert_from_absolute_to_metrical_time()
 
     # create a .mid file object
-    midi = MidiFile(type = 1, ticks_per_beat = music.resolution)
+    midi = MidiFile(type = 1, ticks_per_beat = music.resolution, charset = "utf8")
 
     # append meta track
     midi.tracks.append(to_mido_meta_track(music = music))
@@ -573,7 +573,8 @@ def write_audio(path: str, music: "MusicRender", audio_format: str = "auto", sou
 # WRITE MUSICXML
 ##################################################
 
-PITCH_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+# PITCH_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+PITCH_NAMES = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
 # def _get_pitch_name(note_number: int) -> str:
 #     octave, pitch_class = divmod(note_number, 12)
 #     return PITCH_NAMES[pitch_class] + str(octave - 1)
