@@ -57,6 +57,7 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("-df", "--dataset_filepath", type = str, default = f"{DATASET_OUTPUT_DIR}/{DATASET_DIR_NAME}.csv", help = "Filepath to full dataset.")
     parser.add_argument("-o", "--output_dir", type = str, default = OUTPUT_DIR, help = "Output directory")
     parser.add_argument("-g", "--gzip", action = "store_true", help = "GZIP the output directory of the dataset")
+    parser.add_argument("-r", "--reset", action = "store_true", help = "Whether or not to recreate files")
     parser.add_argument("-j", "--jobs", type = int, default = int(multiprocessing.cpu_count() / 4), help = "Number of Jobs")
     return parser.parse_args(args = args, namespace = namespace)
 
@@ -121,13 +122,14 @@ if __name__ == "__main__":
 
         # save as music object
         path_output = dataset.at[i, "path_output"]
-        music = read_musescore(path = dataset.at[i, "path"], timeout = 10)
-        music.save(path = path_output, compressed = COMPRESS_JSON_MUSIC_FILES) # save as music object
+        if not exists(path_output) or args.reset:
+            music = read_musescore(path = dataset.at[i, "path"], timeout = 10)
+            music.save(path = path_output, compressed = COMPRESS_JSON_MUSIC_FILES) # save as music object
         path_output = path_output.replace(output_dir, ".")
 
         # copy over metadata path
         metadata_path = dataset.at[i, "metadata"]
-        if metadata_path:
+        if metadata_path is not None and (not exists(metadata_path) or args.reset):
             metadata_path_new = dataset.at[i, "metadata_output"]
             copy(src = metadata_path, dst = metadata_path_new) # copy over metadata
             metadata_path = metadata_path_new.replace(output_dir, ".")

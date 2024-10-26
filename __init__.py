@@ -17,5 +17,8 @@ from reading.music import MusicRender
 # load JSON file as MusicRender object
 from reading.music import load
 
-# load MSCZ file as MusicRender object
+# load MuseScore file as MusicRender object
 from reading.read_musescore import read_musescore
+
+# load MusicXML file as MusicRender object
+from reading.read_musicxml import read_musicxml

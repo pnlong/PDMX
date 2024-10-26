@@ -429,7 +429,7 @@ class ChordSymbol(Text):
     _attributes = OrderedDict([("root_str", str), ("name", str)])
     _optional_attributes = ["name"]
 
-    def __init__(self, root_str: str, name: str = None):
+    def __init__(self, root_str: str, name: str = "Maj"):
         super().__init__(text = root_str + (name if name else ""), is_system = False)
         self.root_str = root_str
         self.name = name

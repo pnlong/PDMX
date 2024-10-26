@@ -66,7 +66,7 @@ def to_dict(obj) -> dict:
 
     # deal with objects
     else:
-        return {key: to_dict(obj = value) for key, value in ([("name", obj.__class__.__name__)] + list(vars(obj).items()))}
+        return {key: to_dict(obj = value) for key, value in ([("__class__.__name__", obj.__class__.__name__)] + list(vars(obj).items()))}
 
 ##################################################
 
@@ -793,65 +793,75 @@ class MusicRender(muspy.music.Music):
 # LOAD A BETTERMUSIC OBJECT FROM JSON FILE
 ##################################################
 
+# converting objects
+get_str = lambda string: str(string) if (string is not None) else None
+get_int = lambda integer: int(integer) if (integer is not None) else None
+get_float = lambda double: float(double) if (double is not None) else None
+
 # helper function to load the correct annotation object
 def load_annotation(annotation: dict):
     """Return an expressive feature object given an annotation dictionary. For loading from .json."""
 
-    match annotation["name"]:
+    if annotation is None:
+        return None
+
+    match annotation["__class__.__name__"]:
         case "Text":
-            return Text(text = str(annotation["text"]), is_system = bool(annotation["is_system"]), style = str(annotation["style"]))
+            return Text(text = get_str(annotation["text"]), is_system = bool(annotation["is_system"]), style = get_str(annotation["style"]))
         case "Subtype":
-            return Subtype(subtype = str(annotation["subtype"]))                                                                                                                                                   
+            return Subtype(subtype = get_str(annotation["subtype"]))                                                                                                                                                   
         case "RehearsalMark":
-            return RehearsalMark(text = str(annotation["text"]))
+            return RehearsalMark(text = get_str(annotation["text"]))
         case "TechAnnotation":
-            return TechAnnotation(text = str(annotation["text"]), tech_type = str(annotation["tech_type"]), is_system = bool(annotation["is_system"]))
+            return TechAnnotation(text = get_str(annotation["text"]), tech_type = get_str(annotation["tech_type"]), is_system = bool(annotation["is_system"]))
         case "Dynamic":
-            return Dynamic(subtype = str(annotation["subtype"]), velocity = int(annotation["velocity"]))
+            return Dynamic(subtype = get_str(annotation["subtype"]), velocity = get_int(annotation["velocity"]))
         case "Fermata":
             return Fermata(is_fermata_above = bool(annotation["is_fermata_above"]))
         case "Arpeggio":
             return Arpeggio(subtype = Arpeggio.SUBTYPES.index(annotation["subtype"]))
         case "Tremolo":
-            return Tremolo(subtype = str(annotation["subtype"]))
+            return Tremolo(subtype = get_str(annotation["subtype"]))
+        case "ChordSymbol":
+            return ChordSymbol(root_str = get_str(annotation["root_str"]), name = get_str(annotation["name"]))
         case "ChordLine":
             return ChordLine(subtype = ChordLine.SUBTYPES.index(annotation["subtype"]), is_straight = bool(annotation["is_straight"]))
         case "Ornament":
-            return Ornament(subtype = str(annotation["subtype"]))
+            return Ornament(subtype = get_str(annotation["subtype"]))
         case "Articulation":
-            return Articulation(subtype = str(annotation["subtype"]))
+            return Articulation(subtype = get_str(annotation["subtype"]))
         case "Notehead":
-            return Notehead(subtype = str(annotation["subtype"]))
+            return Notehead(subtype = get_str(annotation["subtype"]))
         case "Symbol":
-            return Symbol(subtype = str(annotation["subtype"]))
+            return Symbol(subtype = get_str(annotation["subtype"]))
         case "Bend":
-            return Bend(points = [Point(time = int(point["time"]), pitch = int(point["pitch"]), vibrato = int(point["vibrato"])) for point in annotation["points"]])
+            return Bend(points = [Point(time = get_int(point["time"]), pitch = get_int(point["pitch"]), vibrato = get_int(point["vibrato"])) for point in annotation["points"]])
         case "TremoloBar":
-            return TremoloBar(points = [Point(time = int(point["time"]), pitch = int(point["pitch"]), vibrato = int(point["vibrato"])) for point in annotation["points"]])
+            return TremoloBar(points = [Point(time = get_int(point["time"]), pitch = get_int(point["pitch"]), vibrato = get_int(point["vibrato"])) for point in annotation["points"]])
         case "Spanner":
-            return Spanner(duration = int(annotation["duration"]))
+            return Spanner(duration = get_int(annotation["duration"]))
         case "SubtypeSpanner":
-            return SubtypeSpanner(duration = int(annotation["duration"]), subtype = annotation["subtype"])
+            return SubtypeSpanner(duration = get_int(annotation["duration"]), subtype = annotation["subtype"])
         case "TempoSpanner":
-            return TempoSpanner(duration = int(annotation["duration"]), subtype = str(annotation["subtype"]))
+            return TempoSpanner(duration = get_int(annotation["duration"]), subtype = get_str(annotation["subtype"]))
         case "TextSpanner":
-            return TextSpanner(duration = int(annotation["duration"]), text = str(annotation["text"]), is_system = bool(annotation["is_system"]))
+            return TextSpanner(duration = get_int(annotation["duration"]), text = get_str(annotation["text"]), is_system = bool(annotation["is_system"]))
         case "HairPinSpanner":
-            return HairPinSpanner(duration = int(annotation["duration"]), subtype = str(annotation["subtype"]), hairpin_type = int(annotation["hairpin_type"]))
+            return HairPinSpanner(duration = get_int(annotation["duration"]), subtype = get_str(annotation["subtype"]), hairpin_type = get_int(annotation["hairpin_type"]))
         case "SlurSpanner":
-            return SlurSpanner(duration = int(annotation["duration"]), is_slur = bool(annotation["is_slur"]))
+            return SlurSpanner(duration = get_int(annotation["duration"]), is_slur = bool(annotation["is_slur"]))
         case "PedalSpanner":
-            return PedalSpanner(duration = int(annotation["duration"]))
+            return PedalSpanner(duration = get_int(annotation["duration"]))
         case "TrillSpanner":
-            return TrillSpanner(duration = int(annotation["duration"]), subtype = str(annotation["subtype"]), ornament = str(annotation["ornament"]))
+            return TrillSpanner(duration = get_int(annotation["duration"]), subtype = get_str(annotation["subtype"]), ornament = get_str(annotation["ornament"]))
         case "VibratoSpanner":
-            return VibratoSpanner(duration = int(annotation["duration"]), subtype = str(annotation["subtype"]))
+            return VibratoSpanner(duration = get_int(annotation["duration"]), subtype = get_str(annotation["subtype"]))
         case "GlissandoSpanner":
-            return GlissandoSpanner(duration = int(annotation["duration"]), is_wavy = bool(annotation["is_wavy"]))
+            return GlissandoSpanner(duration = get_int(annotation["duration"]), is_wavy = bool(annotation["is_wavy"]))
         case "OttavaSpanner":
-            return OttavaSpanner(duration = int(annotation["duration"]), subtype = str(annotation["subtype"]))
+            return OttavaSpanner(duration = get_int(annotation["duration"]), subtype = get_str(annotation["subtype"]))
         case _:
-            raise KeyError("Unknown annotation type.")
+            raise KeyError(f"Unknown annotation type `{annotation['__class__.__name__']}`.")
 
 
 def load(path: str, kind: str = None) -> MusicRender:
@@ -885,87 +895,87 @@ def load(path: str, kind: str = None) -> MusicRender:
 
     # extract info from nested dictionaries
     metadata = Metadata(
-        schema_version = str(data["metadata"]["schema_version"]) if data["metadata"]["schema_version"] is not None else None,
-        title = str(data["metadata"]["title"]) if data["metadata"]["title"] is not None else None,
-        subtitle = str(data["metadata"]["subtitle"]) if data["metadata"]["subtitle"] is not None else None,
-        creators = data["metadata"]["creators"] if data["metadata"]["creators"] is not None else None,
-        copyright = str(data["metadata"]["copyright"]) if data["metadata"]["copyright"] is not None else None,
-        collection = str(data["metadata"]["collection"]) if data["metadata"]["collection"] is not None else None,
-        source_filename = str(data["metadata"]["source_filename"]) if data["metadata"]["source_filename"] is not None else None,
-        source_format = str(data["metadata"]["source_format"]) if data["metadata"]["source_format"] is not None else None
+        schema_version = get_str(data["metadata"]["schema_version"]),
+        title = get_str(data["metadata"]["title"]),
+        subtitle = get_str(data["metadata"]["subtitle"]),
+        creators = data["metadata"]["creators"],
+        copyright = get_str(data["metadata"]["copyright"]),
+        collection = get_str(data["metadata"]["collection"]),
+        source_filename = get_str(data["metadata"]["source_filename"]),
+        source_format = get_str(data["metadata"]["source_format"]),
     )
     tempos = [Tempo(
-        time = int(tempo["time"]),
-        qpm = float(tempo["qpm"]) if tempo["qpm"] is not None else None,
-        text = str(tempo["text"]) if tempo["text"] is not None else None,
-        measure = int(tempo["measure"]) if tempo["measure"] is not None else None
+        time = get_int(tempo["time"]),
+        qpm = get_float(tempo["qpm"]),
+        text = get_str(tempo["text"]),
+        measure = get_int(tempo["measure"]),
     ) for tempo in data["tempos"]]
     key_signatures = [KeySignature(
-        time = int(key_signature["time"]),
-        root = int(key_signature["root"]) if key_signature["root"] is not None else None,
-        mode = str(key_signature["mode"]) if key_signature["mode"] is not None else None,
-        fifths = int(key_signature["fifths"]) if key_signature["fifths"] is not None else None,
-        root_str = str(key_signature["root_str"]) if key_signature["root_str"] is not None else None,
-        measure = int(key_signature["measure"]) if key_signature["measure"] is not None else None
+        time = get_int(key_signature["time"]),
+        root = get_int(key_signature["root"]),
+        mode = get_str(key_signature["mode"]),
+        fifths = get_int(key_signature["fifths"]),
+        root_str = get_str(key_signature["root_str"]),
+        measure = get_int(key_signature["measure"]),
     ) for key_signature in data["key_signatures"]]
     time_signatures = [TimeSignature(
-        time = int(time_signature["time"]),
-        numerator = int(time_signature["numerator"]) if time_signature["numerator"] is not None else None,
-        denominator = int(time_signature["denominator"]) if time_signature["denominator"] is not None else None,
-        measure = int(time_signature["measure"]) if time_signature["measure"] is not None else None
+        time = get_int(time_signature["time"]),
+        numerator = get_int(time_signature["numerator"]),
+        denominator = get_int(time_signature["denominator"]),
+        measure = get_int(time_signature["measure"]),
     ) for time_signature in data["time_signatures"]]
     beats = [Beat(
-        time = int(beat["time"]),
-        is_downbeat = bool(beat["is_downbeat"]) if beat["is_downbeat"] is not None else None,
-        measure = int(beat["measure"]) if beat["measure"] is not None else None
+        time = get_int(beat["time"]),
+        is_downbeat = bool(beat["is_downbeat"]),
+        measure = get_int(beat["measure"]),
     ) for beat in data["beats"]]
     barlines = [Barline(
-        time = int(barline["time"]),
-        subtype = str(barline["subtype"]) if barline["subtype"] is not None else None,
-        measure = int(barline["measure"]) if barline["measure"] is not None else None
+        time = get_int(barline["time"]),
+        subtype = get_str(barline["subtype"]),
+        measure = get_int(barline["measure"]),
     ) for barline in data["barlines"]]
     lyrics = [Lyric(
-        time = int(lyric["time"]),
-        lyric = str(lyric["lyric"]) if lyric["lyric"] is not None else None,
-        measure = int(lyric["measure"]) if lyric["measure"] is not None else None
+        time = get_int(lyric["time"]),
+        lyric = get_str(lyric["lyric"]),
+        measure = get_int(lyric["measure"]),
     ) for lyric in data["lyrics"]]
     annotations = [Annotation(
-        time = int(annotation["time"]),
-        annotation = load_annotation(annotation = annotation["annotation"]) if annotation["annotation"] is not None else None,
-        measure = int(annotation["measure"]) if annotation["measure"] is not None else None,
-        group = str(annotation["group"]) if annotation["group"] is not None else None
+        time = get_int(annotation["time"]),
+        annotation = load_annotation(annotation = annotation["annotation"]),
+        measure = get_int(annotation["measure"]),
+        group = get_str(annotation["group"]),
     ) for annotation in data["annotations"]]
     tracks = [Track(
-        program = int(track["program"]) if track["program"] is not None else None,
-        is_drum = bool(track["is_drum"]) if track["is_drum"] is not None else None,
-        name = str(track["name"]) if track["name"] is not None else None,
+        program = get_int(track["program"]),
+        is_drum = bool(track["is_drum"]),
+        name = get_str(track["name"]),
         notes = [Note(
-            time = int(note["time"]),
-            pitch = int(note["pitch"]) if note["pitch"] is not None else None,
-            duration = int(note["duration"]) if note["duration"] is not None else None,
-            velocity = int(note["velocity"]) if note["velocity"] is not None else None,
-            pitch_str = str(note["pitch_str"]) if note["pitch_str"] is not None else None,
-            is_grace = bool(note["is_grace"]) if note["is_grace"] is not None else None,
-            measure = int(note["measure"]) if note["measure"] is not None else None
+            time = get_int(note["time"]),
+            pitch = get_int(note["pitch"]),
+            duration = get_int(note["duration"]),
+            velocity = get_int(note["velocity"]),
+            pitch_str = get_str(note["pitch_str"]),
+            is_grace = bool(note["is_grace"]),
+            measure = get_int(note["measure"]),
             ) for note in track["notes"]],
         chords = [Chord(
-            time = int(chord["time"]),
-            pitches = [int(pitch) for pitch in chord["pitches"]] if chord["pitches"] is not None else None,
-            duration = int(chord["duration"]) if chord["duration"] is not None else None,
-            velocity = int(chord["velocity"]) if chord["velocity"] is not None else None,
-            pitches_str = [str(pitch_str) for pitch_str in chord["pitches_str"]] if chord["pitches_str"] is not None else None,
-            measure = int(chord["measure"]) if chord["measure"] is not None else None
+            time = get_int(chord["time"]),
+            pitches = [get_int(pitch) for pitch in chord["pitches"]],
+            duration = get_int(chord["duration"]),
+            velocity = get_int(chord["velocity"]),
+            pitches_str = [get_str(pitch_str) for pitch_str in chord["pitches_str"]],
+            measure = get_int(chord["measure"]),
             ) for chord in track["chords"]],
         lyrics = [Lyric(
-            time = int(lyric["time"]),
-            lyric = str(lyric["lyric"]) if lyric["lyric"] is not None else None,
-            measure = int(lyric["measure"]) if lyric["measure"] is not None else None
+            time = get_int(lyric["time"]),
+            lyric = get_str(lyric["lyric"]),
+            measure = get_int(lyric["measure"]),
             ) for lyric in track["lyrics"]],
         annotations = [Annotation(
-            time = int(annotation["time"]),
-            annotation = load_annotation(annotation = annotation["annotation"]) if annotation["annotation"] is not None else None,
-            measure = int(annotation["measure"]) if annotation["measure"] is not None else None,
-            group = str(annotation["group"]) if annotation["group"] is not None else None
+            time = get_int(annotation["time"]),
+            annotation = load_annotation(annotation = annotation["annotation"]),
+            measure = get_int(annotation["measure"]),
+            group = get_str(annotation["group"]),
             ) for annotation in track["annotations"]]
     ) for track in data["tracks"]]
 
@@ -981,7 +991,7 @@ def load(path: str, kind: str = None) -> MusicRender:
         lyrics = lyrics,
         annotations = annotations,
         tracks = tracks,
-        song_length = int(data["song_length"]),
+        song_length = get_int(data["song_length"]),
         infer_velocity = bool(data["infer_velocity"]),
         absolute_time = bool(data["absolute_time"])
     )

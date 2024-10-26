@@ -1,11 +1,10 @@
 # README
 # Phillip Long
-# September 26, 2023
+# October 23, 2024
 
-# Create an object that can read musescore files (.mscz) into a prettier, pythonic format.
-# Copied from https://github.com/salu133445/muspy/blob/main/muspy/inputs/musescore.py
+# Create an object that can read MusicXML files (.musicxml) into a prettier, pythonic format.
 
-# python /home/pnlong/model_musescore/reading/read_musescore.py
+# python /home/pnlong/model_musescore/reading/read_musicXML.py
 
 # IMPORTS / CONSTANTS
 ##################################################
@@ -1121,7 +1120,6 @@ def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], ti
                     if root is not None:
                         root_str = TONAL_PITCH_CLASSES[int(root) + transpose_circle_of_fifths]
                         name = _get_text(element = elem, path = "name")
-                        name = name if name is not None else "Maj"
                         annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = ChordSymbol(root_str = root_str, name = name)))
                         del root_str, name
                     del root
@@ -1332,7 +1330,7 @@ def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], ti
 # MY BETTER READ MUSESCORE FUNCTION, EXTRACTS EXPRESSIVE FEATURES
 ##################################################
 
-def read_musescore(path: str, resolution: int = None, compressed: bool = None, timeout: int = None) -> MusicRender:
+def read_musicxml(path: str, resolution: int = None, compressed: bool = None, timeout: int = None) -> MusicRender:
     """Read the a MuseScore file into a MusicRender object, paying close attention to details such as articulation and expressive features.
 
     Parameters
@@ -1452,25 +1450,13 @@ if __name__ == "__main__":
     import multiprocessing
 
     # paths to load
-    paths = [
-        # "/data2/pnlong/musescore/test_data/chopin/Chopin_Trois_Valses_Op64.mscz",
-        # "/data2/pnlong/musescore/test_data/goodman/in_the_mood.mscz",
-        # "/data2/pnlong/musescore/test_data/laufey/from_the_start.mscz",
-        # "/data2/pnlong/musescore/test_data/maroon/this_love.mscz",
-        # "/data2/pnlong/musescore/test_data/test1/QmbboPyM7KRorFpbmqnoCYDjbN2Up2mY969kggS3JLqRCF.mscz",
-        # "/data2/pnlong/musescore/test_data/test2/QmbbxbpgJHyNRzjkbyxdoV5saQ9HY38MauKMd5CijTPFiF.mscz",
-        # "/data2/pnlong/musescore/test_data/test3/QmbbjJJAMixkH5vqVeffBS1h2tJHQG1DXpTJHJonpxGmSN.mscz",
-        # "/data2/pnlong/musescore/test_data/toploader/dancing_in_the_moonlight.mscz",
-        # "/data2/pnlong/musescore/test_data/debussy/clair_de_lune.mscz",
-        # "/data2/pnlong/musescore/test_data/test0/QmcDL7KEmC9ZCeaXvBSnPWK26EtcoYicKmLhj8EwV7XeUG.mscz",
-        "/data2/pnlong/musescore/test_data/waldteufel/les_patineurs.mscz",
-        ]
+    paths = []
 
     # helper function
     def make_example(path: str):
         """Make example."""
         stem = ".".join(path.split(".")[:-1])
-        music = read_musescore(path = path)
+        music = read_musicxml(path = path)
         music.print(output_filepath = join(dirname(path), "mscx.yml"))
         music.write(f"{stem}.mid") # write as symbolic
         music.write(f"{stem}.wav") # write as audio
