@@ -886,12 +886,17 @@ def load(path: str, kind: str = None) -> MusicRender:
     loader = json.load if (kind == "json") else yaml.safe_load
 
     # if file is compressed
-    if path.lower().endswith(".gz"):
-        with gzip.open(path, "rt", encoding = "utf-8") as file:
-            data = loader(file)
-    else:
-        with open(path, "rt", encoding = "utf-8") as file:
-            data = loader(file)
+    try:
+        if path.lower().endswith(".gz"):
+            with gzip.open(path, "rt", encoding = "utf-8") as file:
+                data = loader(file)
+        else:
+            with open(path, "rt", encoding = "utf-8") as file:
+                data = loader(file)
+    except:
+        warn(f"{path} could not be loaded, since the JSON file is empty. Returning empty MusicRender object.")
+        return MusicRender()
+        # raise ValueError(f"{path} could not be loaded.")
 
     # extract info from nested dictionaries
     metadata = Metadata(
