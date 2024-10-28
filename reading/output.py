@@ -202,18 +202,18 @@ def to_mido_meta_track(music: "MusicRender") -> MidiTrack:
     if metrical_time:
         combined_temporal_features = list(filter(lambda temporal_feature: temporal_feature.time <= max_note_time, music.tempos + music.time_signatures))
         combined_temporal_features = sorted(combined_temporal_features, key = lambda temporal_feature: temporal_feature.time) # get sorted list of tempos and time signatures
-        current_time_signature = music.time_signatures[0] if len(music.time_signatures) > 0 else TimeSignature(time = 0) # instantiate current_time_signature
+        # current_time_signature = music.time_signatures[0] if len(music.time_signatures) > 0 else TimeSignature(time = 0) # instantiate current_time_signature
         tempo_times = [] # keep track of tempo event times for tempo spanners later
         tempo_changes = [] # keep track of tempo changes to deal with tempo spanners later
         for temporal_feature in combined_temporal_features:
-            if isinstance(temporal_feature, Tempo): # if tempo feature
+            if isinstance(temporal_feature, Tempo) and temporal_feature.qpm > 0: # if tempo feature
                 current_tempo = bpm2tempo(bpm = temporal_feature.qpm)
                 meta_track.append(MetaMessage(type = "set_tempo", time = temporal_feature.time, tempo = current_tempo))
                 tempo_times.append(temporal_feature.time)
                 tempo_changes.append(current_tempo)
             elif isinstance(temporal_feature, TimeSignature): # if time signature
                 meta_track.append(MetaMessage(type = "time_signature", time = temporal_feature.time, numerator = temporal_feature.numerator, denominator = temporal_feature.denominator))
-                current_time_signature = temporal_feature # update current_time_signature
+                # current_time_signature = temporal_feature # update current_time_signature
     else:
         meta_track.append(MetaMessage(type = "set_tempo", time = 0, tempo = DEFAULT_TEMPO))
 
@@ -420,9 +420,8 @@ def to_mido_track(track: Track, music: "MusicRender", channel: int = None, use_n
                 note.velocity = annotation.group(time = note.time) # previously used +=
             # SlurSpanner
             elif annotation.annotation.__class__.__name__ == "SlurSpanner":
-                is_note_last_in_slur = not any(slur_spanner is annotation for slur_spanner in filter(lambda annotation_: annotation_.annotation.__class__.__name__ == "SlurSpanner", expressive_features[note_times[note_time_indicies[note.time] + 1]])) # check if this is the last note in this slur
-                if is_note_last_in_slur: # if the note is the last note in the slur, we don't want to slur it
-                    continue
+                if (note_time_indicies[note.time] == (len(note_times) - 1)) or not any(slur_spanner is annotation for slur_spanner in filter(lambda annotation_: annotation_.annotation.__class__.__name__ == "SlurSpanner", expressive_features[note_times[note_time_indicies[note.time] + 1]])):
+                    continue # if the note is the last note in the slur, we don't want to slur it
                 current_note_time_index = note_time_indicies[note.time]
                 if current_note_time_index < len(note_times) - 1: # elsewise, there is no next note to slur to
                     note.duration = max(note_times[current_note_time_index + 1] - note_times[current_note_time_index], note.duration) # we don't want to make the note shorter
@@ -460,7 +459,7 @@ def to_mido_track(track: Track, music: "MusicRender", channel: int = None, use_n
             # elif annotation.annotation.__class__.__name__ == "TechAnnotation":
             #     pass # currently no implementation since we so rarely encounter these
         if note.is_grace: # move the note slightly ahead if it is a grace note
-            note.time -= music.resolution * GRACE_NOTE_FORWARD_SHIFT_CONSTANT
+            note.time = max(0, note.time - (music.resolution * GRACE_NOTE_FORWARD_SHIFT_CONSTANT)) # no grace notes on the first note, to avoid negative times
         midi_track.extend(to_mido_note_on_note_off(note = note, channel = channel, use_note_off_message = use_note_off_message))
 
     # end of track message
