@@ -125,17 +125,18 @@ if __name__ == "__main__":
         if not exists(path_output) or args.reset:
             music = read_musescore(path = dataset.at[i, "path"], timeout = 10)
             music.save(path = path_output, compressed = COMPRESS_JSON_MUSIC_FILES) # save as music object
-        path_output = path_output.replace(output_dir, ".")
+        path_output = "." + path_output[len(output_dir):]
 
         # copy over metadata path
         metadata_path = dataset.at[i, "metadata"]
-        if metadata_path is not None and (not exists(metadata_path) or args.reset):
-            metadata_path_new = dataset.at[i, "metadata_output"]
-            copy(src = metadata_path, dst = metadata_path_new) # copy over metadata
-            metadata_path = metadata_path_new.replace(output_dir, ".")
+        metadata_path_output = dataset.at[i, "metadata_output"]
+        if metadata_path is not None and (not exists(metadata_path_output) or args.reset):
+            copy(src = metadata_path, dst = metadata_path_output) # copy over metadata
+        if metadata_path_output is not None:
+            metadata_path_output = "." + metadata_path_output[len(output_dir):]
         
         # return paths
-        return path_output, metadata_path
+        return path_output, metadata_path_output
 
     # use multiprocessing
     with multiprocessing.Pool(processes = args.jobs) as pool:
