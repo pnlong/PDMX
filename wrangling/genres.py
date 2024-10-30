@@ -85,31 +85,51 @@ if __name__ == "__main__":
 
     # load in dataset
     dataset = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)
-
-    # wrangle genres column
     dataset = dataset[["genres"] + list(map(lambda facet: f"facet:{facet}", FACETS_FOR_PLOTTING))] # extract only necessary columns
-    dataset["genres"] = list(map(lambda genres_string: genres_string.split(LIST_FEATURE_JOIN_STRING)[0] if not pd.isna(genres_string) else None, dataset["genres"]))
 
     # get some statistics
     logging.info("Percent of songs with at least one genre, by facet:")
     for facet in FACETS_FOR_PLOTTING:
         logging.info(f"- {make_facet_name_fancy(facet = facet)}: {100 * (sum((~pd.isna(dataset['genres'])) * dataset[f'facet:{facet}']) / sum(dataset[f'facet:{facet}'])):.2f}%")
+        
+    # # get the top-n most common genres in entire dataset
+    # dataset["genres"] = list(map(lambda genres_string: genres_string.split(LIST_FEATURE_JOIN_STRING)[0] if not pd.isna(genres_string) else None, dataset["genres"]))
+    # convert_counts = lambda counts: 100 * (counts / sum(counts)) # convert counts to a percentage
+    # data = dict()
+    # counts = dataset["genres"].value_counts(sort = True, ascending = False, dropna = True)
+    # logging.info(f"{len(counts)} distinct genres.")
+    # counts = convert_counts(counts = counts.head(n = TOP_N)) # get top n results
+    # genres = list(counts.index) # get the genres from most common to n-th most common
+    # data[FACETS_FOR_PLOTTING[0]] = list(counts.values)
+
+    # # for other facets, get the fraction of each genre
+    # for facet in FACETS_FOR_PLOTTING[1:]:
+    #     counts = convert_counts(counts = dataset[dataset[f"facet:{facet}"]]["genres"].value_counts())
+    #     data[facet] = list(map(lambda genre: counts[genre] if (genre in counts.index) else 0.0, genres))
 
     # get the top-n most common genres in entire dataset
-    convert_counts = lambda counts: 100 * (counts / sum(counts)) # convert counts to a percentage
+    def get_counts(df: pd.DataFrame = dataset):
+        """Get the counts of each genre."""
+        genres = sum(list(map(lambda genre: genre.split(LIST_FEATURE_JOIN_STRING), df.loc[~pd.isna(df["genres"]), "genres"].values)), []) # get all genres
+        counts = {genre: genres.count(genre) for genre in set(genres)} # count each genre
+        genres = sorted(list(counts.keys()), key = lambda genre: counts[genre])[::-1] # get genres ordered from most common to least
+        counts = {genre: counts[genre] for genre in genres}
+        return counts
+    convert_counts = lambda counts: {genre: 100 * (counts[genre] / sum(counts.values())) for genre in counts.keys()} # convert counts to a percentage
     data = dict()
-    counts = dataset["genres"].value_counts(sort = True, ascending = False, dropna = True)
-    logging.info(f"{len(counts)} distinct genres.")
-    counts = convert_counts(counts = counts.head(n = TOP_N)) # get top n results
-    genres = list(counts.index) # get the genres from most common to n-th most common
-    data[FACETS_FOR_PLOTTING[0]] = list(counts.values)
+    counts = get_counts(df = dataset)
+    logging.info(f"{len(counts):,} distinct genres.")
+    genres = list(counts.keys())[:TOP_N] # get the genres from most common to n-th most common
+    counts = convert_counts(counts = {genre: counts[genre] for genre in genres}) # get top n results
+    data[FACETS_FOR_PLOTTING[0]] = list(counts.values())
 
     # for other facets, get the fraction of each genre
     for facet in FACETS_FOR_PLOTTING[1:]:
-        counts = convert_counts(counts = dataset[dataset[f"facet:{facet}"]]["genres"].value_counts())
-        data[facet] = list(map(lambda genre: counts[genre] if (genre in counts.index) else 0.0, genres))
+        counts = convert_counts(counts = get_counts(df = dataset[dataset[f"facet:{facet}"]]))
+        data[facet] = list(map(lambda genre: counts[genre] if (genre in counts.keys()) else 0.0, genres))
 
     # wrangle genre names
+    genres = list(map(lambda genre: "Funk/Soul" if genre == "rbfunksoul" else genre, genres)) # specific case
     genres = list(map(lambda genre: genre.replace("music", "").title(), genres))
 
     ##################################################
