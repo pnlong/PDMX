@@ -68,6 +68,7 @@ FRACTION_TO_WIGGLE = 0.34 # fraction of MAX/MIN_PITCHWHEEL to bend notes for wig
 DEFAULT_TEMPO = bpm2tempo(bpm = DEFAULT_QPM)
 N_TEMPO_SPANNER_SUBDIVISIONS = 5 # number of subdivisions for increasing/decreasing tempo with a tempo spanner
 GRACE_NOTE_FORWARD_SHIFT_CONSTANT = 0.15 # fraction of a quarter note's duration to shift a note forward if it is a grace note
+SWING_PROPORTION = 0.6666666667 # on what fraction of a beat does a swung eight note fall
 
 # dynamics
 MAX_VELOCITY = 127 # maximum velocity for midi
@@ -394,6 +395,18 @@ def to_mido_track(track: Track, music: "MusicRender", channel: int = None, use_n
     # program change messages
     midi_track.append(Message(type = "program_change", program = track.program, channel = channel))
 
+    # deal with swing
+    is_swung = False
+    swing_features = list(filter(lambda annotation: (annotation.annotation.__class__.__name__ == "Text") and (annotation.annotation.is_system) and (annotation.annotation.style == "tempo"), music.annotations))
+    swing_feature_index = -1
+    for note in track.notes:
+        if (swing_feature_index < (len(swing_features) - 1)) and (note.time >= swing_features[swing_feature_index + 1].time): # determine if we must update is_swung
+            swing_feature_index += 1
+            is_swung = (swing_features[swing_feature_index].annotation.text == "Swing") # update is_swung
+        if is_swung and (((note.time / music.resolution) % 1) == 0.5): # add swing if we are swinging and the note falls on an off-beat eighth note
+            note.time = int(max(0, note.time + (music.resolution * (SWING_PROPORTION - 0.5))))
+    del is_swung, swing_features, swing_feature_index
+
     # deal with expressive features
     note_times = sorted(list({note.time for note in track.notes})) # times of notes, sorted ascending, removing duplicates
     note_time_indicies = {note_time: i for i, note_time in enumerate(note_times)}
@@ -460,6 +473,7 @@ def to_mido_track(track: Track, music: "MusicRender", channel: int = None, use_n
             #     pass # currently no implementation since we so rarely encounter these
         if note.is_grace: # move the note slightly ahead if it is a grace note
             note.time = max(0, note.time - (music.resolution * GRACE_NOTE_FORWARD_SHIFT_CONSTANT)) # no grace notes on the first note, to avoid negative times
+        note.time = int(note.time) # ensure note time is an integer
         midi_track.extend(to_mido_note_on_note_off(note = note, channel = channel, use_note_off_message = use_note_off_message))
 
     # end of track message
