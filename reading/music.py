@@ -291,45 +291,42 @@ class MusicRender(muspy.music.Music):
             return
         
         # convert
-        music = deepcopy(self)
-        for i in range(len(music.tempos)):
-            music.tempos[i].time = self.metrical_time_to_absolute_time(time_steps = music.tempos[i].time)
-        for i in range(len(music.key_signatures)):
-            music.key_signatures[i].time = self.metrical_time_to_absolute_time(time_steps = music.key_signatures[i].time)
-        for i in range(len(music.time_signatures)):
-            music.time_signatures[i].time = self.metrical_time_to_absolute_time(time_steps = music.time_signatures[i].time)
-        for i in range(len(music.beats)):
-            music.beats[i].time = self.metrical_time_to_absolute_time(time_steps = music.beats[i].time)
-        for i in range(len(music.barlines)):
-            music.barlines[i].time = self.metrical_time_to_absolute_time(time_steps = music.barlines[i].time)
-        for i in range(len(music.lyrics)):
-            music.lyrics[i].time = self.metrical_time_to_absolute_time(time_steps = music.lyrics[i].time)
-        for i in range(len(music.annotations)):
-            time_time_steps = music.annotations[i].time
-            music.annotations[i].time = self.metrical_time_to_absolute_time(time_steps = time_time_steps)
-            if hasattr(music.annotations[i].annotation, "duration"):
-                music.annotations[i].annotation.duration = self.metrical_time_to_absolute_time(time_steps = time_time_steps + music.annotations[i].annotation.duration) - music.annotations[i].time
-        for i in range(len(music.tracks)):
-            for j in range(len(music.tracks[i].notes)):
-                time_time_steps = music.tracks[i].notes[j].time
-                music.tracks[i].notes[j].time = self.metrical_time_to_absolute_time(time_steps = time_time_steps)
-                music.tracks[i].notes[j].duration = self.metrical_time_to_absolute_time(time_steps = time_time_steps + music.tracks[i].notes[j].duration) - music.tracks[i].notes[j].time
-            for j in range(len(music.tracks[i].chords)):
-                time_time_steps = music.tracks[i].chords[j].time
-                music.tracks[i].chords[j].time = self.metrical_time_to_absolute_time(time_steps = time_time_steps)
-                music.tracks[i].chords[j].duration = self.metrical_time_to_absolute_time(time_steps = time_time_steps + music.tracks[i].chords[j].duration) - music.tracks[i].chords[j].time
-            for j in range(len(music.tracks[i].annotations)):
-                time_time_steps = music.tracks[i].annotations[j].time
-                music.tracks[i].annotations[j].time = self.metrical_time_to_absolute_time(time_steps = time_time_steps)
-                if hasattr(music.tracks[i].annotations[j].annotation, "duration"):
-                    music.tracks[i].annotations[j].annotation.duration = self.metrical_time_to_absolute_time(time_steps = time_time_steps + music.tracks[i].annotations[j].annotation.duration) - music.tracks[i].annotations[j].time
-            for j in range(len(music.tracks[i].lyrics)):
-                music.tracks[i].lyrics[j].time = self.metrical_time_to_absolute_time(time_steps = music.tracks[i].lyrics[j].time)
-        music.absolute_time = True
-
-        # set self to the converted vaues
-        self = music
-
+        for i in range(len(self.tempos)):
+            self.tempos[i].time = self.metrical_time_to_absolute_time(time_steps = self.tempos[i].time)
+        for i in range(len(self.key_signatures)):
+            self.key_signatures[i].time = self.metrical_time_to_absolute_time(time_steps = self.key_signatures[i].time)
+        for i in range(len(self.time_signatures)):
+            self.time_signatures[i].time = self.metrical_time_to_absolute_time(time_steps = self.time_signatures[i].time)
+        for i in range(len(self.beats)):
+            self.beats[i].time = self.metrical_time_to_absolute_time(time_steps = self.beats[i].time)
+        for i in range(len(self.barlines)):
+            self.barlines[i].time = self.metrical_time_to_absolute_time(time_steps = self.barlines[i].time)
+        for i in range(len(self.lyrics)):
+            self.lyrics[i].time = self.metrical_time_to_absolute_time(time_steps = self.lyrics[i].time)
+        for i in range(len(self.annotations)):
+            time_time_steps = self.annotations[i].time
+            self.annotations[i].time = self.metrical_time_to_absolute_time(time_steps = time_time_steps)
+            if hasattr(self.annotations[i].annotation, "duration"):
+                self.annotations[i].annotation.duration = self.metrical_time_to_absolute_time(time_steps = time_time_steps + self.annotations[i].annotation.duration) - self.annotations[i].time
+        for i in range(len(self.tracks)):
+            for j in range(len(self.tracks[i].notes)):
+                time_time_steps = self.tracks[i].notes[j].time
+                self.tracks[i].notes[j].time = self.metrical_time_to_absolute_time(time_steps = time_time_steps)
+                self.tracks[i].notes[j].duration = self.metrical_time_to_absolute_time(time_steps = time_time_steps + self.tracks[i].notes[j].duration) - self.tracks[i].notes[j].time
+            for j in range(len(self.tracks[i].chords)):
+                time_time_steps = self.tracks[i].chords[j].time
+                self.tracks[i].chords[j].time = self.metrical_time_to_absolute_time(time_steps = time_time_steps)
+                self.tracks[i].chords[j].duration = self.metrical_time_to_absolute_time(time_steps = time_time_steps + self.tracks[i].chords[j].duration) - self.tracks[i].chords[j].time
+            for j in range(len(self.tracks[i].annotations)):
+                time_time_steps = self.tracks[i].annotations[j].time
+                self.tracks[i].annotations[j].time = self.metrical_time_to_absolute_time(time_steps = time_time_steps)
+                if hasattr(self.tracks[i].annotations[j].annotation, "duration"):
+                    self.tracks[i].annotations[j].annotation.duration = self.metrical_time_to_absolute_time(time_steps = time_time_steps + self.tracks[i].annotations[j].annotation.duration) - self.tracks[i].annotations[j].time
+            for j in range(len(self.tracks[i].lyrics)):
+                self.tracks[i].lyrics[j].time = self.metrical_time_to_absolute_time(time_steps = self.tracks[i].lyrics[j].time)
+        
+        # update
+        self.absolute_time = True
 
     ##################################################
 
@@ -415,44 +412,108 @@ class MusicRender(muspy.music.Music):
             return
         
         # convert
-        music = deepcopy(self)
-        for i in range(len(music.tempos)):
-            music.tempos[i].time = self.absolute_time_to_metrical_time(seconds = music.tempos[i].time)
-        for i in range(len(music.key_signatures)):
-            music.key_signatures[i].time = self.absolute_time_to_metrical_time(seconds = music.key_signatures[i].time)
-        for i in range(len(music.time_signatures)):
-            music.time_signatures[i].time = self.absolute_time_to_metrical_time(seconds = music.time_signatures[i].time)
-        for i in range(len(music.beats)):
-            music.beats[i].time = self.absolute_time_to_metrical_time(seconds = music.beats[i].time)
-        for i in range(len(music.barlines)):
-            music.barlines[i].time = self.absolute_time_to_metrical_time(seconds = music.barlines[i].time)
-        for i in range(len(music.lyrics)):
-            music.lyrics[i].time = self.absolute_time_to_metrical_time(seconds = music.lyrics[i].time)
-        for i in range(len(music.annotations)):
-            time_seconds = music.annotations[i].time
-            music.annotations[i].time = self.absolute_time_to_metrical_time(seconds = time_seconds)
-            if hasattr(music.annotations[i].annotation, "duration"):
-                music.annotations[i].annotation.duration = self.absolute_time_to_metrical_time(seconds = time_seconds + music.annotations[i].annotation.duration) - music.annotations[i].time
-        for i in range(len(music.tracks)):
-            for j in range(len(music.tracks[i].notes)):
-                time_seconds = music.tracks[i].notes[j].time
-                music.tracks[i].notes[j].time = self.absolute_time_to_metrical_time(seconds = time_seconds)
-                music.tracks[i].notes[j].duration = self.absolute_time_to_metrical_time(seconds = time_seconds + music.tracks[i].notes[j].duration) - music.tracks[i].notes[j].time
-            for j in range(len(music.tracks[i].chords)):
-                time_seconds = music.tracks[i].chords[j].time
-                music.tracks[i].chords[j].time = self.absolute_time_to_metrical_time(seconds = time_seconds)
-                music.tracks[i].chords[j].duration = self.absolute_time_to_metrical_time(seconds = time_seconds + music.tracks[i].chords[j].duration) - music.tracks[i].chords[j].time
-            for j in range(len(music.tracks[i].annotations)):
-                time_seconds = music.tracks[i].annotations[j].time
-                music.tracks[i].annotations[j].time = self.absolute_time_to_metrical_time(seconds = time_seconds)
-                if hasattr(music.tracks[i].annotations[j].annotation, "duration"):
-                    music.tracks[i].annotations[j].annotation.duration = self.absolute_time_to_metrical_time(seconds = time_seconds + music.tracks[i].annotations[j].annotation.duration) - music.tracks[i].annotations[j].time
-            for j in range(len(music.tracks[i].lyrics)):
-                music.tracks[i].lyrics[j].time = self.absolute_time_to_metrical_time(seconds = music.tracks[i].lyrics[j].time)
-        music.absolute_time = False
+        for i in range(len(self.tempos)):
+            self.tempos[i].time = self.absolute_time_to_metrical_time(seconds = self.tempos[i].time)
+        for i in range(len(self.key_signatures)):
+            self.key_signatures[i].time = self.absolute_time_to_metrical_time(seconds = self.key_signatures[i].time)
+        for i in range(len(self.time_signatures)):
+            self.time_signatures[i].time = self.absolute_time_to_metrical_time(seconds = self.time_signatures[i].time)
+        for i in range(len(self.beats)):
+            self.beats[i].time = self.absolute_time_to_metrical_time(seconds = self.beats[i].time)
+        for i in range(len(self.barlines)):
+            self.barlines[i].time = self.absolute_time_to_metrical_time(seconds = self.barlines[i].time)
+        for i in range(len(self.lyrics)):
+            self.lyrics[i].time = self.absolute_time_to_metrical_time(seconds = self.lyrics[i].time)
+        for i in range(len(self.annotations)):
+            time_seconds = self.annotations[i].time
+            self.annotations[i].time = self.absolute_time_to_metrical_time(seconds = time_seconds)
+            if hasattr(self.annotations[i].annotation, "duration"):
+                self.annotations[i].annotation.duration = self.absolute_time_to_metrical_time(seconds = time_seconds + self.annotations[i].annotation.duration) - self.annotations[i].time
+        for i in range(len(self.tracks)):
+            for j in range(len(self.tracks[i].notes)):
+                time_seconds = self.tracks[i].notes[j].time
+                self.tracks[i].notes[j].time = self.absolute_time_to_metrical_time(seconds = time_seconds)
+                self.tracks[i].notes[j].duration = self.absolute_time_to_metrical_time(seconds = time_seconds + self.tracks[i].notes[j].duration) - self.tracks[i].notes[j].time
+            for j in range(len(self.tracks[i].chords)):
+                time_seconds = self.tracks[i].chords[j].time
+                self.tracks[i].chords[j].time = self.absolute_time_to_metrical_time(seconds = time_seconds)
+                self.tracks[i].chords[j].duration = self.absolute_time_to_metrical_time(seconds = time_seconds + self.tracks[i].chords[j].duration) - self.tracks[i].chords[j].time
+            for j in range(len(self.tracks[i].annotations)):
+                time_seconds = self.tracks[i].annotations[j].time
+                self.tracks[i].annotations[j].time = self.absolute_time_to_metrical_time(seconds = time_seconds)
+                if hasattr(self.tracks[i].annotations[j].annotation, "duration"):
+                    self.tracks[i].annotations[j].annotation.duration = self.absolute_time_to_metrical_time(seconds = time_seconds + self.tracks[i].annotations[j].annotation.duration) - self.tracks[i].annotations[j].time
+            for j in range(len(self.tracks[i].lyrics)):
+                self.tracks[i].lyrics[j].time = self.absolute_time_to_metrical_time(seconds = self.tracks[i].lyrics[j].time)
+        
+        # update
+        self.absolute_time = False
 
-        # set self to the converted vaues
-        self = music
+    ##################################################
+
+
+    # RESET RESOLUTION
+    ##################################################
+    
+    def reset_resolution(self, new_resolution: int = muspy.DEFAULT_RESOLUTION):
+        """
+        Reset the resolution of this object.
+        """
+
+        # do we even need to convert
+        if self.absolute_time:
+            warn("Time values must be in metrical time (which they are currently not). Not resetting resolution.", RuntimeWarning)
+            return
+        
+        # dont advise downsampling
+        if new_resolution < self.resolution:
+            warn("`new_resolution` less than the current resolution. Downsampling is not advised.", RuntimeWarning)
+
+        # don't want a float for new resolution
+        if int(new_resolution) != new_resolution:
+            warn("`new_resolution` should be an int. Truncating.", RuntimeWarning)
+            new_resolution = int(new_resolution)
+        
+        # resolution updater
+        time_updater = lambda time: int(time * (new_resolution / self.resolution))
+        
+        # convert
+        for i in range(len(self.tempos)):
+            self.tempos[i].time = time_updater(time = self.tempos[i].time)
+        for i in range(len(self.key_signatures)):
+            self.key_signatures[i].time = time_updater(time = self.key_signatures[i].time)
+        for i in range(len(self.time_signatures)):
+            self.time_signatures[i].time = time_updater(time = self.time_signatures[i].time)
+        for i in range(len(self.beats)):
+            self.beats[i].time = time_updater(time = self.beats[i].time)
+        for i in range(len(self.barlines)):
+            self.barlines[i].time = time_updater(time = self.barlines[i].time)
+        for i in range(len(self.lyrics)):
+            self.lyrics[i].time = time_updater(time = self.lyrics[i].time)
+        for i in range(len(self.annotations)):
+            time_ = self.annotations[i].time
+            self.annotations[i].time = time_updater(time = time_)
+            if hasattr(self.annotations[i].annotation, "duration"):
+                self.annotations[i].annotation.duration = time_updater(time = time_ + self.annotations[i].annotation.duration) - self.annotations[i].time
+        for i in range(len(self.tracks)):
+            for j in range(len(self.tracks[i].notes)):
+                time_ = self.tracks[i].notes[j].time
+                self.tracks[i].notes[j].time = time_updater(time = time_)
+                self.tracks[i].notes[j].duration = time_updater(time = time_ + self.tracks[i].notes[j].duration) - self.tracks[i].notes[j].time
+            for j in range(len(self.tracks[i].chords)):
+                time_ = self.tracks[i].chords[j].time
+                self.tracks[i].chords[j].time = time_updater(time = time_)
+                self.tracks[i].chords[j].duration = time_updater(time = time_ + self.tracks[i].chords[j].duration) - self.tracks[i].chords[j].time
+            for j in range(len(self.tracks[i].annotations)):
+                time_ = self.tracks[i].annotations[j].time
+                self.tracks[i].annotations[j].time = time_updater(time = time_)
+                if hasattr(self.tracks[i].annotations[j].annotation, "duration"):
+                    self.tracks[i].annotations[j].annotation.duration = time_updater(time = time_ + self.tracks[i].annotations[j].annotation.duration) - self.tracks[i].annotations[j].time
+            for j in range(len(self.tracks[i].lyrics)):
+                self.tracks[i].lyrics[j].time = time_updater(time = self.tracks[i].lyrics[j].time)
+        
+        # update resolution
+        self.resolution = new_resolution
 
     ##################################################
 
