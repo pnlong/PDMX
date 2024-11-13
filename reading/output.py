@@ -69,6 +69,7 @@ DEFAULT_TEMPO = bpm2tempo(bpm = DEFAULT_QPM)
 N_TEMPO_SPANNER_SUBDIVISIONS = 5 # number of subdivisions for increasing/decreasing tempo with a tempo spanner
 GRACE_NOTE_FORWARD_SHIFT_CONSTANT = 0.15 # fraction of a quarter note's duration to shift a note forward if it is a grace note
 SWING_PROPORTION = 0.6666666667 # on what fraction of a beat does a swung eight note fall
+OPTIMAL_RESOLUTION = 480 # we don't want too small of a resolution, or it's hard to apply expressive features
 
 # dynamics
 MAX_VELOCITY = 127 # maximum velocity for midi
@@ -506,6 +507,10 @@ def write_midi(path: str, music: "MusicRender", use_note_off_message: bool = Fal
     # if music.absolute_time:
     #     warn("`music` object in absolute time (not metrical time). Converting to metrical time.", RuntimeWarning)
     #     music.convert_from_absolute_to_metrical_time()
+
+    # redo resolution if it's too low
+    if music.resolution < OPTIMAL_RESOLUTION:
+        music.reset_resolution(new_resolution = OPTIMAL_RESOLUTION)
 
     # create a .mid file object
     midi = MidiFile(type = 1, ticks_per_beat = music.resolution, charset = "utf8")
