@@ -194,8 +194,8 @@ def _get_root(path: str, compressed: bool = None):
         raise MuseScoreError("Container file ('container.xml') not found.")
     container = ET.fromstring(zip_file.read("META-INF/container.xml")) # read the container file as xml elementtree
     rootfile = container.findall(path = "rootfiles/rootfile") # find all branches in the container file, look for .mscx
-    rootfile = tuple(file for file in rootfile if "mscx" in file.get("full-path"))
-    if rootfile is None:
+    rootfile = [file for file in rootfile if "mscx" in file.get("full-path")]
+    if len(rootfile) == 0:
         raise MuseScoreError("Element 'rootfile' tag not found in the container file ('container.xml').")
     filename = _get_required_attr(element = rootfile[0], attr = "full-path")
     if filename in zip_file.namelist():
@@ -208,7 +208,7 @@ def _get_root(path: str, compressed: bool = None):
     return root
 
 
-def _get_divisions(root: Element):
+def _get_divisions(root: Element) -> List[int]:
     """Return a list of divisions."""
     divisions = []
     for division in root.findall(path = "Division"):
@@ -228,7 +228,7 @@ def _get_divisions(root: Element):
 ##################################################
 
 def parse_repeats(elem: Element) -> Tuple[list, list]:
-    """Return a list of dictionaries where the keys are startRepeats and the value are endRepeats parsed from a staff element."""
+    """Read repeats."""
     # Initialize with a start marker
     start_repeats = [0]
     end_repeats = [[],]
@@ -236,11 +236,11 @@ def parse_repeats(elem: Element) -> Tuple[list, list]:
     # Find all repeats in all measures
     for i, measure in enumerate(elem.findall(path = "Measure")):
         # check for startRepeat
-        if measure.find("startRepeat") is not None:
+        if measure.find(path = "startRepeat") is not None:
             start_repeats.append(i)
             end_repeats.append([])
         # check for endRepeat
-        if measure.find("endRepeat") is not None:
+        if measure.find(path = "endRepeat") is not None:
             end_repeats[len(start_repeats) - 1].append(i)
 
     # if there is an implied repeat at the end
@@ -372,7 +372,6 @@ def get_measure_ordering(elem: Element, timeout: int = None) -> List[int]:
         # add the current measure index to measure indicies if I am allowed to
         if add_current_measure_idx:
             measure_indicies.append(measure_idx)
-
             # for debugging
             # print(measure_idx + 1, end = " " if measure_idx + 1 == next_measure_idx else "\n")
         else: # flick off the switch
@@ -394,13 +393,13 @@ def get_improved_measure_ordering(measures: List[Element], measure_indicies: Lis
 
     # scrape measures for repeat counts
     measure_repeat_counts = [0] * len(measure_indicies)
-    for i, measure_idx in enumerate(measure_indicies): # Musescore 3.x default
+    for i, measure_idx in enumerate(measure_indicies): # MuseScore 3.x default
         measure = measures[measure_idx] # get the measure element
         measure_repeat_count = _get_text(element = measure, path = "measureRepeatCount") # check if this measure is a repeat
         if measure_repeat_count is not None:
             measure_repeat_counts[i] = int(measure_repeat_count)
-    if sum(measure_repeat_counts) == 0: # Musescore 1.x and 2.x
-        for i, measure_idx in enumerate(measure_indicies): # Musescore 3.x default
+    if sum(measure_repeat_counts) == 0: # MuseScore 1.x and 2.x
+        for i, measure_idx in enumerate(measure_indicies): # MuseScore 3.x default
             measure = measures[measure_idx] # get the measure element
             if measure.find(path = "voice/RepeatMeasure") is not None:
                 measure_repeat_counts[i] = 1
@@ -581,7 +580,10 @@ def parse_part_info(elem: Element, musescore_version: int) -> Tuple[Optional[Lis
         part_info["program"] = int(program) if program is not None else 0
     else:
         part_info["program"] = 0
-    part_info["is_drum"] = ((int(_get_text(element = instrument, path = "Channel/midiChannel", default = 0)) == 9) or (_get_text(element = instrument, path = "clef", default = "") == "PERC") or ("drum" in _get_text(element = instrument, path = "trackName", default = "").lower()) or (len(instrument.findall(path = "Drum")) > 0))
+    part_info["is_drum"] = ((int(_get_text(element = instrument, path = "Channel/midiChannel", default = 0)) == 9) or
+                            (_get_text(element = instrument, path = "clef", default = "") == "PERC") or
+                            ("drum" in str(part_info["name"]).lower()) or
+                            (len(instrument.findall(path = "Drum")) > 0))
 
     return staff_ids, part_info
 
@@ -603,7 +605,7 @@ def get_part_staff_info(elem: Element, musescore_version: int) -> Tuple[List[Ord
         # Deal with quirks of MuseScore 1
         if musescore_version < 2:
             current_max_staff_id = max((int(staff_id) for staff_id in staff_part_map.keys())) if len(staff_part_map.keys()) > 0 else 0 # get the current largest staff id
-            staff_ids = tuple(str(staff_id + current_max_staff_id) for staff_id in staff_ids) # adjust staff ids to total scale, not just within each part (essentially, convert MuseScore 1's lack of staff ids within parts to Musescore>1)
+            staff_ids = tuple(str(staff_id + current_max_staff_id) for staff_id in staff_ids) # adjust staff ids to total scale, not just within each part (essentially, convert MuseScore 1's lack of staff ids within parts to MuseScore>1)
         
         # assign each staff id to a part
         for staff_id in staff_ids:
@@ -629,7 +631,7 @@ def get_musescore_version(path: str, compressed: bool = None) -> str:
     Returns
     -------
     :str:
-        Version of Musescore
+        Version of MuseScore
     """
 
     # get element tree root
@@ -672,9 +674,9 @@ def parse_metronome(elem: Element) -> Optional[float]:
 def parse_time(elem: Element) -> Tuple[int, int]:
     """Return the numerator and denominator of a time element."""
     # Numerator
-    beats = _get_text(elem, "sigN")
+    beats = _get_text(element = elem, path = "sigN")
     if beats is None:
-        beats = _get_text(elem, "nom1")
+        beats = _get_text(element = elem, path = "nom1")
     if beats is None:
         raise MuseScoreError("Neither 'sigN' nor 'nom1' element is found for a TimeSig element.")
     if "+" in beats:
@@ -683,9 +685,9 @@ def parse_time(elem: Element) -> Tuple[int, int]:
         numerator = int(beats)
 
     # Denominator
-    beat_type = _get_text(elem, "sigD")
+    beat_type = _get_text(element = elem, path = "sigD")
     if beat_type is None:
-        beat_type = _get_text(elem, "den")
+        beat_type = _get_text(element = elem, path = "den")
     if beat_type is None:
         raise MuseScoreError("Neither 'sigD' nor 'den' element is found for a TimeSig element.")
     if "+" in beat_type:
@@ -759,7 +761,12 @@ def get_spanner_duration(spanner: Element, measure_len: int) -> int:
 # PARSE A STAFF FOR MUSICAL INFORMATION CONSTANT ACROSS ALL PARTS
 ##################################################
 
-def parse_constant_features(staff: Element, resolution: int, measure_indicies: List[int], timeout: int = None) -> Tuple[List[Tempo], List[KeySignature], List[TimeSignature], List[Barline], List[Beat], List[Annotation]]:
+def parse_constant_features(
+        staff: Element,
+        resolution: int,
+        measure_indicies: List[int],
+        timeout: int = None
+    ) -> Tuple[List[Tempo], List[KeySignature], List[TimeSignature], List[Barline], List[Beat], List[Annotation]]:
     """Return data parsed from a meta staff element.
 
     This function only parses the tempos, key and time signatures. Use `parse_staff` to parse the notes and lyrics.
@@ -776,6 +783,7 @@ def parse_constant_features(staff: Element, resolution: int, measure_indicies: L
     # Initialize variables
     time_ = 0
     measure_len = round(resolution * 4)
+    measure_len_fraction = 1.0
     is_tuple = False
     notes_left_in_tuple = 0
     downbeat_times: List[int] = []
@@ -806,9 +814,9 @@ def parse_constant_features(staff: Element, resolution: int, measure_indicies: L
         downbeat_times.append(time_)
 
         # Get measure duration, but we don't want to recalculate every measure
-        # measure_len_text = measure.get("len")
-        # if measure_len_text is not None:
-        #     measure_len = round(resolution * 4 * Fraction(measure_len_text))
+        measure_len_text = measure.get("len")
+        if measure_len_text is not None:
+            measure_len_fraction = float(Fraction(measure_len_text))
 
         # get voice elements
         voices = list(measure.findall(path = "voice"))  # MuseScore 3.x, 4.x
@@ -953,7 +961,7 @@ def parse_constant_features(staff: Element, resolution: int, measure_indicies: L
         
         # update time
         # time_ += max_position # get the maximum position (don't want some unfinished voice)
-        time_ += measure_len
+        time_ += round(measure_len_fraction * measure_len)
 
     # Sort tempos, key and time signatures
     tempos.sort(key = attrgetter("time"))
@@ -972,7 +980,13 @@ def parse_constant_features(staff: Element, resolution: int, measure_indicies: L
 # PARSE A STAFF FOR GENERAL MUSICAL INFORMATION
 ##################################################
 
-def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], timeout: int = None, part_info: OrderedDict = OrderedDict([("transposeChromatic", 0)])) -> Tuple[List[Note], List[Chord], List[Lyric], List[Annotation]]:
+def parse_staff(
+        staff: Element,
+        resolution: int,
+        measure_indicies: List[int],
+        timeout: int = None,
+        part_info: OrderedDict = OrderedDict([("transposeChromatic", 0)])
+    ) -> Tuple[List[Note], List[Chord], List[Lyric], List[Annotation]]:
     """Return notes and lyrics parsed from a staff element.
 
     This function only parses the notes and lyrics. Use
@@ -991,6 +1005,7 @@ def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], ti
     time_ = 0
     velocity = 64
     measure_len = round(resolution * 4)
+    measure_len_fraction = 1.0
     is_tuple = False
     notes_left_in_tuple = 0
     ottava_shift = 0
@@ -1018,9 +1033,9 @@ def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], ti
         is_measure_written_out = (measure_idx == measure_idx_to_actually_read)
 
         # Get measure duration, but we don't want to recalculate every measure
-        # measure_len_text = measure.get("len")
-        # if measure_len_text is not None:
-        #     measure_len = round(resolution * 4 * Fraction(measure_len_text))
+        measure_len_text = measure.get("len")
+        if measure_len_text is not None:
+            measure_len_fraction = float(Fraction(measure_len_text))
 
         # Get voice elements
         voices = list(measure.findall(path = "voice")) # MuseScore 3.x
@@ -1235,8 +1250,8 @@ def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], ti
                             annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = Articulation(subtype = articulation_subtype.text)))
 
                     # Lyrics
-                    lyric = elem.find(path = "Lyrics")
-                    if lyric is not None:
+                    lyrics = elem.findall(path = "Lyrics")
+                    for lyric in lyrics:
                         lyric_text = parse_lyric(elem = lyric)
                         lyrics.append(Lyric(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), lyric = lyric_text))
 
@@ -1267,12 +1282,11 @@ def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], ti
 
                         # Handle grace note
                         if is_grace:
-                            # Append a new note to the note list
                             notes.append(Note(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), pitch = pitch, duration = duration, velocity = velocity, pitch_str = pitch_str, is_grace = True))
                             continue
                         
                         # Check if it is a tied note
-                        for spanner in note.findall(path = "Spanner"): # Musescore 3.x
+                        for spanner in note.findall(path = "Spanner"): # MuseScore 3.x
                             if spanner.get("type") == "Tie" and ((spanner.find(path = "next/location/measures") is not None) or (spanner.find(path = "next/location/fractions") is not None)):
                                 is_outgoing_tie = True
                         if note.find(path = "Tie") is not None: # MuseScore 1.x and 2.x
@@ -1310,7 +1324,7 @@ def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], ti
 
         # update time
         # time_ += max_position # get the maximum position (don't want some unfinished voice)
-        time_ += measure_len
+        time_ += round(measure_len_fraction * measure_len)
 
     # Sort notes
     notes.sort(key = attrgetter("time", "pitch", "duration", "velocity"))
@@ -1333,7 +1347,7 @@ def parse_staff(staff: Element, resolution: int, measure_indicies: List[int], ti
 ##################################################
 
 def read_musescore(path: str, resolution: int = None, compressed: bool = None, timeout: int = None) -> MusicRender:
-    """Read the a MuseScore file into a MusicRender object, paying close attention to details such as articulation and expressive features.
+    """Read the MuseScore file into a MusicRender object, paying close attention to details such as articulation and expressive features.
 
     Parameters
     ----------
@@ -1358,7 +1372,7 @@ def read_musescore(path: str, resolution: int = None, compressed: bool = None, t
     # ET.ElementTree(root).write(f"{dirname(path)}/mscx.xml")
 
     # detect MuseScore version
-    musescore_version = int(root.get("version")[0]) # the file format differs slightly between musescore 1 and the rest
+    musescore_version = int(float(root.get("version"))) # the file format differs slightly between musescore 1 and the rest
 
     # get the score element
     if musescore_version >= 2:
@@ -1373,7 +1387,7 @@ def read_musescore(path: str, resolution: int = None, compressed: bool = None, t
     # find the resolution
     if resolution is None:
         divisions = _get_divisions(root = score)
-        resolution = max(divisions, key = divisions.count) # _lcm(*divisions) if divisions else 1
+        resolution = max(divisions, key = divisions.count) if len(divisions) > 0 else muspy.DEFAULT_RESOLUTION
 
     # staff/part information
     parts = score.findall(path = "Part") # get all the parts
