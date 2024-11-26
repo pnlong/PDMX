@@ -15,9 +15,10 @@ from os import rename
 from os.path import exists, expanduser
 from re import sub
 from typing import Tuple, Dict, List, Callable
-from numpy import linspace
+from numpy import linspace, repeat
 from copy import deepcopy
 from math import sin, pi
+from fractions import Fraction
 from itertools import groupby
 from warnings import warn
 
@@ -37,19 +38,32 @@ import tempfile
 
 # musicxml
 from muspy.utils import CIRCLE_OF_FIFTHS, MODE_CENTERS
+import music21.musicxml.archiveTools
 from music21.musicxml.archiveTools import compressXML
 from music21.key import Key
-from music21.metadata import Contributor, Copyright
-from music21.metadata import Metadata as M21MetaData
+from music21.metadata import Metadata as M21MetaData, Contributor, Copyright
 from music21.meter import TimeSignature as M21TimeSignature
-from music21.note import Note as M21Note, noteheadTypeNames
+from music21.note import Note as M21Note, Unpitched as M21Unpitched, noteheadTypeNames
+from music21.chord import Chord as M21Chord
+from music21.harmony import ChordSymbol as M21ChordSymbol
+from music21.instrument import instrumentFromMidiProgram
+from music21.percussion import PercussionChord as M21PercussionChord
+from music21.clef import PercussionClef as M21PercussionClef
 from music21.stream import Part, Score
+from music21.duration import Duration
 from music21 import tempo as M21Tempo
 from music21 import articulations as M21Articulation
 from music21 import expressions as M21Expression
 from music21 import spanner as M21Spanner
 from music21 import dynamics as M21Dynamic
 from music21.exceptions21 import StreamException
+import music21.beam
+
+# silence wierd warnings
+def noop(input):
+    pass
+music21.musicxml.archiveTools.environLocal.warn = noop
+music21.beam.environLocal.warn = noop
 
 ##################################################
 
@@ -87,6 +101,9 @@ DYNAMIC_DYNAMICS = set(tuple(DYNAMIC_VELOCITY_MAP.keys())[:tuple(DYNAMIC_VELOCIT
 # MIDI
 DRUM_CHANNEL = 9
 
+# midi pitch to octave
+MIDI_PITCH_TO_OCTAVE = {pitch: octave for pitch, octave in zip(range(128), repeat(a = range(-1, 10), repeats = 12))}
+
 ##################################################
 
 
@@ -96,6 +113,14 @@ DRUM_CHANNEL = 9
 def clean_up_subtype(subtype: str) -> str:
     """Clean up the subtype of an annotation so that I can better match for substrings."""
     return sub(pattern = "[^\w0-9]", repl = "", string = subtype.lower())
+
+def round_to_nearest_partial(value: float, resolution: float) -> float:
+    """Round a value to the nearest resolution"""
+    return round(value / resolution) * resolution
+
+def get_octave_from_pitch(pitch: int) -> int:
+    """Given the MIDI pitch number, return the octave of that note."""
+    return MIDI_PITCH_TO_OCTAVE[pitch]
 
 ##################################################
 
@@ -233,38 +258,48 @@ def to_mido_meta_track(music: "MusicRender") -> MidiTrack:
     # system and staff level annotations
     current_tempo_index = 0
     for annotation in (music.annotations + sum((track.annotations for track in music.tracks), [])):
+
         # skip annotations out of the relevant time scope
         if annotation.time <= max_note_time:
             continue
+
         # ensure that values are valid
+        annotation_type = annotation.annotation.__class__.__name__
         if hasattr(annotation.annotation, "subtype"): # make sure subtype field is not none
             if annotation.annotation.subtype is None:
                 continue
             else:
                 annotation.annotation.subtype = clean_up_subtype(subtype = annotation.annotation.subtype) # clean up the subtype
+        
         # update current_tempo_index if necessary
         if metrical_time:
             if current_tempo_index < (len(tempo_times) - 1): # avoid index error later on at last element in tempo_times
                 if tempo_times[current_tempo_index + 1] <= annotation.time: # update current_tempo_index if necessary
                     current_tempo_index += 1 # increment
+        
         # Text and TextSpanner
-        if annotation.annotation.__class__.__name__ in ("Text", "TextSpanner"):
+        if annotation_type in ("Text", "TextSpanner"):
             meta_track.append(MetaMessage(type = "text", time = annotation.time, text = annotation.annotation.text))
+        
         # RehearsalMark
-        elif annotation.annotation.__class__.__name__ == "RehearsalMark":
+        elif annotation_type == "RehearsalMark":
             meta_track.append(MetaMessage(type = "marker", time = annotation.time, text = annotation.annotation.text))
-        elif metrical_time: # if absolute time, temporal features have presumably already been accounted for
+        
+        # if absolute time, temporal features have already been accounted for
+        elif metrical_time:
+            
             # Fermata and fermatas stored inside of Articulation
-            if (annotation.annotation.__class__.__name__ == "Fermata") or (annotation.annotation.__class__.__name__ == "Articulation"): # only apply when metrical time in use
-                if (annotation.annotation.__class__.__name__ == "Articulation") and ("fermata" not in annotation.annotation.subtype): # looking for fermatas hidden as articulations
+            if (annotation_type == "Fermata") or (annotation_type == "Articulation"): # only apply when metrical time in use
+                if (annotation_type == "Articulation") and ("fermata" not in annotation.annotation.subtype): # looking for fermatas hidden as articulations
                     continue # if not a fermata-articulation, skip
                 longest_note_duration_at_current_time = max([note.duration for note in all_notes if note.time == annotation.time] + [0]) # go through notes and find longest duration note at the time of the fermata
                 if longest_note_duration_at_current_time > 0:
                     meta_track.append(MetaMessage(type = "set_tempo", time = annotation.time, tempo = tempo_changes[current_tempo_index] * FERMATA_TEMPO_SLOWDOWN)) # start of fermata
                     meta_track.append(MetaMessage(type = "set_tempo", time = annotation.time + longest_note_duration_at_current_time, tempo = tempo_changes[current_tempo_index])) # end of fermata
                 del longest_note_duration_at_current_time
+            
             # TempoSpanner
-            elif annotation.annotation.__class__.__name__ == "TempoSpanner": # only apply when metrical time in use
+            elif annotation_type == "TempoSpanner": # only apply when metrical time in use
                 if any((annotation.annotation.subtype.startswith(prefix) for prefix in ("lent", "rall", "rit", "smorz", "sost", "allarg"))): # slow-downs; lentando, rallentando, ritardando, smorzando, sostenuto, allargando
                     tempo_change_factor_fn = lambda t: t
                 elif any((annotation.annotation.subtype.startswith(prefix) for prefix in ("accel", "leg"))): # speed-ups; accelerando, leggiero
@@ -278,6 +313,8 @@ def to_mido_meta_track(music: "MusicRender") -> MidiTrack:
                     end_tempo_spanner_tempo_index += 1 # if the tempo changed during the tempo spanner
                 meta_track.append(MetaMessage(type = "set_tempo", time = annotation.time + annotation.annotation.duration, tempo = tempo_changes[end_tempo_spanner_tempo_index])) # reset tempo
                 del time, tempo_change_factor_magnitude, tempo_change_factor_fn, end_tempo_spanner_tempo_index
+    
+    # clear up memory
     del current_tempo_index, all_notes
 
     # end of track message
@@ -417,12 +454,15 @@ def to_mido_track(track: Track, music: "MusicRender", channel: int = None, use_n
     for note in track.notes:
         note.velocity = expressive_features[note.time][0].annotation.velocity # the first index is always the dynamic
         for annotation in expressive_features[note.time][1:]: # skip the first index, since we just dealt with it
+            
             # ensure that values are valid
+            annotation_type = annotation.annotation.__class__.__name__
             if hasattr(annotation.annotation, "subtype"): # make sure subtype field is not none
                 if annotation.annotation.subtype is None:
                     continue
+            
             # HairPinSpanner and TempoSpanner; changes in velocity
-            if (annotation.annotation.__class__.__name__ in ("HairPinSpanner", "TempoSpanner")) and music.infer_velocity: # some TempoSpanners involve a velocity change, so that is included here as well
+            if (annotation_type in ("HairPinSpanner", "TempoSpanner")) and music.infer_velocity: # some TempoSpanners involve a velocity change, so that is included here as well
                 if annotation.group is None: # since we aren't storing anything there anyways
                     end_velocity = note.velocity # default is no change
                     if any((annotation.annotation.subtype.startswith(prefix) for prefix in ("allarg", "cr"))): # increase-volume; allargando, crescendo
@@ -432,19 +472,22 @@ def to_mido_track(track: Track, music: "MusicRender", channel: int = None, use_n
                     denominator = (annotation.time + annotation.annotation.duration) - note.time
                     annotation.group = lambda time: (((((end_velocity - note.velocity) / denominator) * (time - note.time)) + note.velocity) if (denominator != 0) else end_velocity) # we will use group to store a lambda function to calculate velocity
                 note.velocity = annotation.group(time = note.time) # previously used +=
+            
             # SlurSpanner
-            elif annotation.annotation.__class__.__name__ == "SlurSpanner":
+            elif annotation_type == "SlurSpanner":
                 if (note_time_indicies[note.time] == (len(note_times) - 1)) or not any(slur_spanner is annotation for slur_spanner in filter(lambda annotation_: annotation_.annotation.__class__.__name__ == "SlurSpanner", expressive_features[note_times[note_time_indicies[note.time] + 1]])):
                     continue # if the note is the last note in the slur, we don't want to slur it
                 current_note_time_index = note_time_indicies[note.time]
                 if current_note_time_index < len(note_times) - 1: # elsewise, there is no next note to slur to
                     note.duration = max(note_times[current_note_time_index + 1] - note_times[current_note_time_index], note.duration) # we don't want to make the note shorter
                 del current_note_time_index
+            
             # PedalSpanner
-            elif annotation.annotation.__class__.__name__ == "PedalSpanner":
+            elif annotation_type == "PedalSpanner":
                 note.duration *= PEDAL_DURATION_CHANGE_FACTOR
+            
             # Articulation
-            elif annotation.annotation.__class__.__name__ == "Articulation":
+            elif annotation_type == "Articulation":
                 if any((keyword in annotation.annotation.subtype for keyword in ("staccato", "staccatissimo", "spiccato", "pizzicato", "plucked", "marcato", "sforzato"))): # shortens note length
                     note.duration /= STACCATO_DURATION_CHANGE_FACTOR
                 if any((keyword in annotation.annotation.subtype for keyword in ("marcato", "sforzato", "accent"))): # increases velocity
@@ -469,12 +512,19 @@ def to_mido_track(track: Track, music: "MusicRender", channel: int = None, use_n
                 #     pass # currently no implementation
                 # if any((keyword in annotation.annotation.subtype for keyword in ("open", "ouvert"))): # reference to a mute
                 #     pass # currently no implementation
+            
             # TechAnnotation
-            # elif annotation.annotation.__class__.__name__ == "TechAnnotation":
+            # elif annotation_type == "TechAnnotation":
             #     pass # currently no implementation since we so rarely encounter these
+        
+        # adjust note slightly if grace note
         if note.is_grace: # move the note slightly ahead if it is a grace note
             note.time = max(0, note.time - (music.resolution * GRACE_NOTE_FORWARD_SHIFT_CONSTANT)) # no grace notes on the first note, to avoid negative times
+        
+        # ensure note time is an integer
         note.time = int(note.time) # ensure note time is an integer
+       
+        # add note to track
         midi_track.extend(to_mido_note_on_note_off(note = note, channel = channel, use_note_off_message = use_note_off_message))
 
     # end of track message
@@ -619,6 +669,20 @@ def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
     # create a new score
     score = Score()
 
+    # helper functions
+    get_offset = lambda time: time / music.resolution
+    def get_duration(duration: int) -> Duration:
+        """
+        Helper function to get the duration of something, returning a music21 Duration object.
+        Make sure the duration is valid so no bugs are thrown.
+        """
+        m21_duration = Duration(quarterLength = Fraction(duration, music.resolution))
+        if any((tup.durationNormal.quarterLength <= (1 / (2 ** 9)) for tup in m21_duration.tuplets)): # check for invalid durations
+            return Duration(quarterLength = 0)
+        else:
+            return m21_duration
+    get_time_from_offset = lambda offset: offset * music.resolution
+
     # metadata
     if music.metadata is not None:
         meta = M21MetaData()
@@ -636,23 +700,27 @@ def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
         # create a new part
         part = Part()
         part.partName = track.name
+        if track.is_drum:
+            part.insert(offsetOrItemOrList = 0, itemOrNone = M21PercussionClef())
+        # else:
+        #     part.insert(offsetOrItemOrList = 0, itemOrNone = instrumentFromMidiProgram(track.program)) # detunes any transposed instrument
 
         # add tempos
         for tempo in music.tempos: # loop through tempos
-            if tempo.text.startswith("<sym>"): # bpm is explicitly supplied in text or not supplied at all
+            if tempo.text.startswith("<sym>") or tempo.text is None: # bpm is explicitly supplied in text or not supplied at all
                 m21_tempo = M21Tempo.MetronomeMark(number = tempo.qpm) # create tempo marking with bpm
             else: # bpm is implied by tempo name
                 m21_tempo = M21Tempo.MetronomeMark(text = tempo.text, numberSounding = tempo.qpm) # create tempo marking with text
-            m21_tempo.offset = tempo.time # define offset
-            part.append(m21_tempo)
+            m21_tempo.offset = get_offset(time = tempo.time) # define offset
+            part.insert(offsetOrItemOrList = m21_tempo.offset, itemOrNone = m21_tempo)
 
         # add time signatures
         for time_signature in music.time_signatures: # loop through time signatures
             if (time_signature.numerator is None) or (time_signature.denominator is None):
                 continue
             m21_time_signature = M21TimeSignature(value = f"{time_signature.numerator}/{time_signature.denominator}") # instantiate time signature object
-            m21_time_signature.offset = time_signature.time # define offset
-            part.append(m21_time_signature)
+            m21_time_signature.offset = get_offset(time = time_signature.time) # define offset
+            part.insert(offsetOrItemOrList = m21_time_signature.offset, itemOrNone = m21_time_signature)
 
         # add key signatures
         for key_signature in music.key_signatures: # loop through key signatures
@@ -670,8 +738,8 @@ def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
             else: # skip if the note is missing a root_str, root, and circle of fifths index
                 continue
             m21_key_signature = Key(tonic = tonic, mode = key_signature.mode) # create key object
-            m21_key_signature.offset = key_signature.time # define offset
-            part.append(m21_key_signature)
+            m21_key_signature.offset = get_offset(time = key_signature.time) # define offset
+            part.insert(offsetOrItemOrList = m21_key_signature.offset, itemOrNone = m21_key_signature)
 
         # add notes to part (and grace notes, lyrics, noteheads, and articulations)
         lyrics: Dict[int, str] = {lyric.time: lyric.lyric for lyric in track.lyrics} # put lyrics into dictionary (where keys are the time)
@@ -679,24 +747,36 @@ def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
         articulations: Dict[int, List[Annotation]] = {articulation_time: [clean_up_subtype(subtype = annotation.annotation.subtype) for annotation in articulations_at_time] for articulation_time, articulations_at_time in groupby(
             iterable = sorted(filter(lambda annotation: any(annotation.annotation.__class__.__name__ == keyword for keyword in ("Articulation", "Symbol")), track.annotations), key = lambda annotation: annotation.time), # need to sort because itertools creates a new group when a new key appears
             key = lambda annotation: annotation.time)}
+        chords: Dict[Tuple[int, int, bool], list] = dict()
         
         # loop through notes
         for note in track.notes:
-            m21_note = M21Note(pitch = note.pitch) # create note object
+
+            # create M21 Note object
+            note_str = note.pitch_str.replace("b", "-")
+            note_octave = get_octave_from_pitch(note.pitch)
+            if track.is_drum:
+                m21_note = M21Unpitched(displayStep = note_str[0], displayOctave = note_octave) # create note object
+            else:
+                m21_note = M21Note(name = note_str, octave = note_octave) # create note object
+            
             # check if grace note
             if note.is_grace: # check if grace note
                 m21_note.type = "eighth" # so it looks like a normal grace note with a flag
                 m21_note = m21_note.getGrace() # convert to grace note
             # if the note is a normal note
             else:
-                m21_note.quarterLength = note.duration / music.resolution # get length of note
+                m21_note.duration = get_duration(duration = note.duration)
+                if m21_note.duration.type == "zero": # ignore notes with invalid durations
+                    continue
                 # check if there is a lyric at that note
                 if note.time in lyrics.keys():
                     m21_note.lyric = lyrics[note.time] # add lyric
+            
             # check if there is a notehead at that note
-            if note.time in noteheads.keys():
-                if noteheads[note.time] in noteheadTypeNames: # check if notehead is a valid notehead for music21
+            if note.time in noteheads.keys() and noteheads[note.time] in noteheadTypeNames: # check if notehead is a valid notehead for music21
                     m21_note.notehead = noteheads[note.time] # add notehead
+            
             # check if there is an articulation(s) at that note
             if note.time in articulations.keys():
                 for articulation in articulations[note.time]:
@@ -747,40 +827,72 @@ def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
                         m21_note.articulations.append(M21Articulation.Stress())
                     if "unstress" in articulation:
                         m21_note.articulations.append(M21Articulation.Unstress())
-            offset = note.time / music.resolution # get offset
-            part.insert(offsetOrItemOrList = offset, itemOrNone = m21_note)
-        del lyrics, noteheads, articulations
+            
+            # add note to part
+            # m21_note.offset = get_offset(time = note.time) # get offset
+            # part.insert(offsetOrItemOrList = m21_note.offset, itemOrNone = m21_note)
+
+            # add note to chords
+            chord_descriptor_tuple = (note.time, note.duration, note.is_grace)
+            if chord_descriptor_tuple not in chords.keys():
+                chords[chord_descriptor_tuple] = []
+            chords[chord_descriptor_tuple].append(m21_note)
+        
+        # add chords
+        for chord_descriptor_tuple, chord_notes in chords.items():
+            m21_chord = M21PercussionChord(notes = chord_notes) if track.is_drum else M21Chord(notes = chord_notes)
+            m21_chord.offset = get_offset(time = chord_descriptor_tuple[0])
+            part.insert(offsetOrItemOrList = m21_chord.offset, itemOrNone = m21_chord)
+
+        # clean up some memory
+        del lyrics, noteheads, articulations, chords
 
         # add expressive features to part
         for annotation in sorted(music.annotations + track.annotations, key = lambda annotation: annotation.time):
+
+            # clean up subtype if necessary
             if hasattr(annotation.annotation, "subtype"):
                 if annotation.annotation.subtype is None:
                     continue
                 else:
                     annotation.annotation.subtype = clean_up_subtype(subtype = annotation.annotation.subtype) # clean up the subtype
-            # time
-            offset = annotation.time / music.resolution
+            
             # some boolean flags
-            is_fermata = (annotation.annotation.__class__.__name__ == "Fermata") # fermata
-            if any((annotation.annotation.__class__.__name__ == keyword for keyword in ("Articulation", "Symbol"))): # instance where fermatas are hidden as articulations
+            annotation_type = annotation.annotation.__class__.__name__
+            is_fermata = (annotation_type == "Fermata") # fermata
+            if any((annotation_type == keyword for keyword in ("Articulation", "Symbol"))): # instance where fermatas are hidden as articulations
                 is_fermata = "fermata" in annotation.annotation.subtype.lower()
+            
             # Text, TextSpanner
-            if any((annotation.annotation.__class__.__name__ == keyword for keyword in ("Text", "TextSpanner"))):
+            if any((annotation_type == keyword for keyword in ("Text", "TextSpanner"))):
                 m21_annotation = M21Expression.TextExpression(content = annotation.annotation.text)
-                if annotation.annotation.__class__.__name__ == "TextSpanner": # text spanners
-                    m21_annotation.quarterLength = annotation.annotation.duration / music.resolution
+                if annotation_type == "TextSpanner": # text spanners
+                    m21_annotation.duration = get_duration(duration = annotation.annotation.duration)
+                    if m21_annotation.duration.type == "zero": # ignore notes with invalid durations
+                        continue
+            
             # RehearsalMark
-            elif annotation.annotation.__class__.__name__ == "RehearsalMark":
+            elif annotation_type == "RehearsalMark":
                 m21_annotation = M21Expression.RehearsalMark(content = annotation.annotation.text)
+            
             # Dynamic
-            elif annotation.annotation.__class__.__name__ == "Dynamic":
+            elif annotation_type == "Dynamic":
                 m21_annotation = M21Dynamic.Dynamic(value = annotation.annotation.subtype if annotation.annotation.subtype != DEFAULT_DYNAMIC_NAME else DEFAULT_DYNAMIC)
+            
+            # Chord Symbol
+            elif annotation_type == "ChordSymbol":
+                try:
+                    m21_annotation = M21ChordSymbol(annotation.annotation.root_str.replace("b", "-") + (annotation.annotation.name.lower() if annotation.annotation.name else ""))
+                except (ValueError): # not all chords are supported, so we do our best, and ignore unknown chord symbols
+                    continue
+
             # Fermata
             elif is_fermata:
                 m21_annotation = M21Expression.Fermata()
+            
             # Ornament, Articulation, Symbol, TechAnnotation
-            elif any((annotation.annotation.__class__.__name__ == keyword for keyword in ("Ornament", "Articulation", "Symbol", "TechAnnotation"))):
-                if annotation.annotation.__class__.__name__ == "TechAnnotation": # just to make things easier
+            elif any((annotation_type == keyword for keyword in ("Ornament", "Articulation", "Symbol", "TechAnnotation"))):
+                if annotation_type == "TechAnnotation": # just to make things easier
                     annotation.annotation.subtype = annotation.annotation.tech_type if annotation.annotation.tech_type is not None else annotation.annotation.text # add subtype field to techannotation
                 annotation.annotation.subtype = clean_up_subtype(subtype = annotation.annotation.subtype) # clean up the subtype for tech annotation
                 if "mordent" in annotation.annotation.subtype: # mordent
@@ -804,37 +916,45 @@ def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
                         m21_annotation = M21Expression.InvertedTurn()
                     else: # default is normal turn
                         m21_annotation = M21Expression.Turn()
+                else: # unknown ornament or articulation
+                    continue
+            
             # TrillSpanner, HairPinSpanner, SlurSpanner, GlissandoSpanner, OttavaSpanner, TrillSpanner; anything that spans multiple notes
-            elif any((annotation.annotation.__class__.__name__ == keyword for keyword in ("TrillSpanner", "HairPinSpanner", "SlurSpanner", "GlissandoSpanner", "OttavaSpanner", "TrillSpanner"))):
-                spanned_notes = [note for note in part.getElementsByClass(M21Note) if (((note.offset * music.resolution) >= annotation.time) and ((note.offset * music.resolution) <= (annotation.time + annotation.annotation.duration)))]
+            elif any((annotation_type == keyword for keyword in ("TrillSpanner", "HairPinSpanner", "SlurSpanner", "GlissandoSpanner", "OttavaSpanner", "TrillSpanner"))):
+                spanned_notes = list(filter(lambda note: get_time_from_offset(offset = note.offset) >= annotation.time and get_time_from_offset(offset = note.offset) <= (annotation.time + annotation.annotation.duration), part.getElementsByClass(M21Note)))
                 # TempoSpanner
-                if annotation.annotation.__class__.__name__ == "TempoSpanner":
+                if annotation_type == "TempoSpanner":
                     if any((annotation.annotation.subtype.startswith(prefix) for prefix in ("accel", "leg"))): # speed-ups; accelerando, leggiero
                         m21_annotation = M21Tempo.AccelerandoSpanner(*spanned_notes)
                     else: # slow-downs; lentando, rallentando, ritardando, smorzando, sostenuto, allargando, etc.; the default
                         m21_annotation = M21Tempo.RitardandoSpanner(*spanned_notes)
                 # HairPinSpanner
-                elif annotation.annotation.__class__.__name__ == "HairPinSpanner":
+                elif annotation_type == "HairPinSpanner":
                     if any((keyword in "".join(annotation.annotation.subtype.split("-")) for keyword in ("dim", "decres"))): # diminuendo
                         m21_annotation = M21Dynamic.Diminuendo(*spanned_notes)
                     else: # crescendo
                         m21_annotation = M21Dynamic.Crescendo(*spanned_notes)
                 # SlurSpanner
-                elif annotation.annotation.__class__.__name__ == "SlurSpanner":
+                elif annotation_type == "SlurSpanner":
                     m21_annotation = M21Spanner.Slur(*spanned_notes)
                 # GlissandoSpanner
-                elif annotation.annotation.__class__.__name__ == "GlissandoSpanner":
+                elif annotation_type == "GlissandoSpanner":
                     m21_annotation = M21Spanner.Glissando(*spanned_notes, lineType = "wavy" if annotation.annotation.is_wavy else "solid")
                 # OttavaSpanner
-                elif annotation.annotation.__class__.__name__ == "OttavaSpanner":
-                    ottava_n_octaves = sub(pattern = "[^0-9]", repl = "", string = annotation.annotation.subtype)
-                    m21_annotation = M21Spanner.Ottava(type = (int(ottava_n_octaves) if any((n_octaves == ottava_n_octaves for n_octaves in map(str, (8, 15, 22)))) else 8, "down" if "b" in annotation.annotation.subtype else "up"), transposing = False)
-                    del ottava_n_octaves
+                elif annotation_type == "OttavaSpanner":
+                    try:
+                        m21_annotation = M21Spanner.Ottava(type = annotation.annotation.subtype, transposing = False)
+                    except (M21Spanner.SpannerException): # some unknown type of ottava
+                        continue
                 # TrillSpanner
-                elif annotation.annotation.__class__.__name__ == "TrillSpanner" and len(spanned_notes) >= 2:
+                elif annotation_type == "TrillSpanner" and len(spanned_notes) >= 2:
                     m21_annotation = M21Expression.TrillExtension(spanned_notes[0], spanned_notes[1])
+                # unknown spanner
+                else:
+                    continue
+            
             # Arpeggio
-            elif annotation.annotation.__class__.__name__ == "Arpeggio":
+            elif annotation_type == "Arpeggio":
                 if annotation.annotation.subtype == "bracket":
                     arpeggio_type = "bracket"
                 elif "up" in annotation.annotation.subtype:
@@ -844,36 +964,51 @@ def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
                 else:
                     arpeggio_type = "normal"
                 m21_annotation = M21Expression.ArpeggioMark(arpeggioType = arpeggio_type)
+            
             # Tremolo
-            elif annotation.annotation.__class__.__name__ == "Tremolo":
+            elif annotation_type == "Tremolo":
                 number_of_marks = sub(pattern = "[^\d]", repl = "", string = annotation.annotation.subtype)
                 m21_annotation = M21Expression.Tremolo(numberOfMarks = (int(number_of_marks) // 8) if len(number_of_marks) > 0 else 3)
                 del number_of_marks
+            
             # TremoloBar
-            # elif annotation.annotation.__class__.__name__ == "TremoloBar":
+            # elif annotation_type == "TremoloBar":
             #     pass # to be implemented on a later date
+
             # ChordLine
-            # elif annotation.annotation.__class__.__name__ == "ChordLine":
+            # elif annotation_type == "ChordLine":
             #     pass # to be implemented on a later data
+
             # Bend
-            # elif annotation.annotation.__class__.__name__ == "Bend":
+            # elif annotation_type == "Bend":
             #     pass # to be implemented on a later date
+
             # PedalSpanner
-            # elif annotation.annotation.__class__.__name__ == "PedalSpanner":
+            # elif annotation_type == "PedalSpanner":
             #     pass # music21 does not have pedals
+
             # VibratoSpanner
-            # elif annotation.annotation.__class__.__name__ == "VibratoSpanner":
+            # elif annotation_type == "VibratoSpanner":
             #     pass # so rare that this is not worth implementing
+            
+            # if the annotation is unknown, skip it
             else:
                 continue
-            if "m21_annotation" not in locals(): # check if m21_annotation was created and not caught in some offcase
-                continue
+            
+            # check if m21_annotation was created and not caught in some offcase
+            # if "m21_annotation" not in locals(): # check if m21_annotation was created and not caught in some offcase
+            #     continue
+            
             # insert annotation into part
             try:
-                part.insert(offsetOrItemOrList = offset, itemOrNone = deepcopy(m21_annotation)) # as to avoid the StreamException object * is already found in this Stream
+                m21_annotation.offset = get_offset(time = annotation.time)
+                # part.append(deepcopy(m21_annotation))
+                part.insert(offsetOrItemOrList = m21_annotation.offset, itemOrNone = deepcopy(m21_annotation)) # as to avoid the StreamException object * is already found in this Stream
             except StreamException as stream_exception:
                 warn(str(stream_exception), RuntimeWarning)
+        
         # append the part to score
+        # part.sort() # sort by offset
         score.append(part)
 
     # infer compression
@@ -884,6 +1019,7 @@ def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
             compressed = True
         else:
             raise ValueError("Cannot infer file type from the extension.")
+    
     # compress the file (or not)
     if compressed:
         path_temp = f"{path}.temp.xml"
@@ -901,11 +1037,44 @@ def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
 
 if __name__ == "__main__":
 
+    # imports
+    from tqdm import tqdm
+    import multiprocessing
     from reading.read_musescore import read_musescore
-    prefix = "/data2/pnlong/musescore/test_data/test2/QmbbxbpgJHyNRzjkbyxdoV5saQ9HY38MauKMd5CijTPFiF"
-    music = read_musescore(path = f"{prefix}.mscz")
-    music.write(path = f"{prefix}.xml") # tests xml output
-    music.write(path = f"{prefix}.wav") # tests midi and audio output
+    from reading.read_musicxml import read_musicxml
+
+    # paths to load
+    paths = [
+        "/data2/pnlong/musescore/test_data/chopin/Chopin_Trois_Valses_Op64.mscz",
+        "/data2/pnlong/musescore/test_data/goodman/in_the_mood.mscz",
+        "/data2/pnlong/musescore/test_data/laufey/from_the_start.mscz",
+        "/data2/pnlong/musescore/test_data/maroon/this_love.mscz",
+        # "/data2/pnlong/musescore/test_data/test1/QmbboPyM7KRorFpbmqnoCYDjbN2Up2mY969kggS3JLqRCF.mscz",
+        # "/data2/pnlong/musescore/test_data/test2/QmbbxbpgJHyNRzjkbyxdoV5saQ9HY38MauKMd5CijTPFiF.mscz",
+        # "/data2/pnlong/musescore/test_data/test3/QmbbjJJAMixkH5vqVeffBS1h2tJHQG1DXpTJHJonpxGmSN.mscz",
+        "/data2/pnlong/musescore/test_data/toploader/dancing_in_the_moonlight.mscz",
+        "/data2/pnlong/musescore/test_data/debussy/clair_de_lune.mscz",
+        # "/data2/pnlong/musescore/test_data/test0/QmcDL7KEmC9ZCeaXvBSnPWK26EtcoYicKmLhj8EwV7XeUG.mscz",
+        # "/data2/pnlong/musescore/test_data/waldteufel/les_patineurs.mscz",
+        "/data2/pnlong/musescore/test_data/newman/youve_got_a_friend_in_me.mxl",
+    ]
+
+    # helper function
+    def make_example(path: str):
+        """Make example."""
+        stem = ".".join(path.split(".")[:-1])
+        if path.endswith((".mscz", ".mscx")):
+            music = read_musescore(path = path)
+        elif path.endswith((".mxl", ".xml", ".musicxml")):
+            music = read_musicxml(path = path)
+        else:
+            raise RuntimeError(f"Invalid filetype for `{path}`.")
+        music.write(f"{stem}.out.mxl") # text musicxml output
+        # music.write(f"{stem}.out.wav") # test audio output (which implicitly tests midi)
+
+    # multiprocessing
+    with multiprocessing.Pool(processes = int(multiprocessing.cpu_count() / 4)) as pool:
+        _ = list(pool.map(func = make_example, iterable = tqdm(iterable = paths, desc = f"Testing Outputs", total = len(paths)), chunksize = 1))
 
 ##################################################
    
