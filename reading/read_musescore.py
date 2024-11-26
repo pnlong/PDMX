@@ -1250,8 +1250,7 @@ def parse_staff(
                             annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = Articulation(subtype = articulation_subtype.text)))
 
                     # Lyrics
-                    lyrics = elem.findall(path = "Lyrics")
-                    for lyric in lyrics:
+                    for lyric in elem.findall(path = "Lyrics"):
                         lyric_text = parse_lyric(elem = lyric)
                         lyrics.append(Lyric(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), lyric = lyric_text))
 
