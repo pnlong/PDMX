@@ -1164,8 +1164,7 @@ def parse_part(
                     annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = Symbol(subtype = "noteheadParenthesisRight")))
 
                 # lyrics
-                lyrics_ = elem.findall(path = "lyric")
-                for lyric in lyrics_:
+                for lyric in elem.findall(path = "lyric"):
                     lyric_text = parse_lyric(elem = lyric)
                     lyrics.append(Lyric(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), lyric = lyric_text))
                 
