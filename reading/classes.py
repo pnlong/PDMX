@@ -280,15 +280,18 @@ class Chord(muspy.classes.Chord):
     pitches_str : list of str, optional
         Note pitches as strings, useful for distinguishing, e.g., C# and
         Db.
+    is_grace : bool, optional, default: False
+        Is this note a grace note?
 
     """
 
-    _attributes = OrderedDict([("time", int), ("measure", int), ("pitches", int), ("duration", int), ("velocity", int), ("pitches_str", str)])
-    _optional_attributes = ["velocity", "pitches_str", "measure"]
+    _attributes = OrderedDict([("time", int), ("measure", int), ("pitches", int), ("duration", int), ("velocity", int), ("pitches_str", str), ("is_grace", bool)])
+    _optional_attributes = ["velocity", "pitches_str", "measure", "is_grace"]
 
-    def __init__(self, time: int, pitches: List[int], duration: int, velocity: int = None, pitches_str: List[str] = None, measure: int = None):
+    def __init__(self, time: int, pitches: List[int], duration: int, velocity: int = None, pitches_str: List[str] = None, measure: int = None, is_grace: bool = False):
         super().__init__(time = time, pitches = pitches, duration = duration, velocity = velocity, pitches_str = pitches_str)
         self.measure = measure
+        self.is_grace = is_grace
 
 # TRACKS
 class Track(muspy.classes.Track):

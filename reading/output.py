@@ -37,17 +37,17 @@ from mido import Message, MetaMessage, MidiFile, MidiTrack, bpm2tempo, second2ti
 import tempfile
 
 # musicxml
+import xml.etree.ElementTree as ET
 from muspy.utils import CIRCLE_OF_FIFTHS, MODE_CENTERS
 import music21.musicxml.archiveTools
 from music21.musicxml.archiveTools import compressXML
-from music21.key import Key
+from music21.key import KeySignature as M21KeySignature
 from music21.metadata import Metadata as M21MetaData, Contributor, Copyright
 from music21.meter import TimeSignature as M21TimeSignature
-from music21.note import Note as M21Note, Unpitched as M21Unpitched, noteheadTypeNames
+from music21.note import Note as M21Note, noteheadTypeNames
 from music21.chord import Chord as M21Chord
 from music21.harmony import ChordSymbol as M21ChordSymbol
 from music21.instrument import instrumentFromMidiProgram
-from music21.percussion import PercussionChord as M21PercussionChord
 from music21.clef import PercussionClef as M21PercussionClef
 from music21.stream import Part, Score
 from music21.duration import Duration
@@ -103,6 +103,9 @@ DRUM_CHANNEL = 9
 
 # midi pitch to octave
 MIDI_PITCH_TO_OCTAVE = {pitch: octave for pitch, octave in zip(range(128), repeat(a = range(-1, 10), repeats = 12))}
+
+# transpose chromatic to circle of fifths steps
+TRANSPOSE_CHROMATIC_TO_CIRCLE_OF_FIFTHS_STEPS = {-i: ((-i) if (i % 2 == 0) else ((-i + 6) % -12)) for i in range(12)}
 
 ##################################################
 
@@ -643,9 +646,60 @@ def write_audio(path: str, music: "MusicRender", audio_format: str = "auto", sou
 
 # PITCH_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 PITCH_NAMES = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
+NOTE_TO_PITCH_INDEX_MAP = {note: i for i, note in enumerate(PITCH_NAMES)}
+PITCH_CLASSES = ["C", "D", "E", "F", "G", "A", "B"]
 # def _get_pitch_name(note_number: int) -> str:
 #     octave, pitch_class = divmod(note_number, 12)
 #     return PITCH_NAMES[pitch_class] + str(octave - 1)
+DRUMSET_INSTRUMENTS = [
+    ("Acoustic Bass Drum", 36),
+    ("Bass Drum 1", 37),
+    ("Side Stick", 38),
+    ("Acoustic Snare", 39),
+    ("Hand Clap", 40),
+    ("Electric Snare", 41),
+    ("Low Floor Tom", 42),
+    ("Closed Hi Hat", 43),
+    ("High Floor Tom", 44),
+    ("Pedal Hi-Hat", 45),
+    ("Low Tom", 46),
+    ("Open Hi-Hat", 47),
+    ("Low-Mid Tom", 48),
+    ("Hi Mid Tom", 49),
+    ("Crash Cymbal 1", 50),
+    ("High Tom", 51),
+    ("Ride Cymbal 1", 52),
+    ("Chinese Cymbal", 53),
+    ("Ride Bell", 54),
+    ("Tambourine", 55),
+    ("Splash Cymbal", 56),
+    ("Cowbell", 57),
+    ("Crash Cymbal 2", 58),
+    ("Vibraslap", 59),
+    ("Ride Cymbal 2", 60),
+    ("Hi Bongo", 61),
+    ("Low Bongo", 62),
+    ("Mute Hi Conga", 63),
+    ("Open Hi Conga", 64),
+    ("Low Conga", 65),
+    ("High Timbale", 66),
+    ("Low Timbale", 67),
+    ("High Agogo", 68),
+    ("Low Agogo", 69),
+    ("Cabasa", 70),
+    ("Maracas", 71),
+    ("Short Whistle", 72),
+    ("Long Whistle", 73),
+    ("Short Guiro", 74),
+    ("Long Guiro", 75),
+    ("Claves", 76),
+    ("Hi Wood Block", 77),
+    ("Low Wood Block", 78),
+    ("Mute Cuica", 79),
+    ("Open Cuica", 80),
+    ("Mute Triangle", 81),
+    ("Open Triangle", 82),
+]
 
 def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
     """Write a Music object to a MusicXML file.
@@ -692,18 +746,42 @@ def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
             meta.copyright = Copyright(data = music.metadata.copyright)
         for creator in music.metadata.creators:
             meta.addContributor(Contributor(name = creator))
-        score.append(meta)
+        score.metadata = meta
 
     # tracks
-    for track in music.tracks:
+    transpositions = [None] * len(music.tracks)
+    for i, track in enumerate(music.tracks):
         
         # create a new part
         part = Part()
         part.partName = track.name
+        part_id = f"P{i + 1}"
+
+        # set instrument
         if track.is_drum:
-            part.insert(offsetOrItemOrList = 0, itemOrNone = M21PercussionClef())
-        # else:
-        #     part.insert(offsetOrItemOrList = 0, itemOrNone = instrumentFromMidiProgram(track.program)) # detunes any transposed instrument
+            part.clef = M21PercussionClef()
+            channel = DRUM_CHANNEL
+        else:
+            channel = i % 15 # .mid has 15 channels for instruments other than drums
+            channel += int(channel > 8) # avoid drum channel by adding one if the channel is greater than 8
+        instrument = instrumentFromMidiProgram(number = track.program)
+        instrument.partId = part_id
+        instrument.partName = track.name
+        instrument.instrumentId = f"{part_id}-T1"
+        instrument.instrumentName = track.name
+        instrument.midiChannel = channel
+        part.append(instrument)
+
+        # amount to adjust tone
+        part.atSoundingPitch = False
+        transpose_chromatic = instrument.transposition.chromatic.semitones if instrument.transposition is not None else 0
+        transpositions[i] = instrument.transposition
+        def get_note_str_and_octave(pitch: int, pitch_str: str) -> Tuple[str, int]:
+            """Helper function for extracting the note's string and octave for music21."""
+            n_accidentals = pitch_str[1:].count("#") - pitch_str[1:].count("b")
+            note_str = PITCH_NAMES[(PITCH_NAMES.index(pitch_str[0]) + n_accidentals - transpose_chromatic) % len(PITCH_NAMES)].replace("b", "-")
+            note_octave = get_octave_from_pitch(pitch = pitch - transpose_chromatic) # adjust pitch for tuning of instrument
+            return note_str, note_octave
 
         # add tempos
         for tempo in music.tempos: # loop through tempos
@@ -724,20 +802,7 @@ def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
 
         # add key signatures
         for key_signature in music.key_signatures: # loop through key signatures
-            # determine the tonic
-            if key_signature.root_str is not None: # look at the root_str
-                tonic = key_signature.root_str
-            elif key_signature.root is not None: # look at the root
-                tonic = PITCH_NAMES[key_signature.root]
-            elif key_signature.fifths is not None: # look at the circle of fifths index
-                if key_signature.mode is not None: # if there is a mode
-                    offset = MODE_CENTERS[key_signature.mode]
-                    tonic = CIRCLE_OF_FIFTHS[key_signature.fifths + offset][1]
-                else:
-                    tonic = CIRCLE_OF_FIFTHS[key_signature.fifths][1]
-            else: # skip if the note is missing a root_str, root, and circle of fifths index
-                continue
-            m21_key_signature = Key(tonic = tonic, mode = key_signature.mode) # create key object
+            m21_key_signature = M21KeySignature(sharps = (key_signature.fifths - TRANSPOSE_CHROMATIC_TO_CIRCLE_OF_FIFTHS_STEPS[transpose_chromatic % -12]) if key_signature.fifths is not None else 0) # create key object
             m21_key_signature.offset = get_offset(time = key_signature.time) # define offset
             part.insert(offsetOrItemOrList = m21_key_signature.offset, itemOrNone = m21_key_signature)
 
@@ -753,12 +818,8 @@ def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
         for note in track.notes:
 
             # create M21 Note object
-            note_str = note.pitch_str.replace("b", "-")
-            note_octave = get_octave_from_pitch(note.pitch)
-            if track.is_drum:
-                m21_note = M21Unpitched(displayStep = note_str[0], displayOctave = note_octave) # create note object
-            else:
-                m21_note = M21Note(name = note_str, octave = note_octave) # create note object
+            note_str, note_octave = get_note_str_and_octave(pitch = note.pitch, pitch_str = note.pitch_str)
+            m21_note = M21Note(name = note_str, octave = note_octave) # create note object
             
             # check if grace note
             if note.is_grace: # check if grace note
@@ -840,7 +901,7 @@ def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
         
         # add chords
         for chord_descriptor_tuple, chord_notes in chords.items():
-            m21_chord = M21PercussionChord(notes = chord_notes) if track.is_drum else M21Chord(notes = chord_notes)
+            m21_chord = M21Chord(notes = chord_notes)
             m21_chord.offset = get_offset(time = chord_descriptor_tuple[0])
             part.insert(offsetOrItemOrList = m21_chord.offset, itemOrNone = m21_chord)
 
@@ -1009,7 +1070,99 @@ def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
         
         # append the part to score
         # part.sort() # sort by offset
+        # if not track.is_drum and transpose_chromatic != 0:
+        #     part.toWrittenPitch(ottavasToSounding = False, preserveAccidentalDisplay = False, inPlace = True)
         score.append(part)
+
+    # write as xml temporarily, correct some of music21's mistakes
+    path_temp = f"{path}.temp.xml"
+    score.write(fmt = "xml", fp = path_temp)
+    root = ET.parse(path_temp).getroot()
+
+    # make sure transpositions are present in xml file
+    for i, elem in enumerate(root.findall(path = "part")):
+        first_measure = elem.find(path = "measure")
+        if transpositions[i] is not None and first_measure.find(path = "attributes/transpose") is None:
+            attributes = first_measure.find(path = "attributes")
+            if attributes is None:
+                attributes = ET.Element("attributes")
+                first_measure.insert(0, attributes)
+            genericSteps = transpositions[i].diatonic.generic.directed
+            musicxmlOctaveShift, musicxmlDiatonic = divmod(abs(genericSteps) - 1, 7)
+            musicxmlChromatic = abs(transpositions[i].chromatic.semitones) % 12
+            if genericSteps < 0:
+                musicxmlDiatonic *= -1
+                musicxmlOctaveShift *= -1
+                musicxmlChromatic *= -1
+            mxTranspose = ET.Element("transpose")
+            mxDiatonic = ET.SubElement(mxTranspose, "diatonic")
+            mxDiatonic.text = str(musicxmlDiatonic)
+            mxChromatic = ET.SubElement(mxTranspose, "chromatic")
+            mxChromatic.text = str(musicxmlChromatic)
+            if musicxmlOctaveShift != 0:
+                mxOctaveChange = ET.SubElement(mxTranspose, "octave-change")
+                mxOctaveChange.text = str(musicxmlOctaveShift)
+            attributes.append(mxTranspose)
+    
+    # make sure drum midi instruments are written correctly in the part list
+    drum_track_indicies = set(filter(lambda i: music.tracks[i].is_drum, range(len(music.tracks))))
+    for i, elem in enumerate(root.findall(path = "part-list/score-part")):
+        if i not in drum_track_indicies: # skip over non-drum tracks
+            continue
+        elem.remove(elem.find(path = "part-abbreviation"))
+        elem.remove(elem.find(path = "score-instrument"))
+        elem.remove(elem.find(path = "midi-instrument"))
+        part_id = elem.get("id")
+        midi_instruments = []
+        for instrument_name, percussion_map_pitch in DRUMSET_INSTRUMENTS:
+            instrument_id = f"{part_id}-T{percussion_map_pitch}"
+            score_instrument = ET.Element( "score-instrument", id = instrument_id)
+            instrument_name_element = ET.SubElement(score_instrument, "instrument-name")
+            instrument_name_element.text = instrument_name
+            elem.append(score_instrument)
+            midi_instrument = ET.Element("midi-instrument", id = instrument_id)
+            midi_channel = ET.SubElement(midi_instrument, "midi-channel")
+            midi_channel.text = str(DRUM_CHANNEL)
+            midi_program = ET.SubElement(midi_instrument, "midi-program")
+            midi_program.text = "1"
+            midi_unpitched = ET.SubElement(midi_instrument, "midi-unpitched")
+            midi_unpitched.text = str(percussion_map_pitch)
+            midi_volume = ET.SubElement(midi_instrument, "volume")
+            midi_volume.text = "78.7402"
+            midi_pan = ET.SubElement(midi_instrument, "pan")
+            midi_pan.text = "0"
+            midi_instruments.append(midi_instrument)
+        elem.append(ET.Element("midi-device", port = "1"))
+        for midi_instrument in midi_instruments:
+            elem.append(midi_instrument)
+
+    # make sure to update pitched drum notes to unpitched
+    for i, elem in enumerate(root.findall(path = "part")):
+        if i not in drum_track_indicies: # skip over non-drum tracks
+            continue
+        part_id = elem.get("id")
+        notes = elem.findall(path = "measure/note")
+        for note in notes:
+            if note.find(path = "rest") is not None: # skip over rests
+                continue
+            pitch_element = note.find(path = "pitch")
+            pitch_step = pitch_element.find(path = "step").text
+            pitch_octave = int(pitch_element.find(path = "octave").text)
+            pitch_alter = pitch_element.find(path = "alter")
+            pitch_alter = int(0 if pitch_alter is None else pitch_alter.text)
+            percussion_map_pitch = NOTE_TO_PITCH_INDEX_MAP[pitch_step] + (12 * (pitch_octave + 1)) + pitch_alter + 1
+            note.remove(pitch_element)
+            accidental_element = note.find(path = "accidental")
+            if accidental_element is not None:
+                note.remove(accidental_element)
+            unpitched = ET.Element("unpitched")
+            display_step = ET.SubElement(unpitched, "display-step")
+            display_step.text = pitch_step
+            display_octave = ET.SubElement(unpitched, "display-octave")
+            display_octave.text = str(pitch_octave)
+            unpitched_position = int(note.find(path = "chord") is not None)
+            note.insert(unpitched_position, unpitched)
+            note.insert(unpitched_position + 2, ET.Element("instrument", id = f"{part_id}-T{percussion_map_pitch}"))
 
     # infer compression
     if compressed is None:
@@ -1021,13 +1174,14 @@ def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
             raise ValueError("Cannot infer file type from the extension.")
     
     # compress the file (or not)
+    tree = ET.ElementTree(root)
+    ET.indent(tree, space = "\t", level = 0)
+    tree.write(path_temp)
     if compressed:
-        path_temp = f"{path}.temp.xml"
-        score.write(fmt = "xml", fp = path_temp)
         compressXML(filename = path_temp, deleteOriginal = True)
         rename(src = f"{path}.temp.mxl", dst = path)
     else: # don't compress
-        score.write(fmt = "xml", fp = path)
+        rename(src = path_temp, dst = path)
 
 ##################################################
 

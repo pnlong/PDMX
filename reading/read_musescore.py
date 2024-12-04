@@ -49,7 +49,7 @@ OTTAVA_OCTAVE_SHIFT_FACTORS = {8: 1, 15: 2, 22: 3}
 # OTTAVA_PITCH_SHIFTS = {key: value * 12 for key, value in OTTAVA_N_OCTAVE_SHIFTS.items()} # switch from octave shifts to pitch shifts
 
 # transposing to concert key for tuned instruments
-TRANSPOSE_CHROMATIC_TO_CIRCLE_OF_FIFTHS_STEPS = {-i: -i if (i % 2 == 0) else ((-i + 6) % -12) for i in range(12)}
+TRANSPOSE_CHROMATIC_TO_CIRCLE_OF_FIFTHS_STEPS = {-i: ((-i) if (i % 2 == 0) else ((-i + 6) % -12)) for i in range(12)}
 
 ##################################################
 
@@ -1255,7 +1255,7 @@ def parse_staff(
                         lyrics.append(Lyric(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), lyric = lyric_text))
 
                     # Collect notes
-                    chord = Chord(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), pitches = [], duration = duration, velocity = velocity, pitches_str = [])
+                    chord = Chord(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), pitches = [], duration = duration, velocity = velocity, pitches_str = [], is_grace = is_grace)
                     for note in elem.findall(path = "Note"):
 
                         # Get pitch
@@ -1282,6 +1282,8 @@ def parse_staff(
                         # Handle grace note
                         if is_grace:
                             notes.append(Note(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), pitch = pitch, duration = duration, velocity = velocity, pitch_str = pitch_str, is_grace = True))
+                            chord.pitches.append(pitch)
+                            chord.pitches_str.append(pitch_str)
                             continue
                         
                         # Check if it is a tied note
@@ -1302,7 +1304,7 @@ def parse_staff(
 
                         # Append a new note to the note list
                         else:
-                            notes.append(Note(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), pitch = pitch, duration = duration, velocity = velocity, pitch_str = pitch_str))
+                            notes.append(Note(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), pitch = pitch, duration = duration, velocity = velocity, pitch_str = pitch_str, is_grace = False))
                             chord.pitches.append(pitch)
                             chord.pitches_str.append(pitch_str)
                             if is_outgoing_tie: # start of a tie, make note of it

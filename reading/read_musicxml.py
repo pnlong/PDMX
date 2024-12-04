@@ -6,7 +6,7 @@
 
 # python /home/pnlong/model_musescore/reading/read_musicXML.py
 
-# IMPORTS / CONSTANTS
+# IMPORTS
 ##################################################
 
 import time
@@ -1171,6 +1171,11 @@ def parse_part(
                 # Handle grace note
                 if is_grace:
                     notes.append(Note(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), pitch = pitch, duration = duration, velocity = velocity, pitch_str = pitch_str, is_grace = True))
+                    if is_chord: # append to current chord
+                        chords[-1].pitches.append(pitch)
+                        chords[-1].pitches_str.append(pitch_str)
+                    else: # create new cord
+                        chords.append(Chord(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), pitches = [pitch,], duration = duration, velocity = velocity, pitches_str = [pitch_str,], is_grace = True))
                     continue
 
                 # Check if it is an incoming tied note
@@ -1185,14 +1190,14 @@ def parse_part(
 
                     # Append a new note to the note list
                     else:
-                        notes.append(Note(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), pitch = pitch, duration = duration, velocity = velocity, pitch_str = pitch_str))
+                        notes.append(Note(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), pitch = pitch, duration = duration, velocity = velocity, pitch_str = pitch_str, is_grace = False))
                         if is_outgoing_tie: # start of a tie, make note of it
                             ties[pitch] = len(notes) - 1
                         if is_chord: # append to current chord
                             chords[-1].pitches.append(pitch)
                             chords[-1].pitches_str.append(pitch_str)
                         else: # create new cord
-                            chords.append(Chord(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), pitches = [pitch,], duration = duration, velocity = velocity, pitches_str = [pitch_str,]))
+                            chords.append(Chord(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), pitches = [pitch,], duration = duration, velocity = velocity, pitches_str = [pitch_str,], is_grace = False))
 
                 # update position
                 if not is_grace:
