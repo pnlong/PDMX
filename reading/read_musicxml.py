@@ -30,7 +30,7 @@ sys.path.insert(0, dirname(dirname(realpath(__file__))))
 
 from classes import *
 from music import MusicRender
-from read_musescore import OTTAVA_OCTAVE_SHIFT_FACTORS, TRANSPOSE_CHROMATIC_TO_CIRCLE_OF_FIFTHS_STEPS, _get_text, _get_required_text, _get_required_attr, get_nice_measure_number, get_beats, print_measure_indicies
+from read_musescore import OTTAVA_OCTAVE_SHIFT_FACTORS, TRANSPOSE_CHROMATIC_TO_CIRCLE_OF_FIFTHS_STEPS, _get_text, _get_required_text, _get_required_attr, get_nice_measure_number, get_beats, print_measure_indicies, _lcm
 from output import DYNAMIC_VELOCITY_MAP, DEFAULT_VELOCITY
 
 T = TypeVar("T")
@@ -134,7 +134,8 @@ def parse_repeats(elem: Element) -> Tuple[list, list]:
                 end_repeats.append([])
             # end repeat
             elif repeat_direction == "backward":
-                end_repeats[len(start_repeats) - 1].append(i)
+                repeat_times = int(repeat.get("times", 2)) - 1 # default is 2 because by default, a repeat causes a section to be played twice
+                end_repeats[len(start_repeats) - 1].extend([i] * repeat_times)
 
     # if there is an implied repeat at the end
     if len(end_repeats[-1]) == 0 and len(start_repeats) >= 2:
@@ -348,7 +349,15 @@ def parse_metadata(root: Element) -> Metadata:
     if title is not None and title.text is not None:
         title = title.text
     if title is None: # only use work title if movement title is not found
+        title = root.find(path = "movement-title")
+        if title is not None and title.text is not None:
+            title = title.text
+    if title is None:
         title = root.find(path = "work/work-title")
+        if title is not None and title.text is not None:
+            title = title.text
+    if title is None:
+        title = root.find(path = "work-title")
         if title is not None and title.text is not None:
             title = title.text
 
@@ -360,7 +369,7 @@ def parse_metadata(root: Element) -> Metadata:
     # creators
     creators = []
     for creator in root.findall("identification/creator"):
-        name = _get_required_attr(element = creator, attr = "type")
+        name = creator.get("type")
         if name in ("arranger", "composer", "lyricist") and creator.text is not None:
             creators.append(creator.text)
 
@@ -513,13 +522,13 @@ def parse_time(elem: Element) -> Tuple[int, int]:
 
 def parse_key(elem: Element, transpose_chromatic: int = 0) -> Tuple[int, str, int, str]:
     """Return the key parsed from a key element."""
-
     fifths_text = _get_text(element = elem, path = "fifths")
     if fifths_text is None:
-        return None, None, None, None
-        # raise MusicXMLError("'accidental', 'subtype', or 'concertKey' subelement not found for KeySig element.")
+        return None, None, 0, None
     fifths = int(fifths_text) + transpose_chromatic # adjust for tuning
-    mode = "major" # MusicXML doesn't provide any information on mode, so we assume major
+    mode = _get_text(element = elem, path = "mode")
+    if mode is None:
+        return None, None, fifths, None
     idx = MODE_CENTERS[mode] + fifths
     if idx < 0 or idx > 20:
         return None, mode, fifths, None  # type: ignore
@@ -630,6 +639,12 @@ def parse_constant_features(
     downbeat_times: List[int] = []
     transpose_circle_of_fifths = TRANSPOSE_CHROMATIC_TO_CIRCLE_OF_FIFTHS_STEPS[part_info["transposeChromatic"] % -12] # number of semitones to transpose so that chord symbols are concert pitch
     previous_note_duration = 0
+    def get_duration_adjustment_function(divisions: int):
+        """Return a function that calculates the duration of a note, given a divisions value."""
+        duration_adjustment_function = lambda duration: int((float(duration) / divisions) * resolution)
+        return duration_adjustment_function
+    divisions = 1
+    duration_adjustment_function = get_duration_adjustment_function(divisions = divisions)
 
     # record start time to check for timeout
     if timeout is not None:
@@ -679,22 +694,27 @@ def parse_constant_features(
                     
                     # time signatures
                     elif attribute.tag == "time":
-                        numerator, denominator = parse_time(elem = elem)
+                        numerator, denominator = parse_time(elem = attribute)
                         measure_len = round((resolution / (denominator / 4)) * numerator)
                         time_signatures.append(TimeSignature(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), numerator = numerator, denominator = denominator))
                         del numerator, denominator
+
+                    # divisions
+                    divisions = int(_get_text(element = elem, path = "divisions", default = divisions))
+                    duration_adjustment_function = get_duration_adjustment_function(divisions = divisions)
 
             # tempos, tempo spanners, text, text spanners, rehearsal marks
             elif is_measure_written_out and elem.tag == "direction":
 
                 # different elements
                 sound = elem.find(path = "sound")
+                metronome = elem.find(path = "direction-type/metronome")
                 words = elem.find(path = "direction-type/words")
                 rehearsal = elem.find(path = "direction-type/rehearsal")
                 direction_types = elem.findall(path = "direction-type")
 
                 # helper boolean flags
-                start_of_tempo = (sound is not None and sound.get("tempo") is not None)
+                start_of_tempo = (sound is not None and sound.get("tempo") is not None) or (metronome is not None)
                 start_of_words = (words is not None)
                 start_of_rehearsal = (rehearsal is not None)
                 start_of_spanner = (words is not None and len(direction_types) == 2 and direction_types[1][0].get("type") == "start" and direction_types[0][0].tag == "words" and (words.text is not None and words.text != ""))
@@ -703,14 +723,13 @@ def parse_constant_features(
                 # tempo elements
                 if start_of_tempo:
                     tempo_text = words.text if words is not None else None
-                    metronome = elem.find(path = "direction-type/metronome")
                     tempo_qpm = None
                     if metronome is not None: # no relevant text with metronome
                         tempo_qpm = parse_metronome(elem = metronome)
-                    if tempo_qpm is None:
-                        tempo_qpm = float(sound.get("tempo"))
-                    tempos.append(Tempo(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), qpm = tempo_qpm, text = tempo_text))
-                    del metronome
+                    if tempo_qpm is None and sound is not None:
+                            tempo_qpm = float(sound.get("tempo"))
+                    if tempo_qpm is not None:
+                        tempos.append(Tempo(time = time_ + position, qpm = tempo_qpm, text = tempo_text))
                 
                 # start of text/tempo spanners
                 elif start_of_words and start_of_spanner:
@@ -741,12 +760,12 @@ def parse_constant_features(
 
             # forward elements
             elif elem.tag == "forward":
-                duration = int(_get_required_text(element = elem, path = "duration"))
+                duration = duration_adjustment_function(duration = int(_get_required_text(element = elem, path = "duration")))
                 position += duration
             
             # backup elements
             elif elem.tag == "backup":
-                duration = int(_get_required_text(element = elem, path = "duration"))
+                duration = duration_adjustment_function(duration = int(_get_required_text(element = elem, path = "duration")))
                 position -= duration
             
             # fermatas, note-based stuff
@@ -767,7 +786,7 @@ def parse_constant_features(
                     if is_tuple: # already accounted for by MusicXML
                         duration *= tuple_ratio
                 else:
-                    duration = int(duration)
+                    duration = duration_adjustment_function(duration = int(duration))
                 duration = round(duration)
 
                 # if this is a chord, update position to reflect that
@@ -868,6 +887,12 @@ def parse_part(
     transpose_chromatic = part_info["transposeChromatic"]
     transpose_circle_of_fifths = TRANSPOSE_CHROMATIC_TO_CIRCLE_OF_FIFTHS_STEPS[transpose_chromatic % -12] # number of semitones to transpose so that chord symbols are concert pitch
     previous_note_duration = 0
+    def get_duration_adjustment_function(divisions: int):
+        """Return a function that calculates the duration of a note, given a divisions value."""
+        duration_adjustment_function = lambda duration: int((float(duration) / divisions) * resolution)
+        return duration_adjustment_function
+    divisions = 1
+    duration_adjustment_function = get_duration_adjustment_function(divisions = divisions)
 
     # Record start time to check for timeout
     if timeout is not None:
@@ -909,6 +934,8 @@ def parse_part(
                     numerator, denominator = parse_time(elem = time_signature)
                     measure_len = round((resolution / (denominator / 4)) * numerator)
                     del numerator, denominator
+                divisions = int(_get_text(element = elem, path = "divisions", default = divisions))
+                duration_adjustment_function = get_duration_adjustment_function(divisions = divisions)
 
             # tempos, tempo spanners, text, text spanners, rehearsal marks
             elif is_measure_written_out and elem.tag == "direction":
@@ -981,12 +1008,12 @@ def parse_part(
 
             # forward elements
             elif elem.tag == "forward":
-                duration = int(_get_required_text(element = elem, path = "duration"))
+                duration = duration_adjustment_function(duration = int(_get_required_text(element = elem, path = "duration")))
                 position += duration
 
             # backup elements
             elif elem.tag == "backup":
-                duration = int(_get_required_text(element = elem, path = "duration"))
+                duration = duration_adjustment_function(duration = int(_get_required_text(element = elem, path = "duration")))
                 position -= duration
 
             # chord symbol
@@ -1014,8 +1041,8 @@ def parse_part(
                 is_grace = (elem.find(path = "grace") is not None)
                 is_rest = (elem.find(path = "rest") is not None)
                 is_chord = (elem.find(path = "chord") is not None)
-                tie = elem.find(path = "tie")
-                is_outgoing_tie = (tie is not None and tie.get("type") == "start")
+                tie = elem.findall(path = "tie")
+                is_outgoing_tie = (len(tie) > 0 and any((tie_elem.get("type") == "start" for tie_elem in tie)))
                 del tie
 
                 # pitch
@@ -1040,7 +1067,7 @@ def parse_part(
                     if is_tuple: # already accounted for by MusicXML
                         duration *= tuple_ratio
                 else:
-                    duration = int(duration)
+                    duration = duration_adjustment_function(duration = int(duration))
                 duration = round(duration)
 
                 # if this is a chord, update position to reflect that
@@ -1174,7 +1201,7 @@ def parse_part(
                     if is_chord: # append to current chord
                         chords[-1].pitches.append(pitch)
                         chords[-1].pitches_str.append(pitch_str)
-                    else: # create new cord
+                    else: # create new chord
                         chords.append(Chord(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), pitches = [pitch,], duration = duration, velocity = velocity, pitches_str = [pitch_str,], is_grace = True))
                     continue
 
@@ -1269,7 +1296,7 @@ def read_musicxml(path: str, resolution: int = None, compressed: bool = None, ti
     # find the resolution
     if resolution is None:
         divisions = _get_divisions(root = root)
-        resolution = max(divisions, key = divisions.count) if len(divisions) > 0 else muspy.DEFAULT_RESOLUTION
+        resolution = _lcm(*divisions) if len(divisions) > 0 else DEFAULT_RESOLUTION
 
     # part information
     parts = root.findall(path = "part")

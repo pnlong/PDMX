@@ -538,19 +538,18 @@ class ChordLine(Subtype):
 
     Attributes
     ----------
-    subtype : int, optional, default: 0
-        ChordLine subtype. Converted to string.
-    is_straight : bool, optional, default: False
+    subtype : str, default: 'fall'
+        Subtype of the ChordLine.
+    is_straight : bool, default: False
         Is the ChordLine straight?
-    
+
     """
 
     _attributes = OrderedDict([("subtype", str), ("is_straight", bool)])
     _optional_attributes = ["subtype", "is_straight"]
-    SUBTYPES = ["fall", "doit", "plop", "scoop", "slide out down", "slide out up", "slide in above", "slide in below"]
 
-    def __init__(self, subtype: int = 0, is_straight: bool = False):
-        super().__init__(subtype = self.SUBTYPES[subtype if subtype in range(len(self.SUBTYPES)) else 0])
+    def __init__(self, subtype: str = "fall", is_straight: bool = False):
+        super().__init__(subtype = subtype)
         self.is_straight = bool(is_straight)
 
 # ORNAMENT
@@ -647,7 +646,7 @@ class Point(muspy.base.Base):
         self.vibrato = int(vibrato)
 
 # BEND
-class Bend(muspy.base.Base):
+class Bend(muspy.base.ComplexBase):
     """A container for bends.
     
     Attributes
@@ -658,6 +657,7 @@ class Bend(muspy.base.Base):
     """
 
     _attributes = OrderedDict([("points", List[Point])])
+    _list_attributes = ["points"]
 
     def __init__(self, points: List[Point]):
         self.points = points
@@ -674,6 +674,7 @@ class TremoloBar(Bend):
     """
 
     _attributes = OrderedDict([("points", List[Point])])
+    _list_attributes = ["points"]
 
     def __init__(self, points: List[Point]):
         super().__init__(points = points)

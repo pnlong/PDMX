@@ -15,7 +15,7 @@ from os import rename
 from os.path import exists, expanduser
 from re import sub
 from typing import Tuple, Dict, List, Callable
-from numpy import linspace, repeat
+from numpy import linspace
 from copy import deepcopy
 from math import sin, pi
 from fractions import Fraction
@@ -48,9 +48,10 @@ from music21.note import Note as M21Note, noteheadTypeNames
 from music21.chord import Chord as M21Chord
 from music21.harmony import ChordSymbol as M21ChordSymbol
 from music21.instrument import instrumentFromMidiProgram
-from music21.clef import PercussionClef as M21PercussionClef
+from music21.clef import PercussionClef
 from music21.stream import Part, Score
 from music21.duration import Duration
+from music21.interval import Interval
 from music21 import tempo as M21Tempo
 from music21 import articulations as M21Articulation
 from music21 import expressions as M21Expression
@@ -59,7 +60,7 @@ from music21 import dynamics as M21Dynamic
 from music21.exceptions21 import StreamException
 import music21.beam
 
-# silence wierd warnings
+# silence weird warnings from music21
 def noop(input):
     pass
 music21.musicxml.archiveTools.environLocal.warn = noop
@@ -88,24 +89,16 @@ OPTIMAL_RESOLUTION = 480 # we don't want too small of a resolution, or it's hard
 # dynamics
 MAX_VELOCITY = 127 # maximum velocity for midi
 DEFAULT_DYNAMIC = "mf" # not to be confused with representation.DEFAULT_DYNAMIC
-DEFAULT_DYNAMIC_NAME = "dynamic-marking"
 DYNAMIC_VELOCITY_MAP = {
     "pppppp": 4, "ppppp": 8, "pppp": 12, "ppp": 16, "pp": 33, "p": 49, "mp": 64,
     "mf": 80, "f": 96, "ff": 112, "fff": 126, "ffff": 127, "fffff": 127, "ffffff": 127,
     "sfpp": 96, "sfp": 112, "sf": 112, "sff": 126, "sfz": 112, "sffz": 126, "fz": 112, "rf": 112, "rfz": 112,
     "fp": 96, "pf": 49, "s": DEFAULT_VELOCITY, "r": DEFAULT_VELOCITY, "z": DEFAULT_VELOCITY, "n": DEFAULT_VELOCITY, "m": DEFAULT_VELOCITY,
-    DEFAULT_DYNAMIC_NAME: DEFAULT_VELOCITY,
 }
 DYNAMIC_DYNAMICS = set(tuple(DYNAMIC_VELOCITY_MAP.keys())[:tuple(DYNAMIC_VELOCITY_MAP.keys()).index("ffffff") + 1]) # dynamics that are actually dynamic markings and not sudden dynamic hikes
 
 # MIDI
 DRUM_CHANNEL = 9
-
-# midi pitch to octave
-MIDI_PITCH_TO_OCTAVE = {pitch: octave for pitch, octave in zip(range(128), repeat(a = range(-1, 10), repeats = 12))}
-
-# transpose chromatic to circle of fifths steps
-TRANSPOSE_CHROMATIC_TO_CIRCLE_OF_FIFTHS_STEPS = {-i: ((-i) if (i % 2 == 0) else ((-i + 6) % -12)) for i in range(12)}
 
 ##################################################
 
@@ -123,7 +116,18 @@ def round_to_nearest_partial(value: float, resolution: float) -> float:
 
 def get_octave_from_pitch(pitch: int) -> int:
     """Given the MIDI pitch number, return the octave of that note."""
-    return MIDI_PITCH_TO_OCTAVE[pitch]
+    return (pitch // 12) - 1
+
+def convert_chromatic_to_circle_of_fifths_steps(transpose_chromatic: int = 0) -> int:
+    """
+    Given a number of semitones to transpose, return the necessary number of steps to
+    make the same transposition on the circle of fifths.
+    """
+    transpose_chromatic = transpose_chromatic % -12 # get in range 0 through 12
+    if (-transpose_chromatic % 2 == 0):
+        return transpose_chromatic
+    else:
+        return (transpose_chromatic + 6) % -12
 
 ##################################################
 
@@ -184,6 +188,10 @@ def to_delta_time(midi_track: MidiTrack, ticks_per_beat: int, absolute_time: boo
     ----------
     midi_track : :class:`mido.MidiTrack` object
         mido MidiTrack object to convert.
+    ticks_per_beat : int
+        Number of MIDI ticks per beat.
+    absolute_time : bool, default: False
+        Is the provided .mid file in absolute time (seconds) or metrical time (time_steps)?
 
     """
 
@@ -556,11 +564,6 @@ def write_midi(path: str, music: "MusicRender", use_note_off_message: bool = Fal
     # ensure we are operating on a copy of music
     music = deepcopy(music)
 
-    # raise warning if music is not in metrical time
-    # if music.absolute_time:
-    #     warn("`music` object in absolute time (not metrical time). Converting to metrical time.", RuntimeWarning)
-    #     music.convert_from_absolute_to_metrical_time()
-
     # redo resolution if it's too low
     if music.resolution < OPTIMAL_RESOLUTION:
         music.reset_resolution(new_resolution = OPTIMAL_RESOLUTION)
@@ -580,7 +583,7 @@ def write_midi(path: str, music: "MusicRender", use_note_off_message: bool = Fal
             channel = DRUM_CHANNEL # mido numbers channels 0 to 15 instead of 1 to 16
         else:
             channel = i % 15 # .mid has 15 channels for instruments other than drums
-            channel += int(channel > 8) # avoid drum channel by adding one if the channel is greater than 8
+            channel += int(channel >= DRUM_CHANNEL) # avoid drum channel by adding one if the channel is greater than 8
 
         # add track
         midi.tracks.append(to_mido_track(track = track, music = music, channel = channel, use_note_off_message = use_note_off_message))
@@ -644,13 +647,7 @@ def write_audio(path: str, music: "MusicRender", audio_format: str = "auto", sou
 # WRITE MUSICXML
 ##################################################
 
-# PITCH_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 PITCH_NAMES = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
-NOTE_TO_PITCH_INDEX_MAP = {note: i for i, note in enumerate(PITCH_NAMES)}
-PITCH_CLASSES = ["C", "D", "E", "F", "G", "A", "B"]
-# def _get_pitch_name(note_number: int) -> str:
-#     octave, pitch_class = divmod(note_number, 12)
-#     return PITCH_NAMES[pitch_class] + str(octave - 1)
 DRUMSET_INSTRUMENTS = [
     ("Acoustic Bass Drum", 36),
     ("Bass Drum 1", 37),
@@ -701,6 +698,97 @@ DRUMSET_INSTRUMENTS = [
     ("Open Triangle", 82),
 ]
 
+
+def get_transpose_element(transposition: Interval = None) -> ET.Element:
+    """Return the XML Element object that represents the transpose information for the given transposition."""
+
+    # get information about the transposition (chromatic, diatonic, octave)
+    genericSteps = transposition.diatonic.generic.directed if transposition is not None else 1
+    musicxmlOctaveShift, musicxmlDiatonic = divmod(abs(genericSteps) - 1, 7)
+    musicxmlChromatic = abs(transposition.chromatic.semitones) % 12 if transposition is not None else 0
+    if genericSteps < 0:
+        musicxmlDiatonic *= -1
+        musicxmlOctaveShift *= -1
+        musicxmlChromatic *= -1
+
+    # create MusicXML elements
+    mxTranspose = ET.Element("transpose")
+    mxDiatonic = ET.SubElement(mxTranspose, "diatonic") # diatonic shift
+    mxDiatonic.text = str(musicxmlDiatonic)
+    mxChromatic = ET.SubElement(mxTranspose, "chromatic") # chromatic shift
+    mxChromatic.text = str(musicxmlChromatic)
+    if musicxmlOctaveShift != 0: # if there is an octave shift
+        mxOctaveChange = ET.SubElement(mxTranspose, "octave-change")
+        mxOctaveChange.text = str(musicxmlOctaveShift)
+
+    # return element
+    return mxTranspose
+
+
+def get_instrument_elements(instrument_name: str, percussion_map_pitch: int, part_id: str) -> Tuple[ET.Element, ET.Element]:
+    """Return two XML elements, representing the score-instrument and midi-instrument elements for a given instrument."""
+
+    # get the instrument id
+    instrument_id = f"{part_id}-T{percussion_map_pitch}"
+
+    # create score instrument
+    score_instrument = ET.Element("score-instrument", id = instrument_id)
+    instrument_name_element = ET.SubElement(score_instrument, "instrument-name")
+    instrument_name_element.text = instrument_name
+
+    # create midi instrument
+    midi_instrument = ET.Element("midi-instrument", id = instrument_id)
+    midi_channel = ET.SubElement(midi_instrument, "midi-channel")
+    midi_channel.text = str(DRUM_CHANNEL) # set to the drum channel
+    midi_program = ET.SubElement(midi_instrument, "midi-program")
+    midi_program.text = "1" # default
+    midi_unpitched = ET.SubElement(midi_instrument, "midi-unpitched")
+    midi_unpitched.text = str(percussion_map_pitch) # midi pitch that maps to this instrument
+    midi_volume = ET.SubElement(midi_instrument, "volume")
+    midi_volume.text = "78.7402" # MuseScore default
+    midi_pan = ET.SubElement(midi_instrument, "pan")
+    midi_pan.text = "0" # no pan of the instrument
+
+    # return the score and midi instrument elements
+    return score_instrument, midi_instrument
+
+
+def get_unpitched_and_instrument_elements(note: ET.Element, part_id: str) -> Tuple[ET.Element, ET.Element]:
+    """
+    Return two XML elements, the unpitched element of a pitched drum note,
+    and the instrument element associated with the new unpitched drum note.
+    """
+
+    # get info about pitch
+    pitch_element = note.find(path = "pitch")
+    pitch_step = pitch_element.find(path = "step").text
+    pitch_octave = int(pitch_element.find(path = "octave").text)
+    pitch_alter = pitch_element.find(path = "alter")
+    pitch_alter = int(0 if pitch_alter is None else pitch_alter.text)
+
+    # reconstruct midi pitch from the pitch information gathered in previous step
+    percussion_map_pitch = PITCH_NAMES.index(pitch_step) + (12 * (pitch_octave + 1)) + pitch_alter + 1
+
+    # remove any pitch-related elements from note
+    note.remove(pitch_element)
+    accidental_element = note.find(path = "accidental")
+    if accidental_element is not None:
+        note.remove(accidental_element)
+
+    # create unpitched XML element
+    unpitched = ET.Element("unpitched")
+    display_step = ET.SubElement(unpitched, "display-step")
+    display_step.text = pitch_step
+    display_octave = ET.SubElement(unpitched, "display-octave")
+    display_octave.text = str(pitch_octave)
+
+    # create note instrument element
+    note_instrument = ET.Element("instrument", id = f"{part_id}-T{percussion_map_pitch}")
+
+    # return elements
+    return unpitched, note_instrument
+
+
 def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
     """Write a Music object to a MusicXML file.
 
@@ -716,6 +804,10 @@ def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
         an uncompressed file, '.mxl' for a compressed file).
 
     """
+
+    # make sure music is not in absolute time
+    if music.absolute_time:
+        raise RuntimeError("Cannot write to MusicXML when `music` is in absolute time (`music.absolute_time` == True).")
 
     # ensure we are operating on a copy of music
     music = deepcopy(music)
@@ -759,11 +851,11 @@ def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
 
         # set instrument
         if track.is_drum:
-            part.clef = M21PercussionClef()
+            part.clef = PercussionClef()
             channel = DRUM_CHANNEL
         else:
             channel = i % 15 # .mid has 15 channels for instruments other than drums
-            channel += int(channel > 8) # avoid drum channel by adding one if the channel is greater than 8
+            channel += int(channel >= DRUM_CHANNEL) # avoid drum channel by adding one if the channel is greater than 8
         instrument = instrumentFromMidiProgram(number = track.program)
         instrument.partId = part_id
         instrument.partName = track.name
@@ -778,6 +870,8 @@ def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
         transpositions[i] = instrument.transposition
         def get_note_str_and_octave(pitch: int, pitch_str: str) -> Tuple[str, int]:
             """Helper function for extracting the note's string and octave for music21."""
+            if pitch_str is None:
+                pitch_str = PITCH_NAMES[pitch % len(PITCH_NAMES)]
             n_accidentals = pitch_str[1:].count("#") - pitch_str[1:].count("b")
             note_str = PITCH_NAMES[(PITCH_NAMES.index(pitch_str[0]) + n_accidentals - transpose_chromatic) % len(PITCH_NAMES)].replace("b", "-")
             note_octave = get_octave_from_pitch(pitch = pitch - transpose_chromatic) # adjust pitch for tuning of instrument
@@ -785,7 +879,7 @@ def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
 
         # add tempos
         for tempo in music.tempos: # loop through tempos
-            if tempo.text.startswith("<sym>") or tempo.text is None: # bpm is explicitly supplied in text or not supplied at all
+            if tempo.text is None or tempo.text.startswith("<sym>"): # bpm is explicitly supplied in text or not supplied at all
                 m21_tempo = M21Tempo.MetronomeMark(number = tempo.qpm) # create tempo marking with bpm
             else: # bpm is implied by tempo name
                 m21_tempo = M21Tempo.MetronomeMark(text = tempo.text, numberSounding = tempo.qpm) # create tempo marking with text
@@ -802,7 +896,8 @@ def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
 
         # add key signatures
         for key_signature in music.key_signatures: # loop through key signatures
-            m21_key_signature = M21KeySignature(sharps = (key_signature.fifths - TRANSPOSE_CHROMATIC_TO_CIRCLE_OF_FIFTHS_STEPS[transpose_chromatic % -12]) if key_signature.fifths is not None else 0) # create key object
+            m21_key_signature = M21KeySignature(sharps = (key_signature.fifths - convert_chromatic_to_circle_of_fifths_steps(transpose_chromatic = transpose_chromatic)) if key_signature.fifths is not None else 0) # create key object
+            m21_key_signature = m21_key_signature.asKey(mode = key_signature.mode.lower() if key_signature.mode is not None else "major")
             m21_key_signature.offset = get_offset(time = key_signature.time) # define offset
             part.insert(offsetOrItemOrList = m21_key_signature.offset, itemOrNone = m21_key_signature)
 
@@ -836,7 +931,7 @@ def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
             
             # check if there is a notehead at that note
             if note.time in noteheads.keys() and noteheads[note.time] in noteheadTypeNames: # check if notehead is a valid notehead for music21
-                    m21_note.notehead = noteheads[note.time] # add notehead
+                m21_note.notehead = noteheads[note.time] # add notehead
             
             # check if there is an articulation(s) at that note
             if note.time in articulations.keys():
@@ -889,17 +984,13 @@ def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
                     if "unstress" in articulation:
                         m21_note.articulations.append(M21Articulation.Unstress())
             
-            # add note to part
-            # m21_note.offset = get_offset(time = note.time) # get offset
-            # part.insert(offsetOrItemOrList = m21_note.offset, itemOrNone = m21_note)
-
             # add note to chords
             chord_descriptor_tuple = (note.time, note.duration, note.is_grace)
             if chord_descriptor_tuple not in chords.keys():
                 chords[chord_descriptor_tuple] = []
             chords[chord_descriptor_tuple].append(m21_note)
         
-        # add chords
+        # add chords to part
         for chord_descriptor_tuple, chord_notes in chords.items():
             m21_chord = M21Chord(notes = chord_notes)
             m21_chord.offset = get_offset(time = chord_descriptor_tuple[0])
@@ -938,7 +1029,7 @@ def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
             
             # Dynamic
             elif annotation_type == "Dynamic":
-                m21_annotation = M21Dynamic.Dynamic(value = annotation.annotation.subtype if annotation.annotation.subtype != DEFAULT_DYNAMIC_NAME else DEFAULT_DYNAMIC)
+                m21_annotation = M21Dynamic.Dynamic(value = annotation.annotation.subtype)
             
             # Chord Symbol
             elif annotation_type == "ChordSymbol":
@@ -1056,22 +1147,14 @@ def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
             else:
                 continue
             
-            # check if m21_annotation was created and not caught in some offcase
-            # if "m21_annotation" not in locals(): # check if m21_annotation was created and not caught in some offcase
-            #     continue
-            
             # insert annotation into part
             try:
                 m21_annotation.offset = get_offset(time = annotation.time)
-                # part.append(deepcopy(m21_annotation))
                 part.insert(offsetOrItemOrList = m21_annotation.offset, itemOrNone = deepcopy(m21_annotation)) # as to avoid the StreamException object * is already found in this Stream
             except StreamException as stream_exception:
                 warn(str(stream_exception), RuntimeWarning)
         
         # append the part to score
-        # part.sort() # sort by offset
-        # if not track.is_drum and transpose_chromatic != 0:
-        #     part.toWrittenPitch(ottavasToSounding = False, preserveAccidentalDisplay = False, inPlace = True)
         score.append(part)
 
     # write as xml temporarily, correct some of music21's mistakes
@@ -1087,22 +1170,7 @@ def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
             if attributes is None:
                 attributes = ET.Element("attributes")
                 first_measure.insert(0, attributes)
-            genericSteps = transpositions[i].diatonic.generic.directed
-            musicxmlOctaveShift, musicxmlDiatonic = divmod(abs(genericSteps) - 1, 7)
-            musicxmlChromatic = abs(transpositions[i].chromatic.semitones) % 12
-            if genericSteps < 0:
-                musicxmlDiatonic *= -1
-                musicxmlOctaveShift *= -1
-                musicxmlChromatic *= -1
-            mxTranspose = ET.Element("transpose")
-            mxDiatonic = ET.SubElement(mxTranspose, "diatonic")
-            mxDiatonic.text = str(musicxmlDiatonic)
-            mxChromatic = ET.SubElement(mxTranspose, "chromatic")
-            mxChromatic.text = str(musicxmlChromatic)
-            if musicxmlOctaveShift != 0:
-                mxOctaveChange = ET.SubElement(mxTranspose, "octave-change")
-                mxOctaveChange.text = str(musicxmlOctaveShift)
-            attributes.append(mxTranspose)
+            attributes.append(get_transpose_element(transposition = transpositions[i]))
     
     # make sure drum midi instruments are written correctly in the part list
     drum_track_indicies = set(filter(lambda i: music.tracks[i].is_drum, range(len(music.tracks))))
@@ -1112,25 +1180,10 @@ def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
         elem.remove(elem.find(path = "part-abbreviation"))
         elem.remove(elem.find(path = "score-instrument"))
         elem.remove(elem.find(path = "midi-instrument"))
-        part_id = elem.get("id")
         midi_instruments = []
         for instrument_name, percussion_map_pitch in DRUMSET_INSTRUMENTS:
-            instrument_id = f"{part_id}-T{percussion_map_pitch}"
-            score_instrument = ET.Element( "score-instrument", id = instrument_id)
-            instrument_name_element = ET.SubElement(score_instrument, "instrument-name")
-            instrument_name_element.text = instrument_name
+            score_instrument, midi_instrument = get_instrument_elements(instrument_name = instrument_name, percussion_map_pitch = percussion_map_pitch, part_id = elem.get("id"))
             elem.append(score_instrument)
-            midi_instrument = ET.Element("midi-instrument", id = instrument_id)
-            midi_channel = ET.SubElement(midi_instrument, "midi-channel")
-            midi_channel.text = str(DRUM_CHANNEL)
-            midi_program = ET.SubElement(midi_instrument, "midi-program")
-            midi_program.text = "1"
-            midi_unpitched = ET.SubElement(midi_instrument, "midi-unpitched")
-            midi_unpitched.text = str(percussion_map_pitch)
-            midi_volume = ET.SubElement(midi_instrument, "volume")
-            midi_volume.text = "78.7402"
-            midi_pan = ET.SubElement(midi_instrument, "pan")
-            midi_pan.text = "0"
             midi_instruments.append(midi_instrument)
         elem.append(ET.Element("midi-device", port = "1"))
         for midi_instrument in midi_instruments:
@@ -1140,30 +1193,14 @@ def write_musicxml(path: str, music: "MusicRender", compressed: bool = None):
     for i, elem in enumerate(root.findall(path = "part")):
         if i not in drum_track_indicies: # skip over non-drum tracks
             continue
-        part_id = elem.get("id")
-        notes = elem.findall(path = "measure/note")
-        for note in notes:
+        for note in elem.findall(path = "measure/note"):
             if note.find(path = "rest") is not None: # skip over rests
                 continue
-            pitch_element = note.find(path = "pitch")
-            pitch_step = pitch_element.find(path = "step").text
-            pitch_octave = int(pitch_element.find(path = "octave").text)
-            pitch_alter = pitch_element.find(path = "alter")
-            pitch_alter = int(0 if pitch_alter is None else pitch_alter.text)
-            percussion_map_pitch = NOTE_TO_PITCH_INDEX_MAP[pitch_step] + (12 * (pitch_octave + 1)) + pitch_alter + 1
-            note.remove(pitch_element)
-            accidental_element = note.find(path = "accidental")
-            if accidental_element is not None:
-                note.remove(accidental_element)
-            unpitched = ET.Element("unpitched")
-            display_step = ET.SubElement(unpitched, "display-step")
-            display_step.text = pitch_step
-            display_octave = ET.SubElement(unpitched, "display-octave")
-            display_octave.text = str(pitch_octave)
+            unpitched, note_instrument = get_unpitched_and_instrument_elements(note = note, part_id = elem.get("id"))
             unpitched_position = int(note.find(path = "chord") is not None)
             note.insert(unpitched_position, unpitched)
-            note.insert(unpitched_position + 2, ET.Element("instrument", id = f"{part_id}-T{percussion_map_pitch}"))
-
+            note.insert(unpitched_position + 2, note_instrument)
+    
     # infer compression
     if compressed is None:
         if path.endswith((".xml", ".musicxml")):

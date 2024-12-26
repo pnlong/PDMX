@@ -51,6 +51,9 @@ OTTAVA_OCTAVE_SHIFT_FACTORS = {8: 1, 15: 2, 22: 3}
 # transposing to concert key for tuned instruments
 TRANSPOSE_CHROMATIC_TO_CIRCLE_OF_FIFTHS_STEPS = {-i: ((-i) if (i % 2 == 0) else ((-i + 6) % -12)) for i in range(12)}
 
+# subtypes of chord lines
+CHORDLINE_SUBTYPES = ["fall", "doit", "plop", "scoop", "slide out down", "slide out up", "slide in above", "slide in below"]
+
 ##################################################
 
 
@@ -241,7 +244,8 @@ def parse_repeats(elem: Element) -> Tuple[list, list]:
             end_repeats.append([])
         # check for endRepeat
         if measure.find(path = "endRepeat") is not None:
-            end_repeats[len(start_repeats) - 1].append(i)
+            repeat_times = int(_get_text(element = measure, path = "endRepeat", default = 2)) - 1 # default is 2 because by default, a repeat causes a section to be played twice
+            end_repeats[len(start_repeats) - 1].extend([i] * repeat_times)
 
     # if there is an implied repeat at the end
     if len(end_repeats[-1]) == 0 and len(start_repeats) >= 2:
@@ -354,8 +358,9 @@ def get_measure_ordering(elem: Element, timeout: int = None) -> List[int]:
         volta = measure.find(path = "voice/Spanner/Volta/..") # select the parent element
         if volta is not None:
             if measure_idx not in (encounter[0] for encounter in voltas_encountered):
-                volta_duration = int(_get_required_text(element = volta, path = "next/location/measures"))
-                voltas_encountered.append((measure_idx, volta_duration))
+                volta_duration = _get_text(element = volta, path = "next/location/measures")
+                if volta_duration is not None:
+                    voltas_encountered.append((measure_idx, int(volta_duration)))
             else: # if we have already seen this volta, skip volta_duration measures ahead
                 for volta_duration in (encounter[1] for encounter in voltas_encountered if encounter[0] >= measure_idx):
                     measure_idx += volta_duration
@@ -568,10 +573,8 @@ def parse_part_info(elem: Element, musescore_version: int) -> Tuple[Optional[Lis
     # Instrument
     instrument = _get_required(element = elem, path = "Instrument")
     part_info["id"] = _get_text(element = instrument, path = "instrumentId", remove_newlines = True)
-    part_info["name"] = _get_text(element = instrument, path = "trackName", remove_newlines = True)
-    transpose_chromatic = _get_text(element = instrument, path = "transposeChromatic", remove_newlines = True)
-    transpose_chromatic = int(transpose_chromatic) if transpose_chromatic else 0
-    part_info["transposeChromatic"] = transpose_chromatic
+    part_info["name"] = _get_text(element = elem, path = "trackName", remove_newlines = True)
+    part_info["transposeChromatic"] = int(_get_text(element = instrument, path = "transposeChromatic", remove_newlines = True, default = "0"))
 
     # MIDI program and channel
     program = instrument.find(path = "Channel/program")
@@ -1268,7 +1271,10 @@ def parse_staff(
 
                         # Check for ChordLines (falls, doits, scoops, etc.)
                         if note.find(path = "ChordLine") is not None:
-                            annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = ChordLine(subtype = _get_required_text(element = note, path = "ChordLine/subtype"), is_straight = bool(_get_text(element = note, path = "ChordLine/straight")))))
+                            subtype = int(_get_required_text(element = note, path = "ChordLine/subtype"))
+                            subtype = CHORDLINE_SUBTYPES[subtype if subtype in range(len(CHORDLINE_SUBTYPES)) else 0]
+                            annotations.append(Annotation(time = time_ + position, measure = get_nice_measure_number(i = measure_idx), annotation = ChordLine(subtype = subtype, is_straight = bool(_get_text(element = note, path = "ChordLine/straight")))))
+                            del subtype
 
                         # get notehead
                         if note.find(path = "head") is not None:

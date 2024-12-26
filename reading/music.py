@@ -291,12 +291,6 @@ class MusicRender(muspy.music.Music):
             return
         
         # convert
-        for i in range(len(self.tempos)):
-            self.tempos[i].time = self.metrical_time_to_absolute_time(time_steps = self.tempos[i].time)
-        for i in range(len(self.key_signatures)):
-            self.key_signatures[i].time = self.metrical_time_to_absolute_time(time_steps = self.key_signatures[i].time)
-        for i in range(len(self.time_signatures)):
-            self.time_signatures[i].time = self.metrical_time_to_absolute_time(time_steps = self.time_signatures[i].time)
         for i in range(len(self.beats)):
             self.beats[i].time = self.metrical_time_to_absolute_time(time_steps = self.beats[i].time)
         for i in range(len(self.barlines)):
@@ -324,6 +318,12 @@ class MusicRender(muspy.music.Music):
                     self.tracks[i].annotations[j].annotation.duration = self.metrical_time_to_absolute_time(time_steps = time_time_steps + self.tracks[i].annotations[j].annotation.duration) - self.tracks[i].annotations[j].time
             for j in range(len(self.tracks[i].lyrics)):
                 self.tracks[i].lyrics[j].time = self.metrical_time_to_absolute_time(time_steps = self.tracks[i].lyrics[j].time)
+        for i in range(len(self.tempos)):
+            self.tempos[i].time = self.metrical_time_to_absolute_time(time_steps = self.tempos[i].time)
+        for i in range(len(self.key_signatures)):
+            self.key_signatures[i].time = self.metrical_time_to_absolute_time(time_steps = self.key_signatures[i].time)
+        for i in range(len(self.time_signatures)):
+            self.time_signatures[i].time = self.metrical_time_to_absolute_time(time_steps = self.time_signatures[i].time)
         
         # update
         self.absolute_time = True
