@@ -40,7 +40,8 @@ import utils
 OUTPUT_DIR = "/data1/pnlong/musescore"
 
 # path to MuseScore CLI application
-MUSESCORE_APPLICATION_PATH = f"{dirname(dirname(dirname(realpath(__file__))))}/musescore" # MuseScore Command Line Options: https://musescore.org/en/handbook/3/command-line-options
+MUSESCORE_APPLICATION_PATH = "/data3/pnlong/MuseScore-Studio-4.4.4.243461245-x86_64.AppImage" # MuseScore Command Line Options: https://musescore.org/en/handbook/3/command-line-options
+MUSESCORE_APPLICATION_OPTIONS = ["QT_QPA_PLATFORM=offscreen",] # options that precede calling the musescore app image
 
 # name of dataset
 DATASET_NAME = "PDMX"
@@ -59,7 +60,7 @@ def parse_args(args = None, namespace = None):
     parser = argparse.ArgumentParser(prog = DATASET_NAME, description = f"Create {DATASET_NAME} Dataset.")
     parser.add_argument("-df", "--dataset_filepath", type = str, default = f"{DATASET_OUTPUT_DIR}/{DATASET_DIR_NAME}.csv", help = "Filepath to full dataset")
     parser.add_argument("-o", "--output_dir", type = str, default = OUTPUT_DIR, help = "Output directory")
-    parser.add_argument("-ma", "--musescore_filepath", type = str, default = MUSESCORE_APPLICATION_PATH, help = "Filepath to MuseScore CLI application (for generating MusicXML and PDF files)")
+    parser.add_argument("-mf", "--musescore_filepath", type = str, default = MUSESCORE_APPLICATION_PATH, help = "Filepath to MuseScore CLI application (for generating MusicXML and PDF files)")
     parser.add_argument("-g", "--gzip", action = "store_true", help = "GZIP the output directory of the dataset")
     parser.add_argument("-r", "--reset", action = "store_true", help = "Whether or not to recreate files")
     parser.add_argument("-j", "--jobs", type = int, default = int(multiprocessing.cpu_count() / 4), help = "Number of Jobs")
@@ -149,7 +150,7 @@ if __name__ == "__main__":
         # generate music xml file
         mxl_path_output = dataset.at[i, "mxl_output"]
         subprocess.run(
-            args = [args.musescore_filepath, "--export-to", mxl_path_output, path],
+            args = MUSESCORE_APPLICATION_OPTIONS + [args.musescore_filepath, "--export-to", mxl_path_output, path],
             check = True,
             stdout = subprocess.DEVNULL,
             stderr = subprocess.DEVNULL,
@@ -159,7 +160,7 @@ if __name__ == "__main__":
         # generate pdf file
         pdf_path_output = dataset.at[i, "pdf_output"]
         subprocess.run(
-            args = [args.musescore_filepath, "--export-to", pdf_path_output, path],
+            args = MUSESCORE_APPLICATION_OPTIONS + [args.musescore_filepath, "--export-to", pdf_path_output, path],
             check = True,
             stdout = subprocess.DEVNULL,
             stderr = subprocess.DEVNULL,
