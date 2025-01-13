@@ -290,7 +290,8 @@ def get_full_dataset(path: str) -> None:
         try: # try to read musescore
             music = read_musescore(path = path, timeout = 10)
             n_notes = sum(len(track.notes) for track in music.tracks)
-            is_valid = (n_notes > 0) # check for empty songs
+            # is_public_domain = music.metadata.copyright is None
+            is_valid = (n_notes > 0) and is_public_domain # check for empty songs
         except:
             pass
 
