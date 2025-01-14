@@ -296,7 +296,7 @@ if __name__ == "__main__":
     dataset = dataset.rename(columns = dict(zip(facet_columns, subset_columns))) # rename facet to subset columns
 
     # rename columns that are filepaths
-    dataset = dataset.drop(columns = ["path", "metadata"])
+    dataset = dataset.drop(columns = ["path", "metadata", "has_metadata"])
     output_columns_new = list(map(lambda column: column.split("_")[0], output_columns))
     dataset = dataset.rename(columns = dict(zip(output_columns, output_columns_new))) # rename output columns
 
