@@ -265,7 +265,7 @@ if __name__ == "__main__":
                         stdout = subprocess.DEVNULL,
                         stderr = subprocess.DEVNULL,
                     )
-                except (subprocess.CalledProcessError):
+                except (subprocess.CalledProcessError): # if musescore file is corrupted
                     dataset.at[i, "mxl_output"] = None
                     dataset.at[i, "pdf_output"] = None
                     return
