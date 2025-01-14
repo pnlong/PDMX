@@ -239,8 +239,7 @@ if __name__ == "__main__":
 
         # create json dict object
         json_dict = {"in": dataset.at[i, "path"], "out": []}
-        mxl_path_output = dataset.at[i, "mxl_output"]
-        pdf_path_output = dataset.at[i, "pdf_output"]
+        mxl_path_output, pdf_path_output = dataset.at[i, "mxl_output"], dataset.at[i, "pdf_output"]
         if not exists(mxl_path_output) or args.reset: # mxl
             json_dict["out"].append(mxl_path_output)
         if not exists(pdf_path_output) or args.reset: # pdf
@@ -255,7 +254,7 @@ if __name__ == "__main__":
                 # write json dict to a json file
                 json_path = f"{temp_dir}/job.json"
                 with open(json_path, "w") as json_file:
-                    json.dump([json_dict], json_file)
+                    json.dump(obj = [json_dict], fp = json_file)
                 
                 # run batch job with MuseScore CLI, add except clause for corrupted files
                 try:
