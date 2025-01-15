@@ -10,11 +10,11 @@ Recent [copyright infringement lawsuits against leading music generation compani
 
 ---
 
-## Updates
+## Updates :star:
 
-Upon further use of the PDMX dataset, we discovered a discrepancy between the public-facing copyright metadata on the [MuseScore website](https://musescore.com/) and the internal copyright data of the MuseScore files themselves, which affected 31,221 (12.29% of) songs. We have decided to proceed with the former given its public visibility on Musescore (i.e. this is what the MuseScore website presents its users with). We have noted files with conflicting internal licenses in the `license_conflict` column of PDMX on [Zenodo](https://zenodo.org/records/13763756). We recommend using the `no_license_conflict` subset of PDMX moving forward.
+Upon further use of the PDMX dataset, we discovered a discrepancy between the public-facing copyright metadata on the [MuseScore website](https://musescore.com/) and the internal copyright data of the MuseScore files themselves, which affected 12.29% of (31,221) songs. We have decided to proceed with the former given its public visibility on Musescore (i.e. this is what the MuseScore website presents its users with). We have noted files with conflicting internal licenses in the `license_conflict` column of PDMX on [Zenodo](https://zenodo.org/records/13763756). **We recommend using the `no_license_conflict` subset of PDMX moving forward.**
 
-Additionally, for each song in PDMX, we not only provide the `MusicRender` and metadata JSON files, but we also try to include the associated compressed MusicXML (MXL) and sheet music (PDF) files when available. Due to the corruption of some (X, or X.XX%) of the original MuseScore files, these songs lack associated MXL and PDF files (since they could not be converted to these formats) and only include the `MusicRender` and metadata files. The `valid_mxl_pdf` subset of PDMX describes all songs with associated MXL and PDF files.
+Additionally, for each song in PDMX, we not only provide the `MusicRender` and metadata JSON files, but **we also try to include associated compressed MusicXML (MXL) and sheet music (PDF) files when available**. Due to the corruption of some (X, or X.XX%) of the original MuseScore files, these songs lack associated MXL and PDF files (since they could not be converted to these formats) and only include the `MusicRender` and metadata files. The `valid_mxl_pdf` subset of PDMX describes all songs with associated MXL and PDF files.
 
 ---
 
