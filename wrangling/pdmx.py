@@ -179,7 +179,7 @@ if __name__ == "__main__":
     ##################################################
 
 
-    # GET MUSICXML AND PDF FILES
+    # GET MXL AND PDF FILES
     ##################################################
 
     # helper function to save files
@@ -276,7 +276,7 @@ if __name__ == "__main__":
     # use multiprocessing
     with multiprocessing.Pool(processes = args.jobs) as pool:
         _ = list(tqdm(iterable = pool.imap_unordered(func = get_mxl_pdf, iterable = dataset.index, chunksize = CHUNK_SIZE), 
-                      desc = "Generating MusicXML and PDF Files",
+                      desc = "Generating MXL and PDF Files",
                       total = len(dataset)))
 
     ##################################################
