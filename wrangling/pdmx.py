@@ -330,10 +330,24 @@ if __name__ == "__main__":
         with open(f"{facets_dir}/{column.split(':')[-1]}.txt", "w") as output_file:
             output_file.write("\n".join(dataset[dataset[column]]["path"]))
 
-    # gzip if needed
+    # GZIP
+    ##################################################
+
     if args.gzip:
-        logging.info("Gzipping dataset.")
-        subprocess.run(args = ["tar", "-zcf", f"{basename(output_dir)}.tar.gz", basename(output_dir)], check = True, cwd = args.output_dir)
+    
+        # create directory for gzipped files
+        gzip_dir = f"{args.output_dir}/{DATASET_NAME}_gzip"
+        directory_creator(gzip_dir)
+
+        # gzip subdirectories
+        for directory in tqdm(iterable = (data_dir, metadata_dir, mxl_dir, pdf_dir, facets_dir), desc = "Gzipping"):
+            directory_basename = basename(directory)
+            targz_output_path = f"{directory_basename}.tar.gz"
+            subprocess.run(args = ["tar", "-zcf", targz_output_path, directory_basename], check = True, cwd = output_dir)
+            subprocess.run(args = ["mv", targz_output_path, f"{gzip_dir}/{targz_output_path}"], check = True, cwd = output_dir)
+
+        # copy over csv file
+        copy(src = output_filepath, dst = f"{gzip_dir}/{basename(output_filepath)}")
     
     ##################################################
 
