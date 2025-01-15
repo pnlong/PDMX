@@ -263,8 +263,9 @@ if __name__ == "__main__":
                         check = True,
                         stdout = subprocess.DEVNULL,
                         stderr = subprocess.DEVNULL,
+                        timeout = 60, # wait for 60 seconds, if it's not done by then, then don't bother
                     )
-                except (subprocess.CalledProcessError): # if musescore file is corrupted
+                except (subprocess.CalledProcessError, subprocess.TimeoutExpired): # if musescore file is corrupted
                     dataset.at[i, "mxl_output"] = None
                     dataset.at[i, "pdf_output"] = None
                     return
@@ -290,7 +291,6 @@ if __name__ == "__main__":
     dataset["facet:valid_mxl_pdf"] = (~pd.isna(dataset["mxl_output"]) & ~pd.isna(dataset["pdf_output"]))
                                                         
     # rename facet columns
-    dataset = dataset.drop(columns = output_columns)
     facet_columns = list(filter(lambda column: column.startswith("facet:"), dataset.columns))
     subset_columns = list(map(lambda facet_column: facet_column.replace("facet", "subset"), facet_columns))
     dataset = dataset.rename(columns = dict(zip(facet_columns, subset_columns))) # rename facet to subset columns
@@ -315,9 +315,8 @@ if __name__ == "__main__":
 
     # gzip if needed
     if args.gzip:
-        chdir(dirname(output_dir))
         logging.info("Gzipping dataset.")
-        subprocess.run(args = ["tar", "-zcf", f"{basename(output_dir)}.tar.gz", basename(output_dir)], check = True)
+        subprocess.run(args = ["tar", "-zcf", f"{basename(output_dir)}.tar.gz", basename(output_dir)], check = True, cwd = args.output_dir)
     
     ##################################################
 
