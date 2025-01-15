@@ -301,7 +301,7 @@ if __name__ == "__main__":
     dataset = dataset.rename(columns = dict(zip(output_columns, output_columns_new))) # rename output columns
 
     # reorder columns
-    dataset_columns = output_columns_new + list(filter(lambda column: (column not in subset_columns) and (column not in output_columns_new) and column != LICENSE_DISCREPANCY_COLUMN_NAME, dataset.columns)) + subset_columns # place subset columns at end
+    dataset_columns = output_columns_new + list(filter(lambda column: not ((column in subset_columns) or (column in output_columns_new) or (column == LICENSE_DISCREPANCY_COLUMN_NAME)), dataset.columns)) + subset_columns # place subset columns at end
     dataset_columns.insert(dataset_columns.index("license_url") + 1, LICENSE_DISCREPANCY_COLUMN_NAME) # add license discrepancy column back in
     dataset = dataset[dataset_columns] # reorder columns
 
