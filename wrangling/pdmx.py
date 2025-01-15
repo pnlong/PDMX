@@ -128,7 +128,7 @@ if __name__ == "__main__":
     dataset["metadata_output"] = list(map(lambda path: metadata_dir + path[len(f"{MUSESCORE_DIR}/metadata"):] if (not pd.isna(path)) else None, dataset["metadata"]))
     dataset["mxl_output"] = list(map(lambda path: mxl_dir + path[len(data_dir):-len(".json")] + ".mxl", dataset["path_output"]))
     dataset["pdf_output"] = list(map(lambda path: pdf_dir + path[len(data_dir):-len(".json")] + ".pdf", dataset["path_output"]))
-    dataset[LICENSE_DISCREPANCY_COLUMN_NAME] = [False] * len(dataset) # create license discrepancy column
+    dataset[LICENSE_DISCREPANCY_COLUMN_NAME] = utils.rep(x = False, times = len(dataset)) # create license discrepancy column
 
     # create necessary directory trees if required
     for column in output_columns:
