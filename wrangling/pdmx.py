@@ -226,6 +226,7 @@ if __name__ == "__main__":
     #             subprocess.run(
     #                 args = [args.musescore_filepath, "--job", json_path],
     #                 check = True,
+    #                 env = environ,
     #                 stdout = subprocess.DEVNULL,
     #                 stderr = subprocess.DEVNULL,
     #             )
@@ -271,6 +272,7 @@ if __name__ == "__main__":
                         check = True,
                         stdout = subprocess.DEVNULL,
                         stderr = subprocess.DEVNULL,
+                        env = environ,
                         timeout = 60, # wait for 60 seconds, if it's not done by then, then don't bother
                     )
                 except (subprocess.CalledProcessError, subprocess.TimeoutExpired): # if musescore file is corrupted
