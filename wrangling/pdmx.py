@@ -330,6 +330,9 @@ if __name__ == "__main__":
         with open(f"{facets_dir}/{column.split(':')[-1]}.txt", "w") as output_file:
             output_file.write("\n".join(dataset[dataset[column]]["path"]))
 
+    ##################################################
+    
+
     # GZIP
     ##################################################
 
