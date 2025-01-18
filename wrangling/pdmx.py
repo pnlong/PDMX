@@ -127,6 +127,13 @@ if __name__ == "__main__":
     dataset["pdf_output"] = list(map(lambda path: pdf_dir + path[len(data_dir):-len(".json")] + ".pdf", dataset["path_output"]))
     dataset[LICENSE_DISCREPANCY_COLUMN_NAME] = utils.rep(x = False, times = len(dataset)) # create license discrepancy column
 
+    # update deduplication columns
+    deduplication_columns_path_updater_helper = lambda path: "." + get_path_output(path = path)[len(output_dir):]
+    dataset["best_path"] = list(map(deduplication_columns_path_updater_helper, dataset["best_path"]))
+    dataset["best_arrangement"] = list(map(deduplication_columns_path_updater_helper, dataset["best_arrangement"]))
+    dataset["best_unique_arrangement"] = list(map(deduplication_columns_path_updater_helper, dataset["best_unique_arrangement"]))
+    del deduplication_columns_path_updater_helper
+
     # create necessary directory trees if required
     for column in output_columns:
         subdirectories = set(map(dirname, filter(lambda path: not pd.isna(path), dataset[column])))
