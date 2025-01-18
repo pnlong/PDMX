@@ -17,7 +17,6 @@ import subprocess
 import pandas as pd
 from tqdm import tqdm
 import multiprocessing
-import logging
 import tempfile
 import json
 from typing import Tuple
@@ -110,9 +109,6 @@ if __name__ == "__main__":
     directory_creator(directory = pdf_dir)
     facets_dir = f"{output_dir}/subset_paths"
     directory_creator(directory = facets_dir)
-
-    # set up logging
-    logging.basicConfig(level = logging.INFO, format = "%(message)s")
 
     # load in dataset
     output_columns = ["path_output", "metadata_output", "mxl_output", "pdf_output"]
