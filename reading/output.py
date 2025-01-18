@@ -229,7 +229,10 @@ def to_mido_meta_track(music: "MusicRender") -> MidiTrack:
     # create a track to store the metadata
     meta_track = MidiTrack()
     all_notes = sum((track.notes for track in music.tracks), []) # all notes
-    max_note_time = max((note.time for note in all_notes))
+    if len(all_notes) == 0:
+        return meta_track
+    else:
+        max_note_time = max((note.time for note in all_notes))
 
     # song title
     if music.metadata.title is not None:
