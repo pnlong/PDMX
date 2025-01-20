@@ -93,11 +93,11 @@ if __name__ == "__main__":
 
     # filepaths
     output_dir = f"{args.output_dir}/{DATASET_NAME}"
-    if not exists(output_dir):
+    if not exists(output_dir) or args.reset:
         makedirs(output_dir)
     output_filepath = f"{output_dir}/{DATASET_NAME}.csv"
     def directory_creator(directory: str):
-        if not exists(directory):
+        if not exists(directory) or args.reset:
             mkdir(directory)
     data_dir = f"{output_dir}/data"
     directory_creator(directory = data_dir)
