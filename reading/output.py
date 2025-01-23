@@ -449,7 +449,7 @@ def to_mido_track(track: Track, music: "MusicRender", channel: int = None, use_n
         midi_track.append(MetaMessage(type = "track_name", name = track.name))
 
     # program change messages
-    midi_track.append(Message(type = "program_change", program = track.program, channel = channel))
+    midi_track.append(Message(type = "program_change", program = track.program if 0 <= track.program < 128 else 0, channel = channel))
 
     # deal with swing
     is_swung = False
