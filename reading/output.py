@@ -207,7 +207,7 @@ def to_delta_time(midi_track: MidiTrack, ticks_per_beat: int, absolute_time: boo
     time = 0
     for message in midi_track:
         time_ = message.time
-        message.time = int(message.time - time) # ensure message time is int
+        message.time = max(int(message.time - time), 0) # ensure message time is int
         time = time_
 
 
