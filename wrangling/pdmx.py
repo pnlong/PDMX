@@ -74,6 +74,7 @@ def parse_args(args = None, namespace = None):
     parser.add_argument("-mf", "--musescore_filepath", type = str, default = MUSESCORE_APPLICATION_PATH, help = "Filepath to MuseScore CLI application (for generating MusicXML and PDF files)")
     parser.add_argument("-g", "--gzip", action = "store_true", help = "GZIP the output directory of the dataset")
     parser.add_argument("-r", "--reset", action = "store_true", help = "Whether or not to recreate files")
+    parser.add_argument("-rj", "--reset_json", action = "store_true", help = "Whether or not to recreate just MusicRender JSON files")
     parser.add_argument("-j", "--jobs", type = int, default = int(multiprocessing.cpu_count() / 4), help = "Number of Jobs")
     return parser.parse_args(args = args, namespace = namespace)
 
@@ -161,7 +162,7 @@ if __name__ == "__main__":
         path_output = dataset.at[i, "path_output"]
         music = read_musescore(path = path, timeout = 20)
         has_license_discrepancy = (music.metadata.copyright is not None) # if the metadata says a song has a public domain license, but the internals of the MuseScore file say elsewise
-        if not exists(path_output) or args.reset: # save if necessary
+        if not exists(path_output) or args.reset or args.reset_json: # save if necessary
             music.save(path = path_output, compressed = COMPRESS_JSON_MUSIC_FILES) # save as music object
         del music
         path_output = "." + path_output[len(output_dir):]
