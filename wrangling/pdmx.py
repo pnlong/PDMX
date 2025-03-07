@@ -4,15 +4,15 @@
 
 # Create PDMX (Public Domain Music XML) Dataset.
 
-# python /home/pnlong/model_musescore/pdmx.py
+# python /home/pnlong/model_musescore/wrangling/pdmx.py
 
 # IMPORTS
 ##################################################
 
 import argparse
 from os.path import exists, dirname, basename
-from os import makedirs, mkdir, chdir, environ
-from shutil import copy
+from os import makedirs, mkdir, environ
+from shutil import copy, rmtree
 import subprocess
 import pandas as pd
 from tqdm import tqdm
@@ -56,6 +56,9 @@ LICENSE_DISCREPANCY_COLUMN_NAME = "license_conflict"
 # whether to compress json music files
 COMPRESS_JSON_MUSIC_FILES = False
 
+# timeout for reading musescore files
+TIMEOUT = 120
+
 # mapping directory names from musescore scrape to more simple numbers
 MUSESCORE_PARENT_SUBDIRECTORIES_MAP = {parent_subdirectory: i for i, parent_subdirectory in enumerate("abcdefNPQRSTUVWXYZ")}
 MUSESCORE_CHILD_SUBDIRECTORIES_MAP = {child_subdirectory: i for i, child_subdirectory in enumerate("123456789aAbBcCdDeEfFgGhHijJkKLmMnNopPqQrRsStTuUvVwWxXyYzZ")}
@@ -71,7 +74,7 @@ def parse_args(args = None, namespace = None):
     parser = argparse.ArgumentParser(prog = DATASET_NAME, description = f"Create {DATASET_NAME} Dataset.")
     parser.add_argument("-df", "--dataset_filepath", type = str, default = f"{DATASET_OUTPUT_DIR}/{DATASET_DIR_NAME}.csv", help = "Filepath to full dataset")
     parser.add_argument("-o", "--output_dir", type = str, default = OUTPUT_DIR, help = "Output directory")
-    parser.add_argument("-mf", "--musescore_filepath", type = str, default = MUSESCORE_APPLICATION_PATH, help = "Filepath to MuseScore CLI application (for generating MusicXML and PDF files)")
+    parser.add_argument("-mf", "--musescore_filepath", type = str, default = MUSESCORE_APPLICATION_PATH, help = "Filepath to MuseScore CLI application (for generating extra files)")
     parser.add_argument("-g", "--gzip", action = "store_true", help = "GZIP the output directory of the dataset")
     parser.add_argument("-r", "--reset", action = "store_true", help = "Whether or not to recreate files")
     parser.add_argument("-rj", "--reset_json", action = "store_true", help = "Whether or not to recreate just MusicRender JSON files")
@@ -99,20 +102,23 @@ if __name__ == "__main__":
     output_filepath = f"{output_dir}/{DATASET_NAME}.csv"
     def directory_creator(directory: str):
         if not exists(directory) or args.reset:
+            if exists(directory):
+                rmtree(directory, ignore_errors = True)
             mkdir(directory)
     data_dir = f"{output_dir}/data"
     directory_creator(directory = data_dir)
     metadata_dir = f"{output_dir}/metadata"
     directory_creator(directory = metadata_dir)
-    mxl_dir = f"{output_dir}/mxl"
-    directory_creator(directory = mxl_dir)
-    pdf_dir = f"{output_dir}/pdf"
-    directory_creator(directory = pdf_dir)
     facets_dir = f"{output_dir}/subset_paths"
     directory_creator(directory = facets_dir)
+    output_formats = ["mxl", "pdf", "mid"]
+    output_format_dirs = [f"{output_dir}/{output_format}" for output_format in output_formats]
+    for output_format_dir in output_format_dirs:
+        directory_creator(directory = output_format_dir)
 
     # load in dataset
-    output_columns = ["path_output", "metadata_output", "mxl_output", "pdf_output"]
+    output_format_output_columns = [f"{output_format}_output" for output_format in output_formats]
+    output_columns = ["path_output", "metadata_output"] + output_format_output_columns
     dataset = pd.read_csv(filepath_or_buffer = args.dataset_filepath, sep = ",", header = 0, index_col = False)
     def get_path_output(path: str) -> str: # helper function to get the output path
         """Helper function to determine the output path given the input path."""
@@ -124,8 +130,8 @@ if __name__ == "__main__":
         return path_output
     dataset["path_output"] = list(map(get_path_output, dataset["path"]))
     dataset["metadata_output"] = list(map(lambda path: metadata_dir + path[len(f"{MUSESCORE_DIR}/metadata"):] if (not pd.isna(path)) else None, dataset["metadata"]))
-    dataset["mxl_output"] = list(map(lambda path: mxl_dir + path[len(data_dir):-len(".json")] + ".mxl", dataset["path_output"]))
-    dataset["pdf_output"] = list(map(lambda path: pdf_dir + path[len(data_dir):-len(".json")] + ".pdf", dataset["path_output"]))
+    for output_format_output_column, output_format in zip(output_format_output_columns, output_formats):
+        dataset[output_format_output_column] = list(map(lambda path: f"{output_dir}/{output_format}/{path[(len(data_dir) + 1):-len('.json')]}.{output_format}", dataset["path_output"]))
     dataset[LICENSE_DISCREPANCY_COLUMN_NAME] = utils.rep(x = False, times = len(dataset)) # create license discrepancy column
 
     # update deduplication columns
@@ -134,6 +140,15 @@ if __name__ == "__main__":
     dataset["best_arrangement"] = list(map(deduplication_columns_path_updater_helper, dataset["best_arrangement"]))
     dataset["best_unique_arrangement"] = list(map(deduplication_columns_path_updater_helper, dataset["best_unique_arrangement"]))
     del deduplication_columns_path_updater_helper
+
+    # check if dataset exists already, and if it does, read it in to get license discrepancies
+    need_to_calculate_license_discrepancy = True
+    if exists(output_filepath):
+        previous_dataset = pd.read_csv(filepath_or_buffer = output_filepath, sep = ",", header = 0, index_col = False, usecols = [LICENSE_DISCREPANCY_COLUMN_NAME])
+        if len(previous_dataset) == len(dataset):
+            dataset[LICENSE_DISCREPANCY_COLUMN_NAME] = previous_dataset[LICENSE_DISCREPANCY_COLUMN_NAME]
+            need_to_calculate_license_discrepancy = False
+        del previous_dataset # free up memory
 
     # create necessary directory trees if required
     for column in output_columns:
@@ -160,11 +175,15 @@ if __name__ == "__main__":
 
         # save as music object
         path_output = dataset.at[i, "path_output"]
-        music = read_musescore(path = path, timeout = 20)
-        has_license_discrepancy = (music.metadata.copyright is not None) # if the metadata says a song has a public domain license, but the internals of the MuseScore file say elsewise
-        if not exists(path_output) or args.reset or args.reset_json: # save if necessary
-            music.save(path = path_output, compressed = COMPRESS_JSON_MUSIC_FILES) # save as music object
-        del music
+        need_to_save_music_json = not exists(path_output) or args.reset or args.reset_json
+        if need_to_save_music_json or need_to_calculate_license_discrepancy: # save if necessary
+            music = read_musescore(path = path, timeout = TIMEOUT)
+            if need_to_save_music_json:
+                music.save(path = path_output, compressed = COMPRESS_JSON_MUSIC_FILES) # save as music object
+            has_license_discrepancy = (music.metadata.copyright is not None) # if the metadata says a song has a public domain license, but the internals of the MuseScore file say elsewise
+            del music
+        else:
+            has_license_discrepancy = dataset.at[i, LICENSE_DISCREPANCY_COLUMN_NAME]            
         path_output = "." + path_output[len(output_dir):]
 
         # copy over metadata path
@@ -191,76 +210,23 @@ if __name__ == "__main__":
     ##################################################
 
 
-    # GET MXL AND PDF FILES
+    # GET EXTRA FILES
     ##################################################
 
-    # helper function to save files
-    # batch_size = 10 # number of files to include in a batch
-    # def get_mxl_pdf(i: int) -> Tuple[str, str]:
-    #     """
-    #     Given a starting dataset index, generate MusicXML and PDF files with the MuseScore CLI.
-    #     Utilizes the MuseScore CLI batch jobs functionality, with `batch_size` defined above.
-    #     Returns the output paths of the MXL and PDF files.
-    #     """
-
-    #     # get input and output paths for batch jobs
-    #     indicies = range(i, min(i + batch_size, len(dataset)))
-    #     paths_input = list(map(lambda j: dataset.at[j, "path"], indicies)) # input musescore paths
-    #     paths_output = list(map(lambda j: [dataset.at[j, "mxl_output"], dataset.at[j, "pdf_output"]], indicies)) # output mxl and pdf paths
-
-    #     # get json dict object
-    #     json_dict = []
-    #     for path, (mxl_path_output, pdf_path_output) in zip(paths_input, paths_output):
-    #         song_dict = {"in": path, "out": []}
-    #         if not exists(mxl_path_output) or args.reset: # mxl
-    #             song_dict["out"].append(mxl_path_output)
-    #         if not exists(pdf_path_output) or args.reset: # pdf
-    #             song_dict["out"].append(pdf_path_output)
-    #         if len(song_dict["out"]) > 0: # append if there are some files to output
-    #             json_dict.append(song_dict)
-
-    #     # avoid unnecessary calculations
-    #     if len(json_dict) > 0:
-
-    #         # create a temporary directory
-    #         with tempfile.TemporaryDirectory() as temp_dir:
-
-    #             # write json dict to a json file
-    #             json_path = f"{temp_dir}/job.json"
-    #             with open(json_path, "w") as json_file:
-    #                 json.dump(json_dict, json_file)
-                
-    #             # run batch job with MuseScore CLI
-    #             subprocess.run(
-    #                 args = [args.musescore_filepath, "--job", json_path],
-    #                 check = True,
-    #                 env = environ,
-    #                 stdout = subprocess.DEVNULL,
-    #                 stderr = subprocess.DEVNULL,
-    #             )
-
-    #     # update paths in `dataset` DataFrame
-    #     for j, (mxl_path_output, pdf_path_output) in zip(indicies, paths_output):
-    #         mxl_path_output = "." + mxl_path_output[len(output_dir):]
-    #         pdf_path_output = "." + pdf_path_output[len(output_dir):]
-
-    #     # return paths
-    #     return (mxl_path_output, pdf_path_output)
-
-    def get_mxl_pdf(i: int) -> Tuple[str, str]:
+    # helper function to save files with MuseScore CLI
+    def get_output_formats(i: int) -> list:
         """
-        Given a starting dataset index, generate MusicXML and PDF 
+        Given a starting dataset index, generate output format 
         files with the MuseScore CLI.
-        Returns the output paths of the MXL and PDF files.
+        Returns the output paths of the generated files, in the order of `output_formats`.
         """
 
         # create json dict object
         json_dict = {"in": dataset.at[i, "path"], "out": []}
-        mxl_path_output, pdf_path_output = dataset.at[i, "mxl_output"], dataset.at[i, "pdf_output"]
-        if not exists(mxl_path_output) or args.reset: # mxl
-            json_dict["out"].append(mxl_path_output)
-        if not exists(pdf_path_output) or args.reset: # pdf
-            json_dict["out"].append(pdf_path_output)
+        output_format_path_outputs = [dataset.at[i, output_format_output_column] for output_format_output_column in output_format_output_columns]
+        for output_format_path_output in output_format_path_outputs:
+            if not exists(output_format_path_output) or args.reset:
+                json_dict["out"].append(output_format_path_output)
 
         # avoid unnecessary calculations
         if len(json_dict["out"]) > 0:
@@ -276,32 +242,34 @@ if __name__ == "__main__":
                 # run batch job with MuseScore CLI, add except clause for corrupted files
                 try:
                     subprocess.run(
-                        args = [args.musescore_filepath, "--job", json_path],
+                        args = ["xvfb-run", "--auto-servernum", args.musescore_filepath, "--job", json_path],
                         check = True,
                         stdout = subprocess.DEVNULL,
                         stderr = subprocess.DEVNULL,
                         env = environ,
-                        timeout = 60, # wait for 60 seconds, if it's not done by then, then don't bother
+                        timeout = TIMEOUT, # wait for 60 seconds, if it's not done by then, then don't bother
                     )
                 except (subprocess.CalledProcessError, subprocess.TimeoutExpired): # if musescore file is corrupted
-                    return (None, None)
+                    return [None] * len(output_format_path_outputs)
         
-        # update paths
-        mxl_path_output = "." + mxl_path_output[len(output_dir):]
-        pdf_path_output = "." + pdf_path_output[len(output_dir):]
-
-        # return paths
-        return (mxl_path_output, pdf_path_output)
+        # return output paths
+        output_format_path_outputs = ["." + output_format_path_output[len(output_dir):] for output_format_path_output in output_format_path_outputs]
+        return output_format_path_outputs
         
     # use multiprocessing
     with multiprocessing.Pool(processes = args.jobs) as pool:
-        dataset["mxl_output"], dataset["pdf_output"] = list(zip(*list(
-            pool.map(func = get_mxl_pdf,
+        results = list(zip(*list(
+            pool.map(func = get_output_formats,
                      iterable = tqdm(iterable = dataset.index,
-                                     desc = "Generating MXL and PDF Files",
+                                     desc = "Generating Extra Files",
                                      total = len(dataset)),
                      chunksize = CHUNK_SIZE)
         )))
+
+    # update output filepaths in dataset
+    for i, output_format_output_column in enumerate(output_format_output_columns):
+        dataset[output_format_output_column] = results[i]
+    del results # free up memory
 
     ##################################################
 
@@ -311,7 +279,7 @@ if __name__ == "__main__":
 
     # add license discrepancy free facet
     dataset[f"facet:no_{LICENSE_DISCREPANCY_COLUMN_NAME}"] = ~dataset[LICENSE_DISCREPANCY_COLUMN_NAME]
-    dataset["facet:valid_mxl_pdf"] = (~pd.isna(dataset["mxl_output"]) & ~pd.isna(dataset["pdf_output"]))
+    dataset["facet:all_valid"] = list(map(all, zip(*[~pd.isna(dataset[output_format_output_column]) for output_format_output_column in output_format_output_columns])))
                                                         
     # rename facet columns
     facet_columns = list(filter(lambda column: column.startswith("facet:"), dataset.columns))
@@ -320,7 +288,7 @@ if __name__ == "__main__":
 
     # rename columns that are filepaths
     dataset = dataset.drop(columns = ["path", "metadata", "has_metadata"])
-    output_columns_new = list(map(lambda column: column.split("_")[0], output_columns))
+    output_columns_new = [column.split("_")[0] for column in output_columns]
     dataset = dataset.rename(columns = dict(zip(output_columns, output_columns_new))) # rename output columns
 
     # reorder columns
@@ -349,7 +317,7 @@ if __name__ == "__main__":
         directory_creator(gzip_dir)
 
         # gzip subdirectories
-        for directory in tqdm(iterable = (data_dir, metadata_dir, mxl_dir, pdf_dir, facets_dir), desc = "Gzipping"):
+        for directory in tqdm(iterable = [data_dir, metadata_dir, facets_dir] + output_format_dirs, desc = "Gzipping"):
             directory_basename = basename(directory)
             targz_output_path = f"{directory_basename}.tar.gz"
             subprocess.run(args = ["tar", "-zcf", targz_output_path, directory_basename], check = True, cwd = output_dir)
