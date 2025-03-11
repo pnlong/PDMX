@@ -302,7 +302,7 @@ if __name__ == "__main__":
     # text files with paths for each facet
     for column in subset_columns:
         with open(f"{facets_dir}/{column.split(':')[-1]}.txt", "w") as output_file:
-            output_file.write("\n".join(dataset[dataset[column]]["path"]))
+            output_file.write("\n".join(dataset.loc[dataset[column], "path"]) + "\n") # ensure trailing newline so line count is correct
 
     ##################################################
     
