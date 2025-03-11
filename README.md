@@ -29,7 +29,7 @@ With *Conda*:
 ```
 git clone https://github.com/pnlong/PDMX.git
 cd PDMX
-conda create -n myenv python=3.10
+conda create -n my_env python=3.10
 conda env update -n my_env --file environment.yml
 conda activate my_env
 ```
