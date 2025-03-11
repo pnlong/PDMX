@@ -32,8 +32,8 @@ from reading.read_musescore import read_musescore
 import utils
 
 # environ["QT_QPA_PLATFORM"] = "offscreen" # for musescore 4 cli
-environ["QT_QPA_PLATFORM"] = "xcb" # for musescore 3 cli
-environ["DISPLAY"] = ":1" # for musescore 3 cli
+# environ["QT_QPA_PLATFORM"] = "xcb" # for musescore 3 cli
+# environ["DISPLAY"] = ":1" # for musescore 3 cli
 
 ##################################################
 
