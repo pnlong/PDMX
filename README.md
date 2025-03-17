@@ -95,11 +95,16 @@ music = read_musescore(path = path)
 If you find this repository or our dataset helpful, feel free to cite our publication [PDMX: A Large-Scale Public Domain MusicXML Dataset for Symbolic Music Processing](https://arxiv.org/abs/2409.10831/):
 
 ```bibtex
-@article{long2024pdmx,
-    title={{PDMX}: A Large-Scale Public Domain MusicXML Dataset for Symbolic Music Processing},
-    author={Long, Phillip and Novack, Zachary and Berg-Kirkpatrick, Taylor and McAuley, Julian},
-    journal={2025 IEEE International Conference on Acoustics, Speech, and Signal Processing (ICASSP 2025)},
-    year={2024}
+@inproceedings{long2024pdmx,
+  author={Long, Phillip and Novack, Zachary and Berg-Kirkpatrick, Taylor and McAuley, Julian},
+  booktitle={ICASSP 2025 - 2025 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP)}, 
+  title={PDMX: A Large-Scale Public Domain MusicXML Dataset for Symbolic Music Processing}, 
+  year={2025},
+  volume={},
+  number={},
+  pages={1-5},
+  keywords={Filtering;Data integrity;Companies;Signal processing;Filtering algorithms;Data collection;Explosions;Multiple signal classification;Speech processing;Capacity planning;symbolic music datasets;symbolic music generation;music copyright},
+  doi={10.1109/ICASSP49660.2025.10890217}
 }
 ```
 
