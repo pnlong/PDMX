@@ -92,14 +92,30 @@ music = read_musescore(path = path)
 
 ## Citing & Authors
 
-If you find this repository helpful, feel free to cite our publication [PDMX: A Large-Scale Public Domain MusicXML Dataset for Symbolic Music Processing](https://arxiv.org/abs/2409.10831/):
+If you find this repository or our dataset helpful, feel free to cite our publication [PDMX: A Large-Scale Public Domain MusicXML Dataset for Symbolic Music Processing](https://arxiv.org/abs/2409.10831/):
 
 ```bibtex
 @article{long2024pdmx,
     title={{PDMX}: A Large-Scale Public Domain MusicXML Dataset for Symbolic Music Processing},
     author={Long, Phillip and Novack, Zachary and Berg-Kirkpatrick, Taylor and McAuley, Julian},
     journal={2025 IEEE International Conference on Acoustics, Speech, and Signal Processing (ICASSP 2025)},
-    year={2024},
+    year={2024}
 }
 ```
 
+Additionally, if you use the PDMX dataset, please also cite the publication [Generating Symbolic Music from Natural Language Prompts using an LLM-Enhanced Dataset](https://arxiv.org/abs/2410.02084):
+
+```bibtex
+@article{xu2024generating,
+    title={Generating Symbolic Music from Natural Language Prompts using an LLM-Enhanced Dataset},
+    author={Xu, Weihan and McAuley, Julian and Berg-Kirkpatrick, Taylor and Dubnov, Shlomo and Dong, Hao-Wen},
+    journal={arXiv preprint arXiv:2410.02084},
+    year={2024}
+}
+```
+
+
+
+## Acknowledgements
+
+We thank Hao-Wen Dong for his efforts in scraping [MuseScore](https://musescore.com/) and compiling the data used to create PDMX.
