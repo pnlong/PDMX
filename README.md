@@ -98,7 +98,7 @@ If you find this repository or our dataset helpful, feel free to cite our public
 @inproceedings{long2024pdmx,
   author={Long, Phillip and Novack, Zachary and Berg-Kirkpatrick, Taylor and McAuley, Julian},
   booktitle={ICASSP 2025 - 2025 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP)}, 
-  title={PDMX: A Large-Scale Public Domain MusicXML Dataset for Symbolic Music Processing}, 
+  title={{PDMX}: A Large-Scale Public Domain MusicXML Dataset for Symbolic Music Processing}, 
   year={2025},
   volume={},
   number={},
